@@ -1,0 +1,97 @@
+language: zh
+metrics:
+- key: gmv
+  title: GMV
+  target: app_business_overview_1d.gmv
+- key: pay_amt
+  title: 支付金额
+  target: app_business_overview_1d.pay_amt
+- key: pay_order_cnt
+  title: 支付订单数
+  target: app_business_overview_1d.pay_order_cnt
+- key: pay_user_cnt
+  title: 支付人数
+  target: app_business_overview_1d.pay_user_cnt
+- key: atv
+  title: 客单价
+  target: app_business_overview_1d.atv
+- key: refund_rate_14d
+  title: 近14天退款率
+  target: app_business_overview_1d.refund_rate_14d
+- key: refund_amt_14d
+  title: 退款金额(14天口径)
+  target: app_business_overview_1d.refund_amt_14d
+- key: flash_refund_order_ratio
+  title: 秒退单占比
+  target: app_business_overview_1d.flash_refund_order_ratio
+- key: delivered_rate
+  title: 妥投率
+  target: app_business_overview_1d.delivered_rate
+- key: avg_ship_hours
+  title: 平均发货时长
+  target: app_business_overview_1d.avg_ship_hours
+- key: new_user_cnt
+  title: 新客数
+  target: app_business_overview_1d.new_user_cnt
+- key: new_user_gmv_ratio
+  title: 新客GMV占比
+  target: app_business_overview_1d.new_user_gmv_ratio
+- key: repurchase_rate
+  title: 复购率
+  target: app_business_overview_1d.repurchase_rate
+- key: live_gmv
+  title: 渠道归因GMV·直播
+  target: app_channel_overview_1d.gmv
+  extra_targets:
+  - app_channel_overview_1d.attributed_channel
+  query_filter: attributed_channel = 'live'(取归因渠道为直播间的行)
+- key: dm_refund_rate
+  title: 退款率(DM 当日口径·治理对比)
+  target: dm_trade_stats_1d.refund_rate
+lexicon:
+  秒退单: 支付成功后 60 秒内发起退款申请的订单,多见于直播刷单场景
+  妥投: 包裹被签收(按运单去重计数)
+  揽收: 快递员从仓库取件的物流事件,发货时效的标准终点锚点
+  预售单: 支付后按预售规则延迟发货的订单,发货时效统计需剔除
+  风控单: 风控系统拦截的可疑订单(刷单/黄牛等),统计一律剔除
+  测试单: 内部测试账号产生的订单,统计一律剔除
+  归因渠道: 订单归属的经营渠道;直播间产生的订单即使跳转 App 支付,只要在直播结束后 30 分钟内完成支付仍归直播间
+  新客: 历史首笔支付成功订单发生在统计当日的用户(以首次支付定义,而非注册)
+  复购: 用户历史第 2 笔及以上的支付成功订单
+  GMV: 支付成功口径的订单金额(人民币),不等待发货或签收
+  统计日: 指标归属的日期;交易类指标按支付日归属,售后类指标按退款完成日归属
+  多版本记录: 增量同步(binlog)使同一业务单据在原始层存在多条版本快照,需按采集时间取最新
+governance:
+  scan_layers:
+  - dwm
+  - dm
+  - app
+  base_suffixes:
+  - _total
+  - _14d
+  - _1d
+  skip_columns:
+  - dt
+  - province
+  - category_name
+  - channel_id
+  - attributed_channel
+  - carrier
+  - warehouse_code
+  - nick_name
+  - gender
+  - register_channel
+  - currency
+  - refund_type
+  - refund_status
+  - refund_reason
+  - logistics_status
+  - order_status
+  - pay_type
+  - sku_name
+  - is_presale
+  skip_suffixes:
+  - _id
+  - _date
+  - _time
+  - _path

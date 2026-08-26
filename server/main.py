@@ -8,10 +8,12 @@ import duckdb
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from lineage.trace import load_graph, trace as lineage_trace
+from benchmark.paths import GRAPH, WORKSPACE
+from metriclens.store import CaliberStore
+from metriclens.trace import load_graph, trace as lineage_trace
 
 DB = Path(__file__).resolve().parent.parent / "warehouse" / "metriclens.duckdb"
-from caliber.store_paths import active_dir, active_run_id  # noqa: E402
+_store = CaliberStore(WORKSPACE / "store")
 _graph_cache = {"graph": None}
 
 app = FastAPI(title="MetricLens API")
@@ -167,10 +169,8 @@ def breakdown(start: str = Query(...), end: str = Query(...), dim: str = Query("
 @app.get("/api/caliber/index")
 def caliber_index():
     """口径知识库索引:只读 active 批次(整批原子发布,不存在半新半旧)。"""
-    d = active_dir()
-    if d is None:
-        return {"run_id": None, "cards": {}, "note": "尚无已发布的口径批次"}
-    return json.loads((d / "index.json").read_text())
+    idx = _store.index()
+    return idx if idx else {"run_id": None, "cards": {}, "note": "尚无已发布的口径批次"}
 
 
 @app.get("/api/caliber/{key}")
@@ -180,11 +180,9 @@ def caliber_card(key: str):
     只从 active 批次读取;低置信(review)卡不对外暴露技术/业务内容,
     仅返回状态占位——审核队列里的东西不上看板。
     """
-    d = active_dir()
-    f = (d / f"{key}.json") if d else None
-    if not f or not f.exists():
-        raise HTTPException(404, f"口径卡未生成: {key}(active 批次 {active_run_id() or '无'})")
-    card = json.loads(f.read_text())
+    card = _store.card(key)
+    if card is None:
+        raise HTTPException(404, f"口径卡未生成: {key}(active 批次 {_store.active_run_id() or '无'})")
     if card.get("status") == "review":
         return {"metric_key": card["metric_key"], "title": card["title"],
                 "confidence": card["confidence"], "status": "review",
@@ -197,7 +195,7 @@ def caliber_card(key: str):
 def lineage_api(model: str, column: str):
     """字段级血缘回溯:S(源字段)/F(过滤条件)/E(表达式链) 三元组,M4 口径卡的数据底座。"""
     if _graph_cache["graph"] is None:
-        _graph_cache["graph"] = load_graph()
+        _graph_cache["graph"] = load_graph(GRAPH)
     try:
         return lineage_trace(_graph_cache["graph"], model, column)
     except KeyError as e:
@@ -208,7 +206,7 @@ def lineage_api(model: str, column: str):
 def lineage_graph_api(model: str, column: str):
     """指标链路子图(模型级节点 + 依赖边),供看板血缘画布渲染。"""
     if _graph_cache["graph"] is None:
-        _graph_cache["graph"] = load_graph()
+        _graph_cache["graph"] = load_graph(GRAPH)
     g = _graph_cache["graph"]
     try:
         t = lineage_trace(g, model, column)
@@ -230,7 +228,7 @@ def lineage_graph_api(model: str, column: str):
             "sources": [f"{s['table']}.{s['column']}" for s in t["sources"]]}
 
 
-GOV_STORE = Path(__file__).resolve().parent.parent / "governance" / "store"
+GOV_STORE = WORKSPACE
 
 
 @app.get("/api/governance/report")

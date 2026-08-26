@@ -1,6 +1,8 @@
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
+dist/
 node_modules/
 dashboard/dist/
 *.duckdb
@@ -10,7 +12,7 @@ warehouse/dbt_project/dbt_packages/
 warehouse/dbt_project/logs/
 logs/
 .metriclens/
+warehouse/dbt_project/.metriclens/
 .env
-caliber/store/.llm_cache/
 *.log
 .DS_Store
