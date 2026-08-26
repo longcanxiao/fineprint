@@ -70,6 +70,22 @@ class TestVerifyQuotes:
         assert out["filters"][0]["quote_verified"] is True
 
 
+class TestCrossValidateSeeds:
+    """seed / 未声明 source 的项目(如 jaffle_shop):通道一叶子表须计入源表集,不得恒判 S 漏。"""
+
+    def test_seed_leaf_table_counts_as_source(self):
+        from metriclens.synth import cross_validate
+        t = {"sources": [{"table": "raw_payments", "column": "amount"}],
+             "conditions": [], "semantics": []}
+        hops = {"stg_payments": {"columns": {"amount": {
+            "source_columns": [{"table": '"jaffle"."main"."raw_payments"', "column": "amount"}]}},
+            "filters": []}}
+        cls = {"f1_fps": {}, "f2_fps": set(), "quote_fail": 0,
+               "out_of_scope": [], "unparsed": [], "suspect": []}
+        v = cross_validate(t, hops, cls, source_names=set())   # dbt sources 为空
+        assert v["s_missing_by_llm"] == [] and v["confidence"] == "high"
+
+
 class TestGovernanceScan:
     def test_t8_pair_auto_discovered(self):
         import subprocess

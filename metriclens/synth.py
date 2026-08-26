@@ -183,6 +183,9 @@ def classify_filters(t: dict, hops_by_model: dict, graph: dict) -> dict:
 
 
 def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set) -> dict:
+    # 通道一溯到的叶子表并入源表集:seed / 未在 dbt sources 声明的表(如 jaffle_shop)
+    # 也是合法源,否则 s2 永远对不上;保留传入集合以捕捉 LLM 报链路外真实源表的情况
+    source_names = set(source_names) | {s["table"] for s in t["sources"]}
     s1 = {f"{s['table']}.{s['column']}" for s in t["sources"]}
     s2 = set()
     for out in hops_by_model.values():
@@ -292,7 +295,11 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
         ids = c.get("evidence_ids") or []
         ok = bool(ids) and all(i in ev_by_id for i in ids)
         if ok:
-            cited = norm_text(" ".join(ev_by_id[i]["text"] for i in ids))
+            # cited 须与 gen_business 提示词中的证据行渲染一致(含编号/类型/模型),
+            # LLM 连同元数据前缀一起忠实抄写时不应被误判为未证
+            cited = norm_text(" ".join(
+                f"[{i}] ({ev_by_id[i]['kind']}, {ev_by_id[i].get('model') or '-'}) {ev_by_id[i]['text']}"
+                for i in ids))
             basis = norm_text(str(c.get("basis", "")))
             toks = [tk for tk in re.findall(r"[a-z_][a-z0-9_]{2,}|\d{2,}", basis)
                     if tk not in ("case", "when", "then", "else", "end", "and", "sum",

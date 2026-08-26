@@ -14,6 +14,7 @@ finish_reason=length 时自动扩容重试(温度 0 下同预算必然复现)。
 import hashlib
 import json
 import os
+import threading
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -22,6 +23,10 @@ import requests
 
 PROMPT_VER = "v2"
 _CACHE_DIR: Path | None = None
+# 同 key 并发去重:首跑全 miss 时,多个指标途经同一模型会同时发起相同请求,
+# 各拿到不同回答导致下游 prompt 分叉、缓存键漂移(温度 0 也不保证逐字节一致)
+_INFLIGHT: dict[str, threading.Lock] = {}
+_INFLIGHT_GUARD = threading.Lock()
 
 
 def set_cache_dir(p: Path | None):
@@ -74,19 +79,27 @@ def chat_json(system: str, user: str, max_tokens: int = 4000, use_cache: bool = 
               model: str | None = None, validator=None) -> dict:
     cfg = settings()
     model = model or cfg["model"]
-    cf = None
     if use_cache and _CACHE_DIR is not None:
         _CACHE_DIR.mkdir(parents=True, exist_ok=True)
         key = hashlib.md5(f"{PROMPT_VER}|{model}|{system}|{user}".encode()).hexdigest()
         cf = _CACHE_DIR / f"{key}.json"
-        if cf.exists():
-            try:
-                obj = json.loads(cf.read_text())
-                if validator:
-                    validator(obj)
-                return obj
-            except Exception:
-                cf.unlink(missing_ok=True)   # 缓存损坏或结构不合规:作废重取
+        with _INFLIGHT_GUARD:
+            lock = _INFLIGHT.setdefault(key, threading.Lock())
+        with lock:                            # 同 key 串行:后到者等首个完成后直接命中
+            if cf.exists():
+                try:
+                    obj = json.loads(cf.read_text())
+                    if validator:
+                        validator(obj)
+                    return obj
+                except Exception:
+                    cf.unlink(missing_ok=True)   # 缓存损坏或结构不合规:作废重取
+            return _request(cfg, model, system, user, max_tokens, validator, cf)
+    return _request(cfg, model, system, user, max_tokens, validator, None)
+
+
+def _request(cfg: dict, model: str, system: str, user: str, max_tokens: int,
+             validator, cf: Path | None) -> dict:
     last_err = None
     budget = max_tokens
     for attempt in range(8):

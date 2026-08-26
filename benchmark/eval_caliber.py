@@ -43,9 +43,10 @@ CHECKS = [
     ("T4", "妥投分母=揽收", lambda: has("delivered_rate", "揽收")),
     ("T5", "客单价按人", lambda: has("atv", "人数|按人|去重.{0,4}用户|用户数")),
     ("T6", "发货时长剔预售+揽收锚点", lambda: has("avg_ship_hours", "预售", "揽收")),
+    # 负向断言只拦"自称 14 天窗口"的表述;"与 APP 层 14 天口径同名不同义"这类对比说明是正向揭示
     ("T7", "退款率同名不同义", lambda: has("refund_rate_14d", "14")
         and has("dm_refund_rate", "当日|不限|自然日")
-        and not has("dm_refund_rate", "14天|14 天|≤14|<=14")),
+        and not has("dm_refund_rate", "≤14|<=14|14天内|14 天内|限14")),
     ("T8", "退款金额重复建设(卡片级揭示)", t8_revealed),
     ("T9", "多版本去重", lambda: has("gmv", "去重|最新版本|多版本")),
     ("T10", "复购=第2笔序号", lambda: has("repurchase_rate", "第2|第 2|第二|≥2|>=2|2笔|2 笔|序号")),
