@@ -1,0 +1,742 @@
+{
+ "metric_key": "avg_ship_hours",
+ "title": "平均发货时长",
+ "target": "app_business_overview_1d.avg_ship_hours",
+ "run_id": "68ed52a6",
+ "extra_targets": [],
+ "query_filter": null,
+ "generated_at": "2026-08-25T19:44:44",
+ "llm_model": "deepseek-v4-flash+deepseek-v4-pro",
+ "confidence": "high",
+ "status": "published",
+ "validation": {
+  "confidence": "high",
+  "s_missing_by_llm": [],
+  "s_extra_by_llm": [],
+  "s_condition_cols_by_llm": [
+   "ods_logistics_trace.waybill_id"
+  ],
+  "f1_total": 6,
+  "f1_covered": 1.0,
+  "f1_uncovered": [],
+  "f2_out_of_scope": [],
+  "f2_unparsed": [
+   "left join \"metriclens_build\".\"dm\".\"dm_after_sale_stats_1d\" a using (dt)",
+   "left join \"metriclens_build\".\"dm\".\"dm_logistics_stats_1d\"  l using (dt)",
+   "left join \"metriclens_build\".\"dm\".\"dm_user_new_stats_1d\"   u using (dt)"
+  ],
+  "f2_suspect": [],
+  "quote_verify_fail": 0,
+  "unverified_clauses": 0
+ },
+ "technical": {
+  "formula": "ROUND(AVG(CASE WHEN o.is_presale = 0 THEN (UNIX_TIMESTAMP(ev.pickup_time) - UNIX_TIMESTAMP(o.pay_time)) / 3600.0 END), 2)",
+  "window": "按 CAST(ev.pickup_time AS DATE) 分组聚合，统计日为该日期；无时间窗限制。",
+  "special": [
+   "剔预售：仅统计 is_presale = 0 的订单，预售订单在 avg 中作为 NULL 被忽略",
+   "单位换算：pickup_time 与 pay_time 的 epoch 秒差除以 3600，转为小时",
+   "结果保留两位小数：round(..., 2)",
+   "统计日归属：按 pickup_time 的日期（cast as date）进行分组聚合，avg 为该组内的均值",
+   "揽收时间口径：通过物流轨迹按 waybill_id 分组取 event_type='PICKUP' 的最早 event_time；若无 PICKUP 事件或轨迹表中无该运单，则 pickup_time 为 NULL",
+   "订单表窗口去重：按 order_id 取 binlog_ts 最新版本（row_number() over partition by order_id order by binlog_ts desc = 1）",
+   "用户表窗口去重：按 user_id 取 binlog_ts 最新版本（row_number() over partition by user_id order by binlog_ts desc = 1）"
+  ],
+  "key_filters": [
+   {
+    "text": "剔预售：仅统计 is_presale = 0 的订单",
+    "layer": "DM"
+   },
+   {
+    "text": "剔除揽收时间为空的记录：pickup_time IS NOT NULL",
+    "layer": "DM"
+   },
+   {
+    "text": "剔除测试账号：coalesce(u.is_test_account, 0) = 0",
+    "layer": "DWD"
+   },
+   {
+    "text": "剔除风控订单：o.is_risk_order = 0",
+    "layer": "DWD"
+   },
+   {
+    "text": "订单表按 order_id 取 binlog_ts 最新版本去重",
+    "layer": "DWD"
+   },
+   {
+    "text": "用户表按 user_id 取 binlog_ts 最新版本去重",
+    "layer": "DWD"
+   }
+  ],
+  "summary": "本指标统计非预售订单从支付到揽收的平均时长（小时），按揽收日期分组，保留两位小数。揽收时间取物流轨迹中最早 PICKUP 事件时间，支付时间取自订单表，整体经过订单/用户去重并剔除测试账号、风控订单及无揽收时间记录。"
+ },
+ "business": {
+  "definition": "统计非预售订单从支付成功到快递揽收的平均小时数，按揽收日期分组，保留两位小数。",
+  "clauses": [
+   {
+    "text": "剔除预售单（is_presale=0），并将支付到揽收的秒差换算为小时。",
+    "basis": "CASE WHEN is_presale = 0 THEN (EPOCH(pickup_time) - EPOCH(pay_time)) / 3600.0 END",
+    "evidence_ids": [
+     "S1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "订单表按订单号取 binlog_ts 最新版本去重。",
+    "basis": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC) = 1",
+    "evidence_ids": [
+     "E5"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "用户表按用户ID取 binlog_ts 最新版本去重。",
+    "basis": "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY binlog_ts DESC) = 1",
+    "evidence_ids": [
+     "E6"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "剔除内部测试账号产生的订单。",
+    "basis": "COALESCE(u.is_test_account, 0) = 0",
+    "evidence_ids": [
+     "E2"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "剔除风控系统拦截的订单。",
+    "basis": "o.is_risk_order = 0",
+    "evidence_ids": [
+     "E3"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "剔除揽收时间为空的订单（即无揽收轨迹）。",
+    "basis": "NOT pickup_time IS NULL",
+    "evidence_ids": [
+     "E1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "揽收时间取自物流轨迹中快递揽收（PICKUP）事件时间。",
+    "basis": "CASE WHEN event_type = 'PICKUP' THEN event_time END",
+    "evidence_ids": [
+     "S3"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "统计日按揽收日期归属，即取揽收当日作为统计日。",
+    "basis": "CAST(pickup_time AS DATE)",
+    "evidence_ids": [
+     "S2"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "对满足条件的时长取平均值并保留两位小数。",
+    "basis": "avg_ship_hours = ROUND(AVG(CASE WHEN \"dwd_logistics_ship_detail\".\"is_presale\" = 0 THEN (EPOCH(\"dwd_logistics_ship_detail\".\"pickup_time\") - EPOCH(\"dwd_logistics_ship_detail\".\"pay_time\")) / 3600.0 END), 2)",
+    "evidence_ids": [
+     "X2"
+    ],
+    "basis_verified": true
+   }
+  ],
+  "caveats": [
+   "统计日按揽收日期归属，而非支付日期；某日指标仅反映当日被揽收订单的时效，解读时需注意。(无确定性证据)",
+   "揽收时间取物流轨迹中最早PICKUP事件时间；若无PICKUP事件或轨迹缺失则不计入统计。(无确定性证据)",
+   "发货时长锚点为支付成功时间到快递揽收时间，并非商家后台发货操作时间。(无确定性证据)"
+  ]
+ },
+ "evidence": [
+  {
+   "id": "E1",
+   "kind": "condition:where",
+   "model": "dm_logistics_stats_1d",
+   "line": 11,
+   "text": "NOT pickup_time IS NULL"
+  },
+  {
+   "id": "E2",
+   "kind": "condition:where",
+   "model": "dwd_trade_order_detail",
+   "line": 42,
+   "text": "COALESCE(u.is_test_account, 0) = 0"
+  },
+  {
+   "id": "E3",
+   "kind": "condition:where",
+   "model": "dwd_trade_order_detail",
+   "line": 43,
+   "text": "o.is_risk_order = 0"
+  },
+  {
+   "id": "E4",
+   "kind": "condition:join_on",
+   "model": "dwd_trade_order_detail",
+   "line": 41,
+   "text": "CAST(COALESCE(o.pay_time, o.order_time) AS DATE) BETWEEN r.effective_start AND r.effective_end"
+  },
+  {
+   "id": "E5",
+   "kind": "condition:qualify",
+   "model": "dwd_trade_order_detail",
+   "line": 5,
+   "text": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC) = 1"
+  },
+  {
+   "id": "E6",
+   "kind": "condition:qualify",
+   "model": "dwd_trade_order_detail",
+   "line": 10,
+   "text": "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY binlog_ts DESC) = 1"
+  },
+  {
+   "id": "S1",
+   "kind": "semantic:case_when",
+   "model": "dm_logistics_stats_1d",
+   "line": 3,
+   "text": "CASE WHEN is_presale = 0 THEN (EPOCH(pickup_time) - EPOCH(pay_time)) / 3600.0 END"
+  },
+  {
+   "id": "S2",
+   "kind": "semantic:stat_date_key",
+   "model": "dm_logistics_stats_1d",
+   "line": 3,
+   "text": "CAST(pickup_time AS DATE)"
+  },
+  {
+   "id": "S3",
+   "kind": "semantic:case_when",
+   "model": "dwd_logistics_ship_detail",
+   "line": 6,
+   "text": "CASE WHEN event_type = 'PICKUP' THEN event_time END"
+  },
+  {
+   "id": "S4",
+   "kind": "semantic:window",
+   "model": "dwd_trade_order_detail",
+   "line": 5,
+   "text": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC)"
+  },
+  {
+   "id": "X1",
+   "kind": "expression",
+   "model": "app_business_overview_1d",
+   "line": null,
+   "text": "avg_ship_hours = \"l\".\"avg_ship_hours\""
+  },
+  {
+   "id": "X2",
+   "kind": "expression",
+   "model": "dm_logistics_stats_1d",
+   "line": null,
+   "text": "avg_ship_hours = ROUND(AVG(CASE WHEN \"dwd_logistics_ship_detail\".\"is_presale\" = 0 THEN (EPOCH(\"dwd_logistics_ship_detail\".\"pickup_time\") - EPOCH(\"dwd_logistics_ship_detail\".\"pay_time\")) / 3600.0 END), 2)"
+  },
+  {
+   "id": "X3",
+   "kind": "expression",
+   "model": "dwd_logistics_ship_detail",
+   "line": null,
+   "text": "pickup_time = \"ev\".\"pickup_time\""
+  },
+  {
+   "id": "X4",
+   "kind": "expression",
+   "model": "dwd_logistics_ship_detail",
+   "line": null,
+   "text": "pay_time = \"o\".\"pay_time\""
+  },
+  {
+   "id": "X5",
+   "kind": "expression",
+   "model": "dwd_logistics_ship_detail",
+   "line": null,
+   "text": "is_presale = \"o\".\"is_presale\""
+  },
+  {
+   "id": "Q1",
+   "kind": "verified_quote:where",
+   "model": "dm_logistics_stats_1d",
+   "line": null,
+   "text": "pickup_time is not null"
+  },
+  {
+   "id": "Q2",
+   "kind": "verified_quote:qualify",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "qualify row_number() over (partition by order_id order by binlog_ts desc) = 1"
+  },
+  {
+   "id": "Q3",
+   "kind": "verified_quote:qualify",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "qualify row_number() over (partition by user_id order by binlog_ts desc) = 1"
+  },
+  {
+   "id": "Q4",
+   "kind": "verified_quote:join_on",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "cast(coalesce(o.pay_time, o.order_time) as date) between r.effective_start and r.effective_end"
+  },
+  {
+   "id": "Q5",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "coalesce(u.is_test_account, 0) = 0"
+  },
+  {
+   "id": "Q6",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "o.is_risk_order = 0"
+  }
+ ],
+ "governance": {
+  "duplicates": []
+ },
+ "trace": {
+  "depth": 4,
+  "models_visited": [
+   "app_business_overview_1d",
+   "dm_logistics_stats_1d",
+   "dwd_logistics_ship_detail",
+   "dwd_trade_order_detail"
+  ],
+  "sources": [
+   {
+    "table": "ods_logistics_trace",
+    "column": "event_time"
+   },
+   {
+    "table": "ods_logistics_trace",
+    "column": "event_type"
+   },
+   {
+    "table": "ods_order_info",
+    "column": "is_presale"
+   },
+   {
+    "table": "ods_order_info",
+    "column": "pay_time"
+   }
+  ],
+  "conditions": [
+   {
+    "model": "app_business_overview_1d",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "dt",
+    "norm": "dt",
+    "fp": "3017d911efce",
+    "line": 3,
+    "join_type": "LEFT",
+    "join_table": "dm_after_sale_stats_1d",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/app/app_business_overview_1d.sql"
+   },
+   {
+    "model": "dm_logistics_stats_1d",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "NOT pickup_time IS NULL",
+    "norm": "not pickup_time is null",
+    "fp": "17f17b63faae",
+    "line": 11,
+    "src_path": "warehouse/dbt_project/models/dm/dm_logistics_stats_1d.sql"
+   },
+   {
+    "model": "dwd_logistics_ship_detail",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "lo.waybill_id = ev.waybill_id",
+    "norm": "waybill_id = waybill_id",
+    "fp": "07aba4072f1c",
+    "line": 31,
+    "join_type": "LEFT",
+    "join_table": "ev",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_logistics_ship_detail.sql"
+   },
+   {
+    "model": "dwd_logistics_ship_detail",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "lo.order_id = o.order_id",
+    "norm": "order_id = order_id",
+    "fp": "695fbd8b788e",
+    "line": 33,
+    "join_type": "inner",
+    "join_table": "dwd_trade_order_detail",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_logistics_ship_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "COALESCE(u.is_test_account, 0) = 0",
+    "norm": "coalesce(is_test_account, 0) = 0",
+    "fp": "ce03e7de9fbd",
+    "line": 42,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "o.is_risk_order = 0",
+    "norm": "is_risk_order = 0",
+    "fp": "7bbb1c780d04",
+    "line": 43,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "o.user_id = u.user_id",
+    "norm": "user_id = user_id",
+    "fp": "32ef789a9afd",
+    "line": 38,
+    "join_type": "inner",
+    "join_table": "usr",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "o.currency = r.currency",
+    "norm": "currency = currency",
+    "fp": "1c7730de32fb",
+    "line": 40,
+    "join_type": "LEFT",
+    "join_table": "rate",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "CAST(COALESCE(o.pay_time, o.order_time) AS DATE) BETWEEN r.effective_start AND r.effective_end",
+    "norm": "effective_end >= cast(coalesce(pay_time, order_time) as date) and effective_start <= cast(coalesce(pay_time, order_time) as date)",
+    "fp": "79cd2cde499a",
+    "line": 41,
+    "join_type": "LEFT",
+    "join_table": "rate",
+    "is_pure_key": false,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "ord_latest",
+    "kind": "qualify",
+    "row_level": false,
+    "sql": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC) = 1",
+    "norm": "row_number() over (partition by order_id order by binlog_ts desc) = 1",
+    "fp": "259a8084ad22",
+    "line": 5,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "usr",
+    "kind": "qualify",
+    "row_level": true,
+    "sql": "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY binlog_ts DESC) = 1",
+    "norm": "row_number() over (partition by user_id order by binlog_ts desc) = 1",
+    "fp": "661ecbeb07d7",
+    "line": 10,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   }
+  ],
+  "semantics": [
+   {
+    "model": "dm_logistics_stats_1d",
+    "scope": "main",
+    "type": "case_when",
+    "column": "avg_ship_hours",
+    "sql": "CASE WHEN is_presale = 0 THEN (EPOCH(pickup_time) - EPOCH(pay_time)) / 3600.0 END",
+    "line": 3,
+    "src_path": "warehouse/dbt_project/models/dm/dm_logistics_stats_1d.sql"
+   },
+   {
+    "model": "dm_logistics_stats_1d",
+    "scope": "main",
+    "type": "stat_date_key",
+    "column": "dt",
+    "sql": "CAST(pickup_time AS DATE)",
+    "line": 3,
+    "src_path": "warehouse/dbt_project/models/dm/dm_logistics_stats_1d.sql"
+   },
+   {
+    "model": "dwd_logistics_ship_detail",
+    "scope": "ev",
+    "type": "case_when",
+    "column": "pickup_time",
+    "sql": "CASE WHEN event_type = 'PICKUP' THEN event_time END",
+    "line": 6,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_logistics_ship_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "ord_latest",
+    "type": "window",
+    "idiom": "dedup",
+    "column": null,
+    "func": "row_number()",
+    "partition_by": [
+     "order_id"
+    ],
+    "order_by": "binlog_ts DESC",
+    "sql": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC)",
+    "line": 5,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   }
+  ]
+ },
+ "per_hop": [
+  {
+   "model": "app_business_overview_1d",
+   "layer": "app",
+   "columns": {
+    "avg_ship_hours": {
+     "expression": "l.avg_ship_hours",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dm.dm_logistics_stats_1d",
+       "column": "avg_ship_hours"
+      }
+     ],
+     "special": []
+    }
+   },
+   "filters": [
+    {
+     "quote": "left join \"metriclens_build\".\"dm\".\"dm_after_sale_stats_1d\" a using (dt)",
+     "kind": "join_on",
+     "effect": "以dt关联售后域, left join不裁剪左表行, 但未匹配时售后列取NULL",
+     "quote_verified": true,
+     "match": "unparsed"
+    },
+    {
+     "quote": "left join \"metriclens_build\".\"dm\".\"dm_logistics_stats_1d\"  l using (dt)",
+     "kind": "join_on",
+     "effect": "以dt关联物流域, left join不裁剪左表行, 但未匹配时物流列取NULL, 目标列avg_ship_hours来自此表",
+     "quote_verified": true,
+     "match": "unparsed"
+    },
+    {
+     "quote": "left join \"metriclens_build\".\"dm\".\"dm_user_new_stats_1d\"   u using (dt)",
+     "kind": "join_on",
+     "effect": "以dt关联用户增长域, left join不裁剪左表行, 但未匹配时用户列取NULL",
+     "quote_verified": true,
+     "match": "unparsed"
+    }
+   ]
+  },
+  {
+   "model": "dm_logistics_stats_1d",
+   "layer": "dm",
+   "columns": {
+    "avg_ship_hours": {
+     "expression": "round(avg(case when is_presale = 0 then (epoch(pickup_time) - epoch(pay_time)) / 3600.0 end), 2)",
+     "source_columns": [
+      {
+       "table": "\"metriclens_build\".\"dwd\".\"dwd_logistics_ship_detail\"",
+       "column": "pickup_time"
+      },
+      {
+       "table": "\"metriclens_build\".\"dwd\".\"dwd_logistics_ship_detail\"",
+       "column": "pay_time"
+      },
+      {
+       "table": "\"metriclens_build\".\"dwd\".\"dwd_logistics_ship_detail\"",
+       "column": "is_presale"
+      }
+     ],
+     "special": [
+      "剔预售：仅统计 is_presale = 0 的订单，预售订单在 avg 中作为 NULL 被忽略",
+      "单位换算：pickup_time 与 pay_time 的 epoch 秒差除以 3600，转为小时",
+      "统计日归属：按 pickup_time 的日期（cast as date）进行分组聚合，avg 为该组内的均值",
+      "结果保留两位小数：round(..., 2)"
+     ]
+    }
+   },
+   "filters": [
+    {
+     "quote": "pickup_time is not null",
+     "kind": "where",
+     "effect": "排除揽收时间为空的记录，保证按揽收日分组时有有效日期，且 avg_ship_hours 仅基于有效揽收时间计算",
+     "quote_verified": true,
+     "match": "matched"
+    }
+   ]
+  },
+  {
+   "model": "dwd_logistics_ship_detail",
+   "layer": "dwd",
+   "columns": {
+    "is_presale": {
+     "expression": "o.is_presale",
+     "source_columns": [
+      {
+       "table": "\"metriclens_build\".\"dwd\".\"dwd_trade_order_detail\"",
+       "column": "is_presale"
+      }
+     ],
+     "special": []
+    },
+    "pay_time": {
+     "expression": "o.pay_time",
+     "source_columns": [
+      {
+       "table": "\"metriclens_build\".\"dwd\".\"dwd_trade_order_detail\"",
+       "column": "pay_time"
+      }
+     ],
+     "special": []
+    },
+    "pickup_time": {
+     "expression": "ev.pickup_time = min(case when event_type = 'PICKUP' then event_time end) by waybill_id",
+     "source_columns": [
+      {
+       "table": "\"metriclens_build\".\"ods\".\"ods_logistics_trace\"",
+       "column": "event_time"
+      },
+      {
+       "table": "\"metriclens_build\".\"ods\".\"ods_logistics_trace\"",
+       "column": "event_type"
+      },
+      {
+       "table": "\"metriclens_build\".\"ods\".\"ods_logistics_trace\"",
+       "column": "waybill_id"
+      }
+     ],
+     "special": [
+      "通过 CTE ev 对 ods_logistics_trace 按 waybill_id 分组，取 event_type='PICKUP' 的 event_time 最小值，即最早揽收时间",
+      "同一运单存在多条 PICKUP 轨迹时，该字段取最早一条的 event_time；若无 PICKUP 事件或轨迹表中无该运单，则 pickup_time 为 NULL",
+      "经 left join 到物流订单，若物流订单在轨迹表中无匹配运单，则 pickup_time 为 NULL"
+     ]
+    }
+   },
+   "filters": [
+    {
+     "quote": "lo.waybill_id = ev.waybill_id",
+     "kind": "join_on",
+     "effect": "物流订单与轨迹事件按运单号关联，该条件决定 ev 中轨迹事件能匹配到哪些物流订单；left join 保留未匹配的物流订单，不匹配时 ev 列取 NULL",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "lo.order_id = o.order_id",
+     "kind": "join_on",
+     "effect": "物流订单与订单明细按订单号关联，该条件同时作为 inner join 连接条件，将无法在 dwd_trade_order_detail 中找到匹配订单的物流记录过滤掉，影响最终输出行集",
+     "quote_verified": true,
+     "match": "pure_key"
+    }
+   ]
+  },
+  {
+   "model": "dwd_trade_order_detail",
+   "layer": "dwd",
+   "columns": {
+    "is_presale": {
+     "expression": "o.is_presale",
+     "source_columns": [
+      {
+       "table": "metriclens_build.ods.ods_order_info",
+       "column": "is_presale"
+      }
+     ],
+     "special": [
+      "窗口去重:按 order_id 取 binlog_ts 最新版本(row_number() over partition by order_id order by binlog_ts desc = 1)"
+     ]
+    },
+    "pay_time": {
+     "expression": "o.pay_time",
+     "source_columns": [
+      {
+       "table": "metriclens_build.ods.ods_order_info",
+       "column": "pay_time"
+      }
+     ],
+     "special": [
+      "窗口去重:按 order_id 取 binlog_ts 最新版本(row_number() over partition by order_id order by binlog_ts desc = 1)"
+     ]
+    }
+   },
+   "filters": [
+    {
+     "quote": "qualify row_number() over (partition by order_id order by binlog_ts desc) = 1",
+     "kind": "qualify",
+     "effect": "在订单表中按 order_id 去重,保留 binlog_ts 最新的一条记录",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "qualify row_number() over (partition by user_id order by binlog_ts desc) = 1",
+     "kind": "qualify",
+     "effect": "在用户表中按 user_id 去重,保留 binlog_ts 最新的一条记录",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "o.user_id = u.user_id",
+     "kind": "join_on",
+     "effect": "内连接用户表,过滤掉无对应用户信息的订单",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "o.currency = r.currency",
+     "kind": "join_on",
+     "effect": "左连接汇率表,按币种匹配,用于汇率折算",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "cast(coalesce(o.pay_time, o.order_time) as date) between r.effective_start and r.effective_end",
+     "kind": "join_on",
+     "effect": "左连接汇率表,限定汇率在支付/下单日期当天有效",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "coalesce(u.is_test_account, 0) = 0",
+     "kind": "where",
+     "effect": "剔除测试账号(用户信息中 is_test_account 非0的账号对应的订单)",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "o.is_risk_order = 0",
+     "kind": "where",
+     "effect": "剔除风控订单(is_risk_order 非0的订单)",
+     "quote_verified": true,
+     "match": "matched"
+    }
+   ]
+  }
+ ]
+}

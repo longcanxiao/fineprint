@@ -1,0 +1,686 @@
+{
+ "metric_key": "dm_refund_rate",
+ "title": "退款率(DM 当日口径·治理对比)",
+ "target": "dm_trade_stats_1d.refund_rate",
+ "run_id": "68ed52a6",
+ "extra_targets": [],
+ "query_filter": null,
+ "generated_at": "2026-08-25T19:44:44",
+ "llm_model": "deepseek-v4-flash+deepseek-v4-pro",
+ "confidence": "high",
+ "status": "published",
+ "validation": {
+  "confidence": "high",
+  "s_missing_by_llm": [],
+  "s_extra_by_llm": [],
+  "s_condition_cols_by_llm": [],
+  "f1_total": 7,
+  "f1_covered": 1.0,
+  "f1_uncovered": [],
+  "f2_out_of_scope": [],
+  "f2_unparsed": [
+   "left join ref_daily r using (dt)"
+  ],
+  "f2_suspect": [],
+  "quote_verify_fail": 0,
+  "unverified_clauses": 0
+ },
+ "technical": {
+  "formula": "round(sum(case when refund_status = 'REFUNDED' and refund_suc_time is not null and order_status in (20,30,40,50,90) then refund_amt end) / nullif(sum(case when pay_status = 'SUCCESS' and pay_time is not null and order_status in (20,30,40,50,90) then pay_amt end), 0), 6)",
+  "window": "按自然日统计；退款金额按退款成功日期(refund_suc_date)归属，支付金额按支付日期(dt)归属，两者按相同统计日关联。",
+  "special": [
+   "退款金额单位换算与兜底：coalesce(rp.refund_suc_amt_cent, ra.refund_apply_amt_cent) / 100.0，分转元，打款金额缺失时取申请金额。",
+   "支付金额单位换算：pay_amt_cent / 100.0，分转元。",
+   "退款金额按 refund_suc_date 分组汇总，仅统计退款状态为 REFUNDED 且退款成功时间不为空的记录。",
+   "支付金额按 dt 分组汇总。",
+   "nullif(pay_amt, 0) 防止除零，pay_amt 为 0 时表达式返回 null。",
+   "round(..., 6) 四舍五入保留 6 位小数。",
+   "left join 导致无退款数据的日期退款金额为 null，进而退款率为 null。"
+  ],
+  "key_filters": [
+   {
+    "text": "退款状态为 REFUNDED 且退款成功时间不为空",
+    "layer": "dm"
+   },
+   {
+    "text": "支付状态为 SUCCESS",
+    "layer": "dwd_trade_pay_suc_detail"
+   },
+   {
+    "text": "支付时间不为空",
+    "layer": "dwd_trade_pay_suc_detail"
+   },
+   {
+    "text": "订单状态在 (20,30,40,50,90)",
+    "layer": "dwd_trade_pay_suc_detail, dwd_after_refund_detail"
+   },
+   {
+    "text": "支付流水按 order_id 取最新（row_number=1）",
+    "layer": "dwd_trade_pay_suc_detail"
+   },
+   {
+    "text": "退款申请按 refund_id 取最新（row_number=1）",
+    "layer": "dwd_after_refund_detail"
+   }
+  ],
+  "summary": "退款率为当日退款成功金额与支付成功金额的比值，分子按退款成功日期汇总有效退款金额，分母按支付日期汇总有效支付金额。计算时对支付金额做除零保护并保留6位小数，支付和退款明细均需满足各自状态及订单状态过滤，且分别进行最新记录去重。无退款数据的日期退款率为NULL。"
+ },
+ "business": {
+  "definition": "按自然日统计，当日退款成功金额与当日支付成功金额之比；退款按退款成功日、支付按支付日归属。",
+  "clauses": [
+   {
+    "text": "退款金额仅统计退款状态为已退款(REFUNDED)且退款成功时间非空的记录，并按退款成功日期归属统计日。",
+    "basis": "where refund_status = 'REFUNDED'\n      and refund_suc_time is not null",
+    "evidence_ids": [
+     "E1",
+     "E2",
+     "Q1",
+     "S1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "退款金额取实际打款金额，若打款金额缺失则回退到申请退款金额，单位由分转元。",
+    "basis": "refund_amt = COALESCE(\"rp\".\"refund_suc_amt_cent\", \"ra\".\"refund_apply_amt_cent\") / 100.0",
+    "evidence_ids": [
+     "S4",
+     "X4"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "支付金额仅统计支付状态为成功(SUCCESS)的支付流水。",
+    "basis": "pay_status = 'SUCCESS'",
+    "evidence_ids": [
+     "E5",
+     "Q2"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "支付金额要求支付时间非空。",
+    "basis": "o.pay_time is not null",
+    "evidence_ids": [
+     "E3",
+     "Q4"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "支付与退款明细的订单状态都必须属于(20,30,40,50,90)。",
+    "basis": "o.order_status in (20, 30, 40, 50, 90)",
+    "evidence_ids": [
+     "E4",
+     "Q5",
+     "Q7"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "支付流水按订单号去重，仅保留支付时间最新的一条记录。",
+    "basis": "row_number() over (partition by order_id order by pay_time desc) = 1",
+    "evidence_ids": [
+     "E6",
+     "S2",
+     "Q3"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "退款申请按退款单号去重，仅保留采集时间最新的一条记录。",
+    "basis": "row_number() over (partition by refund_id order by binlog_ts desc) = 1",
+    "evidence_ids": [
+     "E7",
+     "S3",
+     "Q6"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "支付金额由支付流水的分单位金额换算为元。",
+    "basis": "pay_amt = \"p\".\"pay_amt_cent\" / 100.0",
+    "evidence_ids": [
+     "X3"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "退款率计算公式为退款金额除以支付金额，结果四舍五入保留6位小数；支付金额为0时通过NULLIF避免除零错误。",
+    "basis": "refund_rate = ROUND(\"r\".\"refund_amt\" / NULLIF(\"a\".\"pay_amt\", 0), 6)",
+    "evidence_ids": [
+     "X1"
+    ],
+    "basis_verified": true
+   }
+  ],
+  "caveats": [
+   "支付金额按支付日期(dt)归属统计日（无确定性证据）",
+   "left join导致无退款数据的日期退款率为NULL（无确定性证据）",
+   "本指标为当日退款率，不限退款距支付的时间窗，与APP层refund_rate_14d同名不同义（无确定性证据）"
+  ]
+ },
+ "evidence": [
+  {
+   "id": "E1",
+   "kind": "condition:where",
+   "model": "dm_trade_stats_1d",
+   "line": 10,
+   "text": "refund_status = 'REFUNDED'"
+  },
+  {
+   "id": "E2",
+   "kind": "condition:where",
+   "model": "dm_trade_stats_1d",
+   "line": 11,
+   "text": "NOT refund_suc_time IS NULL"
+  },
+  {
+   "id": "E3",
+   "kind": "condition:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 16,
+   "text": "NOT o.pay_time IS NULL"
+  },
+  {
+   "id": "E4",
+   "kind": "condition:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 17,
+   "text": "o.order_status IN (20, 30, 40, 50, 90)"
+  },
+  {
+   "id": "E5",
+   "kind": "condition:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 5,
+   "text": "pay_status = 'SUCCESS'"
+  },
+  {
+   "id": "E6",
+   "kind": "condition:qualify",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 6,
+   "text": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY pay_time DESC) = 1"
+  },
+  {
+   "id": "E7",
+   "kind": "condition:qualify",
+   "model": "dwd_after_refund_detail",
+   "line": 5,
+   "text": "ROW_NUMBER() OVER (PARTITION BY refund_id ORDER BY binlog_ts DESC) = 1"
+  },
+  {
+   "id": "S1",
+   "kind": "semantic:stat_date_key",
+   "model": "dm_trade_stats_1d",
+   "line": 7,
+   "text": "refund_suc_date"
+  },
+  {
+   "id": "S2",
+   "kind": "semantic:window",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 6,
+   "text": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY pay_time DESC)"
+  },
+  {
+   "id": "S3",
+   "kind": "semantic:window",
+   "model": "dwd_after_refund_detail",
+   "line": 5,
+   "text": "ROW_NUMBER() OVER (PARTITION BY refund_id ORDER BY binlog_ts DESC)"
+  },
+  {
+   "id": "S4",
+   "kind": "semantic:coalesce",
+   "model": "dwd_after_refund_detail",
+   "line": 22,
+   "text": "COALESCE(rp.refund_suc_amt_cent, ra.refund_apply_amt_cent)"
+  },
+  {
+   "id": "X1",
+   "kind": "expression",
+   "model": "dm_trade_stats_1d",
+   "line": null,
+   "text": "refund_rate = ROUND(\"r\".\"refund_amt\" / NULLIF(\"a\".\"pay_amt\", 0), 6)"
+  },
+  {
+   "id": "X2",
+   "kind": "expression",
+   "model": "dwm_trade_order_flag_1d",
+   "line": null,
+   "text": "pay_amt = \"p\".\"pay_amt\""
+  },
+  {
+   "id": "X3",
+   "kind": "expression",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "pay_amt = \"p\".\"pay_amt_cent\" / 100.0"
+  },
+  {
+   "id": "X4",
+   "kind": "expression",
+   "model": "dwd_after_refund_detail",
+   "line": null,
+   "text": "refund_amt = COALESCE(\"rp\".\"refund_suc_amt_cent\", \"ra\".\"refund_apply_amt_cent\") / 100.0"
+  },
+  {
+   "id": "Q1",
+   "kind": "verified_quote:where",
+   "model": "dm_trade_stats_1d",
+   "line": null,
+   "text": "where refund_status = 'REFUNDED'\n      and refund_suc_time is not null"
+  },
+  {
+   "id": "Q2",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "pay_status = 'SUCCESS'"
+  },
+  {
+   "id": "Q3",
+   "kind": "verified_quote:qualify",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "row_number() over (partition by order_id order by pay_time desc) = 1"
+  },
+  {
+   "id": "Q4",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "o.pay_time is not null"
+  },
+  {
+   "id": "Q5",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "o.order_status in (20, 30, 40, 50, 90)"
+  },
+  {
+   "id": "Q6",
+   "kind": "verified_quote:qualify",
+   "model": "dwd_after_refund_detail",
+   "line": null,
+   "text": "row_number() over (partition by refund_id order by binlog_ts desc) = 1"
+  },
+  {
+   "id": "Q7",
+   "kind": "verified_quote:join_on",
+   "model": "dwd_after_refund_detail",
+   "line": null,
+   "text": "o.order_status in (20, 30, 40, 50, 90)"
+  }
+ ],
+ "governance": {
+  "duplicates": []
+ },
+ "trace": {
+  "depth": 3,
+  "models_visited": [
+   "dm_trade_stats_1d",
+   "dwm_trade_order_flag_1d",
+   "dwd_trade_pay_suc_detail",
+   "dwd_after_refund_detail"
+  ],
+  "sources": [
+   {
+    "table": "ods_payment_flow",
+    "column": "pay_amt_cent"
+   },
+   {
+    "table": "ods_refund_apply",
+    "column": "refund_apply_amt_cent"
+   },
+   {
+    "table": "ods_refund_payment",
+    "column": "refund_suc_amt_cent"
+   }
+  ],
+  "conditions": [
+   {
+    "model": "dm_trade_stats_1d",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "dt",
+    "norm": "dt",
+    "fp": "3017d911efce",
+    "line": 7,
+    "join_type": "LEFT",
+    "join_table": "ref_daily",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dm/dm_trade_stats_1d.sql"
+   },
+   {
+    "model": "dm_trade_stats_1d",
+    "scope": "ref_daily",
+    "kind": "where",
+    "row_level": false,
+    "sql": "refund_status = 'REFUNDED'",
+    "norm": "refund_status = 'refunded'",
+    "fp": "a35a764e3fe3",
+    "line": 10,
+    "src_path": "warehouse/dbt_project/models/dm/dm_trade_stats_1d.sql"
+   },
+   {
+    "model": "dm_trade_stats_1d",
+    "scope": "ref_daily",
+    "kind": "where",
+    "row_level": false,
+    "sql": "NOT refund_suc_time IS NULL",
+    "norm": "not refund_suc_time is null",
+    "fp": "e8d1a03b9882",
+    "line": 11,
+    "src_path": "warehouse/dbt_project/models/dm/dm_trade_stats_1d.sql"
+   },
+   {
+    "model": "dwm_trade_order_flag_1d",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "p.order_id = f.order_id",
+    "norm": "order_id = order_id",
+    "fp": "695fbd8b788e",
+    "line": 40,
+    "join_type": "LEFT",
+    "join_table": "flash",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dwm/dwm_trade_order_flag_1d.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "NOT o.pay_time IS NULL",
+    "norm": "not pay_time is null",
+    "fp": "f5b1d1097ba3",
+    "line": 16,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "o.order_status IN (20, 30, 40, 50, 90)",
+    "norm": "order_status in (20, 30, 40, 50, 90)",
+    "fp": "f817fe4b8ea3",
+    "line": 17,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "pf",
+    "kind": "where",
+    "row_level": true,
+    "sql": "pay_status = 'SUCCESS'",
+    "norm": "pay_status = 'success'",
+    "fp": "227e33ba365d",
+    "line": 5,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "pf",
+    "kind": "qualify",
+    "row_level": true,
+    "sql": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY pay_time DESC) = 1",
+    "norm": "row_number() over (partition by order_id order by pay_time desc) = 1",
+    "fp": "773821108b65",
+    "line": 6,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_after_refund_detail",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "ra.refund_id = rp.refund_id",
+    "norm": "refund_id = refund_id",
+    "fp": "3af5bfb41afb",
+    "line": 34,
+    "join_type": "LEFT",
+    "join_table": "rp",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_after_refund_detail.sql"
+   },
+   {
+    "model": "dwd_after_refund_detail",
+    "scope": "ra",
+    "kind": "qualify",
+    "row_level": false,
+    "sql": "ROW_NUMBER() OVER (PARTITION BY refund_id ORDER BY binlog_ts DESC) = 1",
+    "norm": "row_number() over (partition by refund_id order by binlog_ts desc) = 1",
+    "fp": "ba28a29a7de2",
+    "line": 5,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_after_refund_detail.sql"
+   }
+  ],
+  "semantics": [
+   {
+    "model": "dm_trade_stats_1d",
+    "scope": "ref_daily",
+    "type": "stat_date_key",
+    "column": "dt",
+    "sql": "refund_suc_date",
+    "line": 7,
+    "src_path": "warehouse/dbt_project/models/dm/dm_trade_stats_1d.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "pf",
+    "type": "window",
+    "idiom": "dedup",
+    "column": null,
+    "func": "row_number()",
+    "partition_by": [
+     "order_id"
+    ],
+    "order_by": "pay_time DESC",
+    "sql": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY pay_time DESC)",
+    "line": 6,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_after_refund_detail",
+    "scope": "ra",
+    "type": "window",
+    "idiom": "dedup",
+    "column": null,
+    "func": "row_number()",
+    "partition_by": [
+     "refund_id"
+    ],
+    "order_by": "binlog_ts DESC",
+    "sql": "ROW_NUMBER() OVER (PARTITION BY refund_id ORDER BY binlog_ts DESC)",
+    "line": 5,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_after_refund_detail.sql"
+   },
+   {
+    "model": "dwd_after_refund_detail",
+    "scope": "main",
+    "type": "coalesce",
+    "column": "refund_amt",
+    "sql": "COALESCE(rp.refund_suc_amt_cent, ra.refund_apply_amt_cent)",
+    "line": 22,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_after_refund_detail.sql"
+   }
+  ]
+ },
+ "per_hop": [
+  {
+   "model": "dm_trade_stats_1d",
+   "layer": "dm",
+   "columns": {
+    "refund_rate": {
+     "expression": "round(r.refund_amt / nullif(a.pay_amt, 0), 6)",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_after_refund_detail",
+       "column": "refund_amt"
+      },
+      {
+       "table": "metriclens_build.dwm.dwm_trade_order_flag_1d",
+       "column": "pay_amt"
+      }
+     ],
+     "special": [
+      "refund_amt 来自 ref_daily 子查询的 sum(refund_amt)，按 refund_suc_date 分组，且仅统计 refund_status='REFUNDED' 且 refund_suc_time 不为空的记录",
+      "pay_amt 来自 agg 子查询的 sum(pay_amt)，按 dt 分组",
+      "nullif(a.pay_amt, 0) 防止除零，pay_amt 为 0 时表达式返回 null",
+      "round(..., 6) 四舍五入保留 6 位小数",
+      "left join 导致无退款数据的日期 refund_amt 为 null，进而 refund_rate 为 null"
+     ]
+    }
+   },
+   "filters": [
+    {
+     "quote": "where refund_status = 'REFUNDED'\n      and refund_suc_time is not null",
+     "kind": "where",
+     "effect": "筛选出退款状态为 REFUNDED 且退款成功时间不为空的退款明细，确保 refund_amt 只包含有效退款金额",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "left join ref_daily r using (dt)",
+     "kind": "join_on",
+     "effect": "以 agg 的 dt 关联 ref_daily 的 dt，左连接保留所有交易汇总日期，无退款数据时 refund_amt 为 null",
+     "quote_verified": true,
+     "match": "unparsed"
+    }
+   ]
+  },
+  {
+   "model": "dwm_trade_order_flag_1d",
+   "layer": "dwm",
+   "columns": {
+    "pay_amt": {
+     "expression": "p.pay_amt",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_trade_pay_suc_detail",
+       "column": "pay_amt"
+      }
+     ],
+     "special": []
+    }
+   },
+   "filters": []
+  },
+  {
+   "model": "dwd_trade_pay_suc_detail",
+   "layer": "dwd",
+   "columns": {
+    "pay_amt": {
+     "expression": "p.pay_amt_cent / 100.0",
+     "source_columns": [
+      {
+       "table": "metriclens_build.ods.ods_payment_flow",
+       "column": "pay_amt_cent"
+      }
+     ],
+     "special": [
+      "分→元换算: pay_amt_cent / 100.0",
+      "窗口去重: 按order_id取pay_time最新的支付流水(row_number=1)"
+     ]
+    }
+   },
+   "filters": [
+    {
+     "quote": "pay_status = 'SUCCESS'",
+     "kind": "where",
+     "effect": "仅保留支付状态为成功的支付流水",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "row_number() over (partition by order_id order by pay_time desc) = 1",
+     "kind": "qualify",
+     "effect": "每个订单仅保留支付时间最新的一条支付流水",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "o.order_id = p.order_id",
+     "kind": "join_on",
+     "effect": "按订单ID关联订单明细与支付流水，确保支付流水对应有效订单",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "o.pay_time is not null",
+     "kind": "where",
+     "effect": "过滤掉订单支付时间为空的记录",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "o.order_status in (20, 30, 40, 50, 90)",
+     "kind": "where",
+     "effect": "仅保留指定订单状态（已支付/完成等）的订单",
+     "quote_verified": true,
+     "match": "matched"
+    }
+   ]
+  },
+  {
+   "model": "dwd_after_refund_detail",
+   "layer": "dwd",
+   "columns": {
+    "refund_amt": {
+     "expression": "coalesce(rp.refund_suc_amt_cent, ra.refund_apply_amt_cent) / 100.0",
+     "source_columns": [
+      {
+       "table": "metriclens_build.ods.ods_refund_apply",
+       "column": "refund_apply_amt_cent"
+      },
+      {
+       "table": "metriclens_build.ods.ods_refund_payment",
+       "column": "refund_suc_amt_cent"
+      }
+     ],
+     "special": [
+      "COALESCE 兜底:打款金额缺失时取申请金额",
+      "单位换算:分转元(除以100)",
+      "申请金额取自按 refund_id 窗口去重后的最新版本(partition by refund_id order by binlog_ts desc)"
+     ]
+    }
+   },
+   "filters": [
+    {
+     "quote": "row_number() over (partition by refund_id order by binlog_ts desc) = 1",
+     "kind": "qualify",
+     "effect": "按退款单去重,取binlog时间戳最新的一条申请记录",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "ra.refund_id = rp.refund_id",
+     "kind": "join_on",
+     "effect": "退款申请与退款打款关联,左连接不限制输出行,用于补充打款信息",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "ra.order_id = o.order_id",
+     "kind": "join_on",
+     "effect": "退款申请与订单详情关联,用于补充订单维度信息",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "o.order_status in (20, 30, 40, 50, 90)",
+     "kind": "join_on",
+     "effect": "限定订单状态为已支付等有效状态,过滤无效订单",
+     "quote_verified": true,
+     "match": "matched"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: app_business_overview_1d
+    description: 业务大盘日宽表:跨交易/售后/物流/用户四域收口,供经营大盘直读
+    columns:
+      - name: dt
+        tests: [unique, not_null]
+      - name: gmv
+        tests: [not_null]
+        description: GMV(元):剔秒退、剔测试/风控,外币按支付日汇率折算
+      - name: atv
+        description: 客单价=支付金额/支付人数(按人而非按订单)
+      - name: refund_rate_14d
+        description: 近14天退款率=退款到账距支付≤14天的退款金额/当日支付金额(分子售后域、分母交易域)
+  - name: app_channel_overview_1d
+    description: 渠道日宽表:归因渠道×直播间×类目×省份,渠道归因GMV 的取数表

@@ -1,0 +1,610 @@
+<meta charset="utf-8">
+<title>MetricLens 落地架构</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --page: #f6f7f4;
+  --surface: #fdfdfc;
+  --ink: #1a222c;
+  --sub: #46515e;
+  --muted: #87909c;
+  --line: #dfe3dc;
+  --line-soft: #eaece6;
+  --accent: #2563c4;
+  --accent-soft: rgba(37, 99, 196, 0.10);
+  --warn: #b45309;
+  --warn-soft: rgba(180, 83, 9, 0.10);
+  --good: #1a7f37;
+  --bad: #b23434;
+  --code-bg: #eef0ea;
+  --sans: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0e1114; --surface: #161a1f; --ink: #e7ebf0; --sub: #aeb7c2; --muted: #737d89;
+    --line: #2a3138; --line-soft: #21272d; --accent: #689fe8; --accent-soft: rgba(104, 159, 232, 0.14);
+    --warn: #dd9a52; --warn-soft: rgba(221, 154, 82, 0.13);
+    --good: #5cb374; --bad: #d97a72; --code-bg: #1d2329;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0e1114; --surface: #161a1f; --ink: #e7ebf0; --sub: #aeb7c2; --muted: #737d89;
+  --line: #2a3138; --line-soft: #21272d; --accent: #689fe8; --accent-soft: rgba(104, 159, 232, 0.14);
+  --warn: #dd9a52; --warn-soft: rgba(221, 154, 82, 0.13);
+  --good: #5cb374; --bad: #d97a72; --code-bg: #1d2329;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font-family: var(--sans); font-size: 15.5px; line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1020px; margin: 0 auto; padding: 56px 32px 96px; }
+header.masthead { padding: 8px 0 40px; border-bottom: 1px solid var(--line); margin-bottom: 48px; }
+.eyebrow {
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.14em;
+  color: var(--accent); text-transform: uppercase; margin: 0 0 14px;
+}
+h1 { font-size: 40px; line-height: 1.15; margin: 0 0 14px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { color: var(--sub); font-size: 17px; max-width: 46em; margin: 0 0 22px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  font-size: 12.5px; padding: 3px 12px; border: 1px solid var(--line);
+  border-radius: 999px; color: var(--sub); background: var(--surface);
+}
+.chip b { color: var(--ink); font-weight: 600; }
+
+section { margin: 0 0 64px; }
+.sec-head { display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 24px; }
+.sec-no { font-family: var(--mono); font-size: 13px; color: var(--accent); }
+h2 { font-size: 24px; margin: 0; font-weight: 700; letter-spacing: -0.005em; }
+h3 { font-size: 17px; margin: 34px 0 10px; font-weight: 650; }
+p { margin: 0 0 14px; max-width: 68ch; }
+p.wide { max-width: none; }
+ul, ol { margin: 0 0 16px; padding-left: 1.4em; max-width: 66ch; }
+li { margin-bottom: 6px; }
+li::marker { color: var(--muted); }
+strong { font-weight: 650; }
+code {
+  font-family: var(--mono); font-size: 0.86em; background: var(--code-bg);
+  padding: 1px 6px; border-radius: 5px; white-space: nowrap;
+}
+pre {
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.7; background: var(--code-bg);
+  border: 1px solid var(--line-soft); border-radius: 10px; padding: 14px 18px;
+  overflow-x: auto; margin: 14px 0 18px;
+}
+pre code { background: none; padding: 0; white-space: pre; }
+
+figure { margin: 26px 0 30px; }
+.fig-frame {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 22px 18px 14px; overflow-x: auto;
+}
+.fig-frame svg { display: block; max-width: 100%; height: auto; min-width: 720px; margin: 0 auto; color: var(--ink); }
+figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; padding: 0 4px; max-width: none; }
+figcaption b { color: var(--sub); font-weight: 600; }
+
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 14px 0 20px; }
+th {
+  text-align: left; font-weight: 600; font-size: 12px; letter-spacing: 0.06em;
+  color: var(--muted); text-transform: uppercase; font-family: var(--mono);
+  padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line);
+}
+td { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+td:first-child, th:first-child { padding-left: 2px; }
+tr:last-child td { border-bottom: none; }
+td code { font-size: 12px; }
+.num { font-variant-numeric: tabular-nums; }
+.tbl-scroll { overflow-x: auto; }
+
+.sev { font-family: var(--mono); font-size: 11px; padding: 1px 8px; border-radius: 6px; white-space: nowrap; }
+.sev-high { color: var(--bad); border: 1px solid var(--bad); }
+.sev-med { color: var(--warn); border: 1px solid var(--warn); }
+.sev-info { color: var(--muted); border: 1px solid var(--line); }
+.ok { color: var(--good); font-weight: 600; }
+
+.callout {
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  border-radius: 0 10px 10px 0; padding: 14px 20px; margin: 18px 0 22px; max-width: none;
+}
+.callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+.callout p { max-width: none; margin: 0 0 8px; }
+.callout p:last-child { margin-bottom: 0; }
+
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+@media (max-width: 760px) { .duo { grid-template-columns: 1fr; } }
+
+footer { border-top: 1px solid var(--line); padding-top: 22px; color: var(--muted); font-size: 13px; }
+footer code { font-size: 11.5px; }
+
+/* SVG 内文字统一 */
+svg text { font-family: var(--sans); }
+svg .mono { font-family: var(--mono); }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">As-built · 2026-08-26 · M1—M5 全部落地</p>
+  <h1>MetricLens 落地架构</h1>
+  <p class="lede">指标口径自动透出系统的最终技术方案：确定性血缘 × LLM 双通道合成口径卡，
+  线上代码变更经原子发布与口径快照漂移检测联动，指纹扫描 + 语义仲裁承担指标治理。本页描述的均为已验收的实际实现。</p>
+  <div class="chips">
+    <span class="chip"><b>M1</b> 四域数仓 DuckDB+dbt</span>
+    <span class="chip"><b>M2</b> 业务大盘 React+ECharts</span>
+    <span class="chip"><b>M3</b> 字段级血缘 sqlglot</span>
+    <span class="chip"><b>M4</b> 双通道口径合成 DeepSeek</span>
+    <span class="chip"><b>M5</b> 治理与漂移</span>
+  </div>
+</header>
+
+<!-- ======================= §1 总览 ======================= -->
+<section>
+  <div class="sec-head"><span class="sec-no">§1</span><h2>系统总览</h2></div>
+  <p>系统分四层：<strong>数据底座</strong>（模拟器注入 14 道口径陷阱 → dbt 五层建模）、<strong>血缘引擎</strong>（编译产物
+  → 字段级 DAG → S/F/E 确定性回溯）、<strong>口径合成</strong>（双通道互验 → 批次化口径知识库）、
+  <strong>治理与漂移</strong>（快照对比 + 指纹仲裁）。看板与 API 只消费三个只读产物：数仓库文件、口径 active 批次、治理事件流。</p>
+
+  <figure>
+    <div class="fig-frame">
+    <svg viewBox="0 0 960 470" role="img" aria-label="MetricLens 四层架构：数据底座产出 DuckDB 与编译 SQL；血缘引擎产出字段级血缘图；口径合成经双通道互验产出批次化口径卡；治理引擎产出漂移事件与治理报告；API 与看板消费全部只读产物">
+      <defs>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+        </marker>
+        <marker id="a1b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+
+      <!-- 数据底座 -->
+      <rect x="20" y="24" width="270" height="196" rx="10" fill="none" stroke="var(--line)"/>
+      <text x="36" y="50" font-size="13" font-weight="600" fill="currentColor">数据底座 M1</text>
+      <text x="36" y="68" font-size="11" fill="var(--muted)">warehouse/</text>
+      <rect x="36" y="82" width="238" height="30" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="155" y="101" font-size="11.5" text-anchor="middle" fill="currentColor">simulator · seed 固定 · 陷阱注入 T1–T14</text>
+      <rect x="36" y="122" width="238" height="30" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="155" y="141" font-size="11.5" text-anchor="middle" fill="currentColor">dbt 五层 ODS→DWD→DWM→DM→APP</text>
+      <rect x="36" y="162" width="112" height="30" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="92" y="181" font-size="11.5" text-anchor="middle" fill="currentColor">metriclens.duckdb</text>
+      <rect x="162" y="162" width="112" height="30" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="218" y="181" font-size="11.5" text-anchor="middle" fill="currentColor">compiled SQL</text>
+
+      <!-- 血缘引擎 -->
+      <rect x="340" y="24" width="270" height="196" rx="10" fill="none" stroke="var(--line)"/>
+      <text x="356" y="50" font-size="13" font-weight="600" fill="currentColor">血缘引擎 M3</text>
+      <text x="356" y="68" font-size="11" fill="var(--muted)">lineage/</text>
+      <rect x="356" y="82" width="238" height="30" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="475" y="101" font-size="11.5" text-anchor="middle" fill="currentColor">sqlglot qualify + lineage（逐列）</text>
+      <rect x="356" y="122" width="238" height="30" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="475" y="141" font-size="11.5" text-anchor="middle" fill="currentColor">graph.json 字段级 DAG + 条件/语义</text>
+      <rect x="356" y="162" width="238" height="30" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="475" y="181" font-size="11.5" text-anchor="middle" fill="currentColor">trace() → S 源字段 / F 条件 / E 表达式链</text>
+
+      <!-- 口径合成 -->
+      <rect x="20" y="252" width="420" height="118" rx="10" fill="none" stroke="var(--line)"/>
+      <text x="36" y="278" font-size="13" font-weight="600" fill="currentColor">口径合成 M4</text>
+      <text x="36" y="296" font-size="11" fill="var(--muted)">caliber/</text>
+      <rect x="36" y="306" width="180" height="48" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="126" y="326" font-size="11.5" text-anchor="middle" fill="currentColor">双通道互验</text>
+      <text x="126" y="342" font-size="10.5" text-anchor="middle" fill="var(--muted)">血缘确定性 × LLM 逐跳</text>
+      <rect x="232" y="306" width="192" height="48" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="328" y="326" font-size="11.5" text-anchor="middle" fill="currentColor">store/runs/&lt;run_id&gt;/ 15 卡</text>
+      <text x="328" y="342" font-size="10.5" text-anchor="middle" fill="var(--muted)">active_run 指针 · 整批原子发布</text>
+
+      <!-- 治理 -->
+      <rect x="470" y="252" width="270" height="118" rx="10" fill="none" stroke="var(--warn)"/>
+      <text x="486" y="278" font-size="13" font-weight="600" fill="currentColor">治理与漂移 M5</text>
+      <text x="486" y="296" font-size="11" fill="var(--muted)">governance/</text>
+      <rect x="486" y="306" width="114" height="48" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="543" y="326" font-size="11.5" text-anchor="middle" fill="currentColor">快照 → 漂移</text>
+      <text x="543" y="342" font-size="10.5" text-anchor="middle" fill="var(--muted)">drift_log 事件流</text>
+      <rect x="612" y="306" width="114" height="48" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="669" y="326" font-size="11.5" text-anchor="middle" fill="currentColor">指纹 + 仲裁</text>
+      <text x="669" y="342" font-size="10.5" text-anchor="middle" fill="var(--muted)">governance_report</text>
+
+      <!-- 消费层 -->
+      <rect x="660" y="24" width="280" height="196" rx="10" fill="none" stroke="var(--line)"/>
+      <text x="676" y="50" font-size="13" font-weight="600" fill="currentColor">消费层 M2</text>
+      <text x="676" y="68" font-size="11" fill="var(--muted)">server/ + dashboard/</text>
+      <rect x="676" y="82" width="248" height="30" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="800" y="101" font-size="11.5" text-anchor="middle" fill="currentColor">FastAPI :8612（全部只读）</text>
+      <rect x="676" y="122" width="248" height="30" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="800" y="141" font-size="11.5" text-anchor="middle" fill="currentColor">看板 :5273 · 14 指标卡 + 口径弹层</text>
+      <rect x="676" y="162" width="248" height="30" rx="6" fill="var(--warn-soft)" stroke="var(--warn)"/>
+      <text x="800" y="181" font-size="11.5" text-anchor="middle" fill="currentColor">治理台 · 变更角标 · 血缘画布</text>
+
+      <!-- 箭头 -->
+      <path d="M290 177 L336 177" stroke="var(--accent)" fill="none" marker-end="url(#a1b)"/>
+      <text x="313" y="169" font-size="10" text-anchor="middle" fill="var(--muted)">编译产物</text>
+      <path d="M475 196 L475 224 L230 224 L230 248" stroke="currentColor" fill="none" marker-end="url(#a1)"/>
+      <text x="352" y="217" font-size="10" text-anchor="middle" fill="var(--muted)">通道一：确定性 S/F/E</text>
+      <path d="M560 196 L560 224 L605 224 L605 248" stroke="currentColor" fill="none" marker-end="url(#a1)"/>
+      <text x="640" y="217" font-size="10" text-anchor="middle" fill="var(--muted)">快照 / 指纹均取自血缘</text>
+      <path d="M440 330 L466 330" stroke="currentColor" fill="none" marker-end="url(#a1)"/>
+      <path d="M148 177 L148 232 L20 232" stroke="currentColor" fill="none" opacity="0"/>
+      <path d="M740 310 L800 310 L800 226 L800 200" stroke="var(--warn)" fill="none" marker-end="url(#a1)" opacity="0.9"/>
+      <text x="836" y="248" font-size="10" text-anchor="middle" fill="var(--muted)">事件流 / 报告</text>
+      <path d="M424 384 L424 400 L800 400 L800 226" stroke="var(--accent)" fill="none" opacity="0"/>
+      <path d="M328 358 L328 412 L860 412 L860 224" stroke="var(--accent)" fill="none" marker-end="url(#a1b)"/>
+      <text x="600" y="404" font-size="10" text-anchor="middle" fill="var(--muted)">/api/caliber/* 只读 active 批次</text>
+      <path d="M92 196 L92 440 L900 440 L900 224" stroke="currentColor" fill="none" marker-end="url(#a1)"/>
+      <text x="600" y="432" font-size="10" text-anchor="middle" fill="var(--muted)">/api/overview /trend /breakdown（DuckDB 只读连接）</text>
+    </svg>
+    </div>
+    <figcaption><b>图 1 · 总体架构。</b>四个生产模块各自产出一份只读工件（数仓库文件、血缘图、口径批次、治理事件），消费层不写任何状态；血缘图同时是口径合成的通道一与治理引擎的快照来源——一份确定性事实供三处使用。</figcaption>
+  </figure>
+
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>模块</th><th>关键实现</th><th>产物</th><th>验收</th></tr></thead>
+    <tbody>
+      <tr><td><b>M1 数据底座</b></td><td>numpy 向量化模拟器（90 天 / 110 万订单，seed 固定）+ dbt 14 模型 28 测试；14 道陷阱全部数据可验证</td><td><code>metriclens.duckdb</code></td><td class="num">陷阱 14/14 · 手算对账 15 指标 × 3 日</td></tr>
+      <tr><td><b>M3 血缘引擎</b></td><td>sqlglot <code>qualify</code>（schema 取自 information_schema）+ 逐列 <code>lineage()</code>；条件相关性 = 值路径 scope + 行集闭包（inner 传播 / left 阻断）；七类结构语义点 + 行号锚定</td><td><code>graph.json</code></td><td class="num">golden set 召回/精确 100% · 条件召回 100%</td></tr>
+      <tr><td><b>M4 口径合成</b></td><td>双通道互验 + 证据 ID 受控生成（§3）</td><td><code>store/runs/&lt;id&gt;/</code></td><td class="num">15 卡全 high · 陷阱揭示 14/14</td></tr>
+      <tr><td><b>M5 治理漂移</b></td><td>指标快照对比 + 指纹扫描 + LLM 仲裁（§4）</td><td><code>drift_log</code> / <code>governance_report</code></td><td class="num">eval 6/6 · 漂移演练精准命中</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ======================= §2 变更联动 ======================= -->
+<section>
+  <div class="sec-head"><span class="sec-no">§2</span><h2>线上代码变更 → 口径更新方案</h2></div>
+  <p>模型 SQL 一旦变更，两条发布轨道保证"线上任何时刻都是完整一致的状态"：<strong>数据轨</strong>全自动、全验收通过才原子切换；
+  <strong>口径轨</strong>涉及付费 LLM 调用，由漂移信号提示人工触发，整批成功才切指针。两轨各自失败都不影响线上。</p>
+
+  <figure>
+    <div class="fig-frame">
+    <svg viewBox="0 0 960 460" role="img" aria-label="变更发布双轨：数据轨在 build 库上完成生成、dbt 构建、四项验收后原子替换正式库与血缘图，随后后置漂移检测产出事件与看板角标；口径轨由漂移 high 事件提示人工触发，整批写入 runs 目录，全部成功才切换 active_run 指针；两轨任一失败均不改变线上状态">
+      <defs>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+        </marker>
+        <marker id="a2b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
+        </marker>
+        <marker id="a2w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--warn)"/>
+        </marker>
+      </defs>
+
+      <rect x="20" y="30" width="140" height="44" rx="8" fill="var(--surface)" stroke="currentColor"/>
+      <text x="90" y="49" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">模型 SQL 变更</text>
+      <text x="90" y="65" font-size="10.5" text-anchor="middle" fill="var(--muted)">models/*.sql</text>
+
+      <!-- 数据轨 -->
+      <text x="20" y="112" font-size="12" font-weight="600" fill="var(--accent)">数据轨 · jobs/rebuild.sh（全自动）</text>
+      <rect x="20" y="124" width="560" height="112" rx="10" fill="none" stroke="var(--accent)"/>
+      <text x="36" y="146" font-size="10.5" fill="var(--muted)">一切发生在 build 副本上：METRICLENS_DB / METRICLENS_GRAPH 指向 *_build</text>
+      <rect x="36" y="158" width="96" height="34" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="84" y="179" font-size="11" text-anchor="middle" fill="currentColor">生成 + dbt build</text>
+      <rect x="144" y="158" width="96" height="34" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="192" y="174" font-size="11" text-anchor="middle" fill="currentColor">28 dbt 测试</text>
+      <text x="192" y="187" font-size="10" text-anchor="middle" fill="var(--muted)">+14 陷阱验证</text>
+      <rect x="252" y="158" width="96" height="34" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="300" y="174" font-size="11" text-anchor="middle" fill="currentColor">手算对账</text>
+      <text x="300" y="187" font-size="10" text-anchor="middle" fill="var(--muted)">DWD 独立重算</text>
+      <rect x="360" y="158" width="96" height="34" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="408" y="174" font-size="11" text-anchor="middle" fill="currentColor">血缘图重建</text>
+      <text x="408" y="187" font-size="10" text-anchor="middle" fill="var(--muted)">golden set 100%</text>
+      <rect x="468" y="158" width="96" height="34" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="516" y="174" font-size="11" text-anchor="middle" fill="currentColor">治理扫描</text>
+      <text x="516" y="187" font-size="10" text-anchor="middle" fill="var(--muted)">T8 靶向对 ✓</text>
+      <path d="M132 175 L140 175" stroke="currentColor" fill="none" marker-end="url(#a2)"/>
+      <path d="M240 175 L248 175" stroke="currentColor" fill="none" marker-end="url(#a2)"/>
+      <path d="M348 175 L356 175" stroke="currentColor" fill="none" marker-end="url(#a2)"/>
+      <path d="M456 175 L464 175" stroke="currentColor" fill="none" marker-end="url(#a2)"/>
+      <text x="300" y="222" font-size="10.5" text-anchor="middle" fill="var(--bad)">任一失败 → 退出非零，build 副本残留排查，正式库与血缘图不动</text>
+
+      <path d="M90 74 L90 124" stroke="currentColor" fill="none" marker-end="url(#a2)"/>
+
+      <rect x="640" y="140" width="150" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="715" y="161" font-size="11.5" text-anchor="middle" font-weight="600" fill="currentColor">原子 mv 切换</text>
+      <text x="715" y="177" font-size="10.5" text-anchor="middle" fill="var(--muted)">duckdb + graph.json 一起</text>
+      <path d="M580 166 L636 166" stroke="var(--accent)" fill="none" marker-end="url(#a2b)"/>
+      <text x="608" y="158" font-size="10" text-anchor="middle" fill="var(--muted)">全过</text>
+
+      <rect x="640" y="220" width="150" height="52" rx="8" fill="var(--warn-soft)" stroke="var(--warn)"/>
+      <text x="715" y="241" font-size="11.5" text-anchor="middle" font-weight="600" fill="currentColor">后置漂移检测</text>
+      <text x="715" y="257" font-size="10.5" text-anchor="middle" fill="var(--muted)">新图快照 vs 最近快照</text>
+      <path d="M715 192 L715 216" stroke="var(--warn)" fill="none" marker-end="url(#a2w)"/>
+
+      <rect x="640" y="300" width="150" height="52" rx="8" fill="var(--surface)" stroke="var(--warn)"/>
+      <text x="715" y="321" font-size="11.5" text-anchor="middle" fill="currentColor">drift_log 事件流</text>
+      <text x="715" y="337" font-size="10.5" text-anchor="middle" fill="var(--muted)">看板角标 + 变更历史</text>
+      <path d="M715 272 L715 296" stroke="var(--warn)" fill="none" marker-end="url(#a2w)"/>
+
+      <!-- 口径轨 -->
+      <text x="20" y="300" font-size="12" font-weight="600" fill="currentColor">口径轨 · jobs/caliber_refresh.sh（漂移提示，人工触发；LLM 调用带内容寻址缓存）</text>
+      <rect x="20" y="312" width="560" height="96" rx="10" fill="none" stroke="var(--line)"/>
+      <rect x="36" y="330" width="150" height="52" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="111" y="351" font-size="11" text-anchor="middle" fill="currentColor">15 指标 × 双通道合成</text>
+      <text x="111" y="367" font-size="10" text-anchor="middle" fill="var(--muted)">未变 SQL 命中缓存，零成本</text>
+      <rect x="202" y="330" width="170" height="52" rx="6" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="287" y="351" font-size="11" text-anchor="middle" fill="currentColor">整批写 runs/&lt;run_id&gt;/</text>
+      <text x="287" y="367" font-size="10" text-anchor="middle" fill="var(--muted)">--only 从 active 补齐成完整批</text>
+      <rect x="388" y="330" width="176" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="476" y="351" font-size="11" text-anchor="middle" font-weight="600" fill="currentColor">15/15 成功 → 切 active_run</text>
+      <text x="476" y="367" font-size="10" text-anchor="middle" fill="var(--muted)">tmp + rename 原子；败则指针不动</text>
+      <path d="M186 356 L198 356" stroke="currentColor" fill="none" marker-end="url(#a2)"/>
+      <path d="M372 356 L384 356" stroke="currentColor" fill="none" marker-end="url(#a2)"/>
+
+      <path d="M640 326 L600 326 L600 296 L580 296" stroke="var(--warn)" fill="none" stroke-dasharray="5 4" marker-end="url(#a2w)" opacity="0"/>
+      <path d="M646 340 L560 288 L300 288 L300 308" stroke="var(--warn)" fill="none" stroke-dasharray="5 4" marker-end="url(#a2w)"/>
+      <text x="470" y="284" font-size="10.5" text-anchor="middle" fill="var(--warn)">high 事件 → 提示重跑口径（人工决策，虚线）</text>
+
+      <rect x="640" y="384" width="150" height="44" rx="8" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="715" y="403" font-size="11.5" text-anchor="middle" fill="currentColor">API 只读 active 批次</text>
+      <text x="715" y="418" font-size="10" text-anchor="middle" fill="var(--muted)">review 卡仅返回状态占位</text>
+      <path d="M564 380 L640 400" stroke="var(--accent)" fill="none" marker-end="url(#a2b)"/>
+
+      <text x="20" y="446" font-size="10.5" fill="var(--muted)">图例：实线 = 自动流转 · 虚线 = 人工决策衔接 · 蓝 = 原子切换点 · 橙 = 漂移信号</text>
+    </svg>
+    </div>
+    <figcaption><b>图 2 · 变更发布双轨。</b>数据轨五道验收全过才 <code>mv</code>（数仓库与血缘图一起切，杜绝图数不一致窗口）；口径轨整批落盘后仅做一次指针 rename。两轨的失败语义相同：线上永远停留在上一个完整状态。</figcaption>
+  </figure>
+
+  <h3>失败与一致性语义</h3>
+  <ul>
+    <li><strong>数据轨失败</strong>：rebuild 非零退出，<code>*_build</code> 副本残留供排查；正式 <code>duckdb</code> 与 <code>graph.json</code> 保持旧版本且二者始终配套。</li>
+    <li><strong>口径轨失败</strong>：任一卡合成失败则整批不发布、<code>active_run</code> 指针不动（已真实演练：DeepSeek 截断导致 1/15 失败，线上零感知）。<code>--only</code> 单卡重跑会从当前 active 批次复制其余 14 张，保证每个发布批次都是完整集合。</li>
+    <li><strong>缓存使更新便宜</strong>：LLM 调用按 <code>PROMPT_VER|model|system|user</code> 内容寻址缓存——只改一个模型的 SQL 时，只有途经该模型的 hop 与相关归并是真实付费调用，其余全部命中缓存。</li>
+  </ul>
+
+  <div class="callout">
+    <p><strong>何时必须刷新口径卡</strong>——漂移检测给出触发规则：<code>source / condition / semantic</code> 类
+    <span class="sev sev-high">high</span> 事件意味着口径实质变化，看板角标立即出现（角标来自漂移事件，不依赖口径卡刷新），
+    应尽快跑 <code>caliber_refresh.sh</code> 让口径卡追上；<span class="sev sev-med">medium</span>（表达式文本变化）可能只是无害重构，可批量攒到下次刷新。
+    需要硬门禁时用 <code>python -m governance.drift --strict</code>：high 事件直接非零退出，可挂进 CI 阻断发布。</p>
+  </div>
+</section>
+
+<!-- ======================= §3 口径合成 ======================= -->
+<section>
+  <div class="sec-head"><span class="sec-no">§3</span><h2>口径合成：双通道互验与受控生成</h2></div>
+  <p>口径卡的可信度来自一个结构性约定：<strong>LLM 永远不单独作为事实来源</strong>。确定性血缘（通道一）与
+  LLM 逐跳解析（通道二）彼此独立取证，机器互验后才允许进入卡片；业务口径的每一条款必须绑定确定性证据编号。</p>
+
+  <figure>
+    <div class="fig-frame">
+    <svg viewBox="0 0 960 430" role="img" aria-label="双通道口径合成：通道一从血缘图确定性回溯 S/F/E，通道二 LLM 逐跳解析单模型 SQL 并经原文引用机器校验；互验对过滤逐条五分类，只有 matched 进入归并；证据清单只含确定性来源，业务条款必须绑定证据 ID，未绑定则该卡不得 high">
+      <defs>
+        <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+        </marker>
+        <marker id="a3b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+
+      <rect x="20" y="30" width="130" height="46" rx="8" fill="var(--surface)" stroke="currentColor"/>
+      <text x="85" y="50" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">指标目标列</text>
+      <text x="85" y="66" font-size="10" text-anchor="middle" fill="var(--muted)">app 层 model.column</text>
+
+      <!-- 通道一 -->
+      <rect x="210" y="24" width="300" height="70" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="360" y="46" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">通道一 · 确定性血缘回溯</text>
+      <text x="360" y="63" font-size="10.5" text-anchor="middle" fill="var(--sub)">S₁ 源字段集 · F₁ 条件集（scope + 行集闭包）· E₁ 表达式链</text>
+      <text x="360" y="79" font-size="10.5" text-anchor="middle" fill="var(--muted)">graph.json → trace()，零 LLM</text>
+
+      <!-- 通道二 -->
+      <rect x="210" y="116" width="300" height="70" rx="8" fill="var(--surface)" stroke="currentColor"/>
+      <text x="360" y="138" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">通道二 · LLM 逐跳解析</text>
+      <text x="360" y="155" font-size="10.5" text-anchor="middle" fill="var(--sub)">输入 = 单模型 SQL（不喂通道一结果）· v4-flash</text>
+      <text x="360" y="171" font-size="10.5" text-anchor="middle" fill="var(--muted)">quote 必须逐字符摘自原文 → 机器校验，空引用即失败</text>
+
+      <path d="M150 46 L206 46" stroke="var(--accent)" fill="none" marker-end="url(#a3b)"/>
+      <path d="M150 60 L180 60 L180 151 L206 151" stroke="currentColor" fill="none" marker-end="url(#a3)"/>
+
+      <!-- 互验 -->
+      <rect x="570" y="52 " width="180" height="110" rx="8" fill="var(--surface)" stroke="currentColor"/>
+      <text x="660" y="74" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">互验 · 逐条五分类</text>
+      <text x="660" y="94" font-size="10.5" text-anchor="middle" fill="var(--good)">matched → 可进归并</text>
+      <text x="660" y="110" font-size="10.5" text-anchor="middle" fill="var(--muted)">pure_key / out_of_scope 剔除</text>
+      <text x="660" y="126" font-size="10.5" text-anchor="middle" fill="var(--muted)">unparsed 弱噪声</text>
+      <text x="660" y="142" font-size="10.5" text-anchor="middle" fill="var(--bad)">suspect / quote_fail → 降置信</text>
+      <path d="M510 59 L566 80" stroke="currentColor" fill="none" marker-end="url(#a3)"/>
+      <path d="M510 151 L566 130" stroke="currentColor" fill="none" marker-end="url(#a3)"/>
+      <text x="536" y="55" font-size="10" fill="var(--muted)">F₁ 指纹</text>
+      <text x="522" y="164" font-size="10" fill="var(--muted)">同一归一化管道</text>
+
+      <!-- 归并 -->
+      <rect x="570" y="196" width="180" height="56" rx="8" fill="var(--surface)" stroke="currentColor"/>
+      <text x="660" y="218" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">技术口径归并 · v4-pro</text>
+      <text x="660" y="236" font-size="10.5" text-anchor="middle" fill="var(--muted)">输入仅 matched 过滤 + 目标列表达式</text>
+      <path d="M660 162 L660 192" stroke="currentColor" fill="none" marker-end="url(#a3)"/>
+      <text x="700" y="181" font-size="10" fill="var(--muted)">只有 matched</text>
+
+      <!-- 证据清单 -->
+      <rect x="210" y="226" width="300" height="76" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="360" y="248" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">证据清单（确定性来源 only）</text>
+      <text x="360" y="266" font-size="10.5" text-anchor="middle" fill="var(--sub)">E 条件 · S 语义点 · X 表达式 · Q 已验证原文引用</text>
+      <text x="360" y="283" font-size="10.5" text-anchor="middle" fill="var(--muted)">不含任何 LLM 归并产物 → 杜绝「LLM 引用 LLM」循环证据</text>
+      <path d="M360 94 L360 222" stroke="var(--accent)" fill="none" marker-end="url(#a3b)"/>
+
+      <!-- 业务口径 -->
+      <rect x="210" y="330" width="300" height="70" rx="8" fill="var(--surface)" stroke="currentColor"/>
+      <text x="360" y="352" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">业务口径 · v4-pro 受控生成</text>
+      <text x="360" y="369" font-size="10.5" text-anchor="middle" fill="var(--sub)">每条 clause 必须给出 evidence_ids ⊆ 证据清单</text>
+      <text x="360" y="386" font-size="10.5" text-anchor="middle" fill="var(--muted)">+ schema.yml 中文注释 + lexicon 业务词典</text>
+      <path d="M360 302 L360 326" stroke="var(--accent)" fill="none" marker-end="url(#a3b)"/>
+      <path d="M570 232 L540 232 L540 348 L514 348" stroke="currentColor" fill="none" marker-end="url(#a3)"/>
+      <text x="545" y="300" font-size="10" fill="var(--muted)" transform="rotate(90 545 300)"></text>
+
+      <!-- 置信判定 -->
+      <rect x="590" y="300" width="160" height="100" rx="8" fill="var(--surface)" stroke="var(--accent)"/>
+      <text x="670" y="322" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">置信判定</text>
+      <text x="670" y="341" font-size="10.5" text-anchor="middle" fill="var(--good)">high：全对齐 + 零可疑</text>
+      <text x="670" y="357" font-size="10.5" text-anchor="middle" fill="var(--warn)">任一条款未绑证据 → 封顶 medium</text>
+      <text x="670" y="373" font-size="10.5" text-anchor="middle" fill="var(--bad)">low → review 队列</text>
+      <text x="670" y="390" font-size="10" text-anchor="middle" fill="var(--muted)">review 卡 API 只回状态占位</text>
+      <path d="M514 365 L586 365" stroke="currentColor" fill="none" marker-end="url(#a3)"/>
+
+      <rect x="790" y="180" width="150" height="90" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <text x="865" y="204" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">口径卡 15 张</text>
+      <text x="865" y="222" font-size="10.5" text-anchor="middle" fill="var(--sub)">技术口径 + 业务口径</text>
+      <text x="865" y="238" font-size="10.5" text-anchor="middle" fill="var(--sub)">+ 证据 + 治理提示</text>
+      <text x="865" y="254" font-size="10.5" text-anchor="middle" fill="var(--muted)">runs/&lt;id&gt;/ 整批发布</text>
+      <path d="M750 224 L786 224" stroke="var(--accent)" fill="none" marker-end="url(#a3b)"/>
+      <path d="M750 340 L865 340 L865 274" stroke="var(--accent)" fill="none" marker-end="url(#a3b)"/>
+    </svg>
+    </div>
+    <figcaption><b>图 3 · 双通道口径合成。</b>两通道独立取证、指纹互验；归并输入只保留 matched 过滤（范围外/可疑内容进不了卡片）；证据清单只含血缘、AST 与机器校验过的原文，业务条款靠 <code>evidence_ids</code> 绑定其上——幻觉引用与循环证据在结构上不可能通过。</figcaption>
+  </figure>
+
+  <h3>三道反幻觉闸门</h3>
+  <ol>
+    <li><strong>原文引用机器校验</strong>——通道二每条过滤必须附逐字符 SQL 原文引用，归一化后在原文中找不到（含空引用）即 <code>quote_fail</code>，直接惩罚置信。</li>
+    <li><strong>归并前五分类过滤</strong>——每条 LLM 过滤经同一条件归一化管道（化简 + 字面量换边 + 去别名 + 指纹）与通道一比对：<code>matched</code>（本指标真实口径）/ <code>pure_key</code>（关联键）/ <code>out_of_scope</code>（同模型其他列的真实条件，不惩罚也不进卡）/ <code>unparsed</code> / <code>suspect</code>（任何模型条件集中都找不到，重罚）。只有 matched 进入技术口径归并。</li>
+    <li><strong>证据 ID 绑定</strong>——业务条款必须引用 E/S/X/Q 编号证据（全部来自确定性来源），basis 需与所引证据做 token 命中校验；任一未绑定条款 → 该卡不得 high。</li>
+  </ol>
+
+  <h3>置信与发布规则</h3>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>置信</th><th>条件（全部满足）</th><th>发布行为</th></tr></thead>
+    <tbody>
+      <tr><td><span class="sev" style="color:var(--good);border:1px solid var(--good)">high</span></td>
+        <td>源字段零漏零多 · 条件覆盖 ≥ 99.9% · 零 quote_fail · 零 suspect · 全部条款绑定证据</td>
+        <td>上看板，完整展示</td></tr>
+      <tr><td><span class="sev sev-med">medium</span></td>
+        <td>零漏源 · 多报 ≤ 1（条件列豁免后）· 覆盖 ≥ 80% · suspect ≤ 1；或 high 因未绑证据条款被封顶</td>
+        <td>上看板，标注表述差异</td></tr>
+      <tr><td><span class="sev sev-high">low</span></td>
+        <td>其余情况</td>
+        <td>进人工审核队列；API 仅返回状态占位，技术/业务内容不外泄</td></tr>
+    </tbody>
+  </table></div>
+  <p>当前 active 批次：15/15 全部 high，互验零可疑、零未绑定条款，陷阱揭示 14/14（验收线 ≥12）。</p>
+</section>
+
+<!-- ======================= §4 治理逻辑 ======================= -->
+<section>
+  <div class="sec-head"><span class="sec-no">§4</span><h2>指标治理逻辑</h2></div>
+  <p>治理回答两个问题：<strong>存量重复</strong>——哪些指标是同一口径的多处物化（该收敛）；
+  <strong>增量漂移</strong>——哪次变更悄悄改了口径（该告示）。两者都建立在血缘引擎的确定性产物上，LLM 只在指纹无法区分语义时出场仲裁。</p>
+
+  <h3>重复建设：指纹分档 + 语义仲裁</h3>
+  <figure>
+    <div class="fig-frame">
+    <svg viewBox="0 0 960 300" role="img" aria-label="治理判定流：对 dwm/dm/app 全列做血缘回溯并计算指纹，同指纹跨表且非血缘直系的列对进入分档——基名一致为 A 档直判重复，列名不同为 B 档交 LLM 表达式链仲裁，输出重复或同源不同义；结果流向治理报告、口径卡治理提示与看板治理台">
+      <defs>
+        <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+        </marker>
+        <marker id="a4w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--warn)"/>
+        </marker>
+      </defs>
+      <rect x="20" y="40" width="170" height="66" rx="8" fill="var(--surface)" stroke="currentColor"/>
+      <text x="105" y="62" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">dwm/dm/app 全列回溯</text>
+      <text x="105" y="80" font-size="10.5" text-anchor="middle" fill="var(--muted)">跳过 id/日期/维度列</text>
+      <text x="105" y="96" font-size="10.5" text-anchor="middle" fill="var(--muted)">指纹 = md5(源字段集+条件指纹集)</text>
+
+      <rect x="250" y="40" width="170" height="66" rx="8" fill="var(--surface)" stroke="currentColor"/>
+      <text x="335" y="62" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">同指纹跨表配对</text>
+      <text x="335" y="80" font-size="10.5" text-anchor="middle" fill="var(--muted)">血缘直系豁免：</text>
+      <text x="335" y="96" font-size="10.5" text-anchor="middle" fill="var(--muted)">引用不算重复</text>
+      <path d="M190 73 L246 73" stroke="currentColor" fill="none" marker-end="url(#a4)"/>
+
+      <rect x="480" y="20" width="190" height="56" rx="8" fill="var(--warn-soft)" stroke="var(--warn)"/>
+      <text x="575" y="42" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">A 档 · 基名一致</text>
+      <text x="575" y="60" font-size="10.5" text-anchor="middle" fill="var(--muted)">直判重复建设，零 LLM · 16 对</text>
+      <rect x="480" y="96" width="190" height="56" rx="8" fill="var(--surface)" stroke="currentColor"/>
+      <text x="575" y="118" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">B 档 · 列名不同</text>
+      <text x="575" y="136" font-size="10.5" text-anchor="middle" fill="var(--muted)">指纹无法区分语义 · 10 对</text>
+      <path d="M420 60 L476 44" stroke="currentColor" fill="none" marker-end="url(#a4)"/>
+      <path d="M420 88 L476 118" stroke="currentColor" fill="none" marker-end="url(#a4)"/>
+      <text x="447" y="42" font-size="10" fill="var(--muted)">base() 同</text>
+      <text x="447" y="122" font-size="10" fill="var(--muted)">base() 异</text>
+
+      <rect x="480" y="186" width="190" height="72" rx="8" fill="var(--surface)" stroke="currentColor"/>
+      <text x="575" y="208" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">LLM 表达式链仲裁</text>
+      <text x="575" y="226" font-size="10.5" text-anchor="middle" fill="var(--sub)">判据 = 两列 expr_chain + 字段注释</text>
+      <text x="575" y="243" font-size="10.5" text-anchor="middle" fill="var(--muted)">「比率 vs 计数」→ distinct，10/10 正确</text>
+      <path d="M575 152 L575 182" stroke="currentColor" fill="none" marker-end="url(#a4)"/>
+
+      <rect x="750" y="40" width="190" height="88" rx="8" fill="var(--warn-soft)" stroke="var(--warn)"/>
+      <text x="845" y="63" font-size="12" text-anchor="middle" font-weight="600" fill="currentColor">governance_report</text>
+      <text x="845" y="82" font-size="10.5" text-anchor="middle" fill="var(--sub)">duplicates：A 档 + B 档判重复</text>
+      <text x="845" y="99" font-size="10.5" text-anchor="middle" fill="var(--sub)">distinct：同源不同义（不收敛）</text>
+      <text x="845" y="116" font-size="10.5" text-anchor="middle" fill="var(--muted)">全部带 verdict + 判据 + 建议</text>
+      <path d="M670 52 L746 62" stroke="var(--warn)" fill="none" marker-end="url(#a4w)"/>
+      <path d="M670 216 L710 216 L710 110 L746 100" stroke="currentColor" fill="none" marker-end="url(#a4)"/>
+
+      <rect x="750" y="176" width="190" height="82" rx="8" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="845" y="199" font-size="11.5" text-anchor="middle" font-weight="600" fill="currentColor">三个去向</text>
+      <text x="845" y="217" font-size="10.5" text-anchor="middle" fill="var(--sub)">看板治理台（重复/不同义/漂移）</text>
+      <text x="845" y="233" font-size="10.5" text-anchor="middle" fill="var(--sub)">口径卡 governance 治理提示</text>
+      <text x="845" y="249" font-size="10.5" text-anchor="middle" fill="var(--muted)">eval T8：靶向对必须被自动发现</text>
+      <path d="M845 128 L845 172" stroke="var(--warn)" fill="none" marker-end="url(#a4w)"/>
+    </svg>
+    </div>
+    <figcaption><b>图 4 · 重复建设判定流。</b>指纹（源字段集 + 归一化条件集）把"同源同条件"收敛为分组问题；A 档凭基名直判，B 档的判据在表达式——同一明细上的计数与比率指纹相同但语义不同，这一步只能靠表达式链仲裁。血缘直系豁免保证"引用上游"不被误报为重复。</figcaption>
+  </figure>
+
+  <ul>
+    <li><strong>指纹定义</strong>：<code>md5(sorted(ODS 源字段集) + sorted(非纯键条件指纹集))</code>，条件指纹来自与互验同一条归一化管道——同一套等价判定贯穿口径与治理。</li>
+    <li><strong>卡片注入</strong>：A 档对按「同模型 + 同基名」匹配指标链路（<code>refund_amt_14d</code> 与兄弟列 <code>refund_amt_total</code> 视为同主题），命中即写入卡片 <code>governance.duplicates</code>，口径弹层展示"同源同构"提示。</li>
+    <li><strong>当前结论</strong>：A 档 16 对重复物化（GMV/支付额/支付人数等跨 app/dm 多处物化，建议收敛到血缘最上游出口）；B 档 10 对全部仲裁为同源不同义（合理，不收敛）。T8 靶向对（交易域 <code>refund_amt</code> ↔ 售后域 <code>refund_amt_total</code>）由扫描自动发现并进入 <code>refund_amt_14d</code> 卡的治理提示。</li>
+  </ul>
+
+  <h3>口径漂移：快照对比与严重度</h3>
+  <p>每次重建后对 15 个指标做规范化快照（只含确定性事实），与最近快照逐项比对，事件写入 append-only 日志：</p>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>变更类型</th><th>严重度</th><th>依据</th></tr></thead>
+    <tbody>
+      <tr><td>源字段增删 <code>source_added/removed</code></td><td><span class="sev sev-high">high</span></td><td>取数来源变了，口径实质变化</td></tr>
+      <tr><td>过滤条件增删 <code>condition_added/removed</code></td><td><span class="sev sev-high">high</span></td><td>行集定义变了（按归一化指纹比对，改写不误报）</td></tr>
+      <tr><td>语义点增删 <code>semantic_added/removed</code></td><td><span class="sev sev-high">high</span></td><td>窗口去重 / CASE WHEN / COALESCE / 统计日——14 道陷阱有一半藏在这些结构里，14→15 天窗口就落在这类</td></tr>
+      <tr><td>表达式文本变化 <code>expr_changed</code></td><td><span class="sev sev-med">medium</span></td><td>可能只是无害重构，归一化文本无法区分语义等价</td></tr>
+      <tr><td>指标上线/下线 <code>metric_added/removed</code></td><td><span class="sev sev-info">info</span></td><td>集合变化，非口径变化</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="callout warn">
+    <p><strong>已跑通的真实演练</strong>：把 14 天退款窗口临时改为 15 天 → <code>dbt compile</code> → 血缘图重建 → 检测<strong>精准命中且仅命中</strong>
+    <code>refund_rate_14d</code> 与 <code>refund_amt_14d</code>（语义点替换 high ×2 + 表达式变更 medium ×1，各两指标）；还原后检出对称回归事件。
+    数据库全程未动——漂移检测只依赖编译产物与血缘图，比重跑数据便宜几个数量级。12 条真实事件现在就在看板治理台与两张卡的变更历史里。</p>
+  </div>
+</section>
+
+<!-- ======================= §5 验收 ======================= -->
+<section>
+  <div class="sec-head"><span class="sec-no">§5</span><h2>验收现状与已知边界</h2></div>
+  <div class="duo">
+    <div>
+      <h3 style="margin-top:0">全绿指标</h3>
+      <div class="tbl-scroll"><table>
+        <tbody>
+          <tr><td>dbt 模型/测试</td><td class="num ok">14 模型 · 28 测试通过</td></tr>
+          <tr><td>口径陷阱数据验证</td><td class="num ok">14/14</td></tr>
+          <tr><td>指标手算对账</td><td class="num ok">15 指标 × 3 抽样日一致</td></tr>
+          <tr><td>血缘 golden set</td><td class="num ok">召回/精确 100% · 条件召回 100%</td></tr>
+          <tr><td>口径卡</td><td class="num ok">15/15 high · 陷阱揭示 14/14</td></tr>
+          <tr><td>治理与漂移验收</td><td class="num ok">eval_governance 6/6</td></tr>
+          <tr><td>工程门禁</td><td class="num ok">pytest 28 · ruff 0 · tsc 0</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <div>
+      <h3 style="margin-top:0">已知边界（记录在案）</h3>
+      <ul>
+        <li>漂移快照只覆盖 15 个看板指标；非看板列的漂移需全列快照（M6 候选）。</li>
+        <li>B 档仲裁结论展示在治理台，暂未注入口径卡。</li>
+        <li>漂移 → 口径刷新是"信号提示 + 人工触发"，未做自动编排。</li>
+        <li>表达式语义等价（重构 vs 改口径）超出归一化能力，statically 保守判 medium。</li>
+        <li>工程债：模拟器函数拆分、LLM 注入测试、SCD2 重叠 dbt test、前端组件测试。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p class="wide">复现路径：<code>bash jobs/rebuild.sh</code>（数据轨全验收 + 后置漂移检测）→
+  <code>bash jobs/caliber_refresh.sh</code>（口径批次）→ <code>bash jobs/governance_refresh.sh</code>（治理报告）→
+  <code>python -m governance.eval_governance</code>。看板 <code>:5273</code>，API <code>:8612</code>。
+  产品方案与 14 道陷阱设计见另一 Artifact「MetricLens 指标透镜」。</p>
+</footer>
+
+</div>

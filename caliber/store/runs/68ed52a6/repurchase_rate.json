@@ -1,0 +1,811 @@
+{
+ "metric_key": "repurchase_rate",
+ "title": "复购率",
+ "target": "app_business_overview_1d.repurchase_rate",
+ "run_id": "68ed52a6",
+ "extra_targets": [],
+ "query_filter": null,
+ "generated_at": "2026-08-25T19:44:44",
+ "llm_model": "deepseek-v4-flash+deepseek-v4-pro",
+ "confidence": "high",
+ "status": "published",
+ "validation": {
+  "confidence": "high",
+  "s_missing_by_llm": [],
+  "s_extra_by_llm": [],
+  "s_condition_cols_by_llm": [],
+  "f1_total": 9,
+  "f1_covered": 1.0,
+  "f1_uncovered": [],
+  "f2_out_of_scope": [],
+  "f2_unparsed": [],
+  "f2_suspect": [],
+  "quote_verify_fail": 0,
+  "unverified_clauses": 0
+ },
+ "technical": {
+  "formula": "repurchase_rate = round(count(distinct case when purchase_seq >= 2 then user_id end) * 1.0 / nullif(count(distinct user_id), 0), 6) where purchase_seq = row_number() over (partition by user_id order by pay_time) and pay_status = 'SUCCESS' and order_status in (20,30,40,50,90) and pay_time is not null and is_risk_order = 0 and coalesce(is_test_account, 0) = 0 group by dt(pay_time)",
+  "window": "按支付日期 p.dt 分组统计，统计日归属为支付日期（自然日）",
+  "special": [
+   "按支付日期 p.dt 分组统计每日复购率",
+   "复购用户定义为购买序号 >= 2 的去重用户",
+   "purchase_seq 使用 row_number() over (partition by user_id order by pay_time) 生成",
+   "订单表按 order_id 取 binlog_ts 最新版本去重；用户表按 user_id 取 binlog_ts 最新版本去重；支付流水按 order_id 取 pay_time 最新去重",
+   "汇率版本通过 coalesce(pay_time, order_time) 日期匹配 effective_start/end 左连接，不滤波订单",
+   "nullif 防除零、*1.0 转浮点、round 保留 6 位小数"
+  ],
+  "key_filters": [
+   {
+    "text": "支付状态为成功 pay_status = 'SUCCESS'",
+    "layer": "dwd_trade_pay_suc_detail"
+   },
+   {
+    "text": "订单状态在 (20,30,40,50,90) 范围内",
+    "layer": "dwd_trade_pay_suc_detail"
+   },
+   {
+    "text": "支付时间非空 pay_time is not null",
+    "layer": "dwd_trade_pay_suc_detail"
+   },
+   {
+    "text": "剔除风控订单 is_risk_order = 0",
+    "layer": "dwd_trade_order_detail"
+   },
+   {
+    "text": "剔除测试账号 coalesce(is_test_account,0) = 0",
+    "layer": "dwd_trade_order_detail"
+   }
+  ],
+  "summary": "复购率统计每个自然日的复购用户占比。分子为支付流水按用户分组经购买序号 row_number 标记后，购买序号≥2 的去重用户数；分母为当天所有支付用户去重数。数据来源于成功支付流水，经多重去重及业务过滤后计算，结果四舍五入保留6位小数。"
+ },
+ "business": {
+  "definition": "复购率=当日支付成功且非风控、非测试订单中，历史第2笔及以上支付用户数除以当日全部支付用户数，按支付日期统计",
+  "clauses": [
+   {
+    "text": "仅统计支付成功的订单",
+    "basis": "pay_status = 'SUCCESS'",
+    "evidence_ids": [
+     "E3"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "订单状态必须属于指定集合（20,30,40,50,90）（待补充业务注释）",
+    "basis": "o.order_status IN (20, 30, 40, 50, 90)",
+    "evidence_ids": [
+     "E2"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "支付时间非空（即支付成功时间存在）",
+    "basis": "NOT o.pay_time IS NULL",
+    "evidence_ids": [
+     "E1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "剔除风控订单（风控系统拦截的可疑订单）",
+    "basis": "o.is_risk_order = 0",
+    "evidence_ids": [
+     "E6"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "剔除测试账号产生的订单",
+    "basis": "COALESCE(u.is_test_account, 0) = 0",
+    "evidence_ids": [
+     "E5"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "支付流水按订单ID取支付时间最新的记录，避免重复计数",
+    "basis": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY pay_time DESC) = 1",
+    "evidence_ids": [
+     "E4"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "订单明细按订单ID取最新版本记录（多版本快照取最新）",
+    "basis": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC) = 1",
+    "evidence_ids": [
+     "E8"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "用户信息按用户ID取最新版本记录（多版本快照取最新）",
+    "basis": "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY binlog_ts DESC) = 1",
+    "evidence_ids": [
+     "E9"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "按用户支付成功订单的时间先后生成购买序号（首购=1，复购≥2）",
+    "basis": "ROW_NUMBER() OVER (PARTITION BY p.user_id ORDER BY p.pay_time)",
+    "evidence_ids": [
+     "S2"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "复购用户定义为购买序号≥2的用户",
+    "basis": "CASE WHEN p.purchase_seq >= 2 THEN p.user_id END",
+    "evidence_ids": [
+     "S1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "复购率 = 当日购买序号≥2的去重用户数 ÷ 当日在全部过滤条件下的去重支付用户数，结果四舍五入保留6位小数",
+    "basis": "ROUND(COUNT(DISTINCT CASE WHEN \"p\".\"purchase_seq\" >= 2 THEN \"p\".\"user_id\" END) * 1.0 / NULLIF(COUNT(DISTINCT \"p\".\"user_id\"), 0), 6)",
+    "evidence_ids": [
+     "X2"
+    ],
+    "basis_verified": true
+   }
+  ],
+  "caveats": [
+   "统计日按支付日期（自然日）分组归属，而非订单创建日或退款日；某用户可能在不同日期产生复购，统计归属取决于支付时间（无确定性证据）"
+  ]
+ },
+ "evidence": [
+  {
+   "id": "E1",
+   "kind": "condition:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 16,
+   "text": "NOT o.pay_time IS NULL"
+  },
+  {
+   "id": "E2",
+   "kind": "condition:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 17,
+   "text": "o.order_status IN (20, 30, 40, 50, 90)"
+  },
+  {
+   "id": "E3",
+   "kind": "condition:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 5,
+   "text": "pay_status = 'SUCCESS'"
+  },
+  {
+   "id": "E4",
+   "kind": "condition:qualify",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 6,
+   "text": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY pay_time DESC) = 1"
+  },
+  {
+   "id": "E5",
+   "kind": "condition:where",
+   "model": "dwd_trade_order_detail",
+   "line": 42,
+   "text": "COALESCE(u.is_test_account, 0) = 0"
+  },
+  {
+   "id": "E6",
+   "kind": "condition:where",
+   "model": "dwd_trade_order_detail",
+   "line": 43,
+   "text": "o.is_risk_order = 0"
+  },
+  {
+   "id": "E7",
+   "kind": "condition:join_on",
+   "model": "dwd_trade_order_detail",
+   "line": 41,
+   "text": "CAST(COALESCE(o.pay_time, o.order_time) AS DATE) BETWEEN r.effective_start AND r.effective_end"
+  },
+  {
+   "id": "E8",
+   "kind": "condition:qualify",
+   "model": "dwd_trade_order_detail",
+   "line": 5,
+   "text": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC) = 1"
+  },
+  {
+   "id": "E9",
+   "kind": "condition:qualify",
+   "model": "dwd_trade_order_detail",
+   "line": 10,
+   "text": "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY binlog_ts DESC) = 1"
+  },
+  {
+   "id": "S1",
+   "kind": "semantic:case_when",
+   "model": "dm_user_new_stats_1d",
+   "line": 14,
+   "text": "CASE WHEN p.purchase_seq >= 2 THEN p.user_id END"
+  },
+  {
+   "id": "S2",
+   "kind": "semantic:window",
+   "model": "dwm_trade_order_flag_1d",
+   "line": 30,
+   "text": "ROW_NUMBER() OVER (PARTITION BY p.user_id ORDER BY p.pay_time)"
+  },
+  {
+   "id": "S3",
+   "kind": "semantic:window",
+   "model": "dwd_trade_order_detail",
+   "line": 5,
+   "text": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC)"
+  },
+  {
+   "id": "X1",
+   "kind": "expression",
+   "model": "app_business_overview_1d",
+   "line": null,
+   "text": "repurchase_rate = \"u\".\"repurchase_rate\""
+  },
+  {
+   "id": "X2",
+   "kind": "expression",
+   "model": "dm_user_new_stats_1d",
+   "line": null,
+   "text": "repurchase_rate = ROUND(COUNT(DISTINCT CASE WHEN \"p\".\"purchase_seq\" >= 2 THEN \"p\".\"user_id\" END) * 1.0 / NULLIF(COUNT(DISTINCT \"p\".\"user_id\"), 0), 6)"
+  },
+  {
+   "id": "X3",
+   "kind": "expression",
+   "model": "dwm_trade_order_flag_1d",
+   "line": null,
+   "text": "purchase_seq = ROW_NUMBER() OVER (PARTITION BY \"p\".\"user_id\" ORDER BY \"p\".\"pay_time\")"
+  },
+  {
+   "id": "X4",
+   "kind": "expression",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "pay_time = \"o\".\"pay_time\""
+  },
+  {
+   "id": "X5",
+   "kind": "expression",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "user_id = \"o\".\"user_id\""
+  },
+  {
+   "id": "X6",
+   "kind": "expression",
+   "model": "dwm_trade_order_flag_1d",
+   "line": null,
+   "text": "user_id = \"p\".\"user_id\""
+  },
+  {
+   "id": "Q1",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "where pay_status = 'SUCCESS'"
+  },
+  {
+   "id": "Q2",
+   "kind": "verified_quote:qualify",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "qualify row_number() over (partition by order_id order by pay_time desc) = 1"
+  },
+  {
+   "id": "Q3",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "o.pay_time is not null"
+  },
+  {
+   "id": "Q4",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "o.order_status in (20, 30, 40, 50, 90)"
+  },
+  {
+   "id": "Q5",
+   "kind": "verified_quote:qualify",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "row_number() over (partition by order_id order by binlog_ts desc) = 1"
+  },
+  {
+   "id": "Q6",
+   "kind": "verified_quote:qualify",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "row_number() over (partition by user_id order by binlog_ts desc) = 1"
+  },
+  {
+   "id": "Q7",
+   "kind": "verified_quote:join_on",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "cast(coalesce(o.pay_time, o.order_time) as date) between r.effective_start and r.effective_end"
+  },
+  {
+   "id": "Q8",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "coalesce(u.is_test_account, 0) = 0"
+  },
+  {
+   "id": "Q9",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "o.is_risk_order = 0"
+  }
+ ],
+ "governance": {
+  "duplicates": []
+ },
+ "trace": {
+  "depth": 5,
+  "models_visited": [
+   "app_business_overview_1d",
+   "dm_user_new_stats_1d",
+   "dwm_trade_order_flag_1d",
+   "dwd_trade_pay_suc_detail",
+   "dwd_trade_order_detail"
+  ],
+  "sources": [
+   {
+    "table": "ods_order_info",
+    "column": "pay_time"
+   },
+   {
+    "table": "ods_order_info",
+    "column": "user_id"
+   }
+  ],
+  "conditions": [
+   {
+    "model": "app_business_overview_1d",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "dt",
+    "norm": "dt",
+    "fp": "3017d911efce",
+    "line": 3,
+    "join_type": "LEFT",
+    "join_table": "dm_after_sale_stats_1d",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/app/app_business_overview_1d.sql"
+   },
+   {
+    "model": "dm_user_new_stats_1d",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "p.user_id = fp.user_id",
+    "norm": "user_id = user_id",
+    "fp": "32ef789a9afd",
+    "line": 19,
+    "join_type": "inner",
+    "join_table": "fp",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dm/dm_user_new_stats_1d.sql"
+   },
+   {
+    "model": "dwm_trade_order_flag_1d",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "p.order_id = f.order_id",
+    "norm": "order_id = order_id",
+    "fp": "695fbd8b788e",
+    "line": 40,
+    "join_type": "LEFT",
+    "join_table": "flash",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dwm/dwm_trade_order_flag_1d.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "NOT o.pay_time IS NULL",
+    "norm": "not pay_time is null",
+    "fp": "f5b1d1097ba3",
+    "line": 16,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "o.order_status IN (20, 30, 40, 50, 90)",
+    "norm": "order_status in (20, 30, 40, 50, 90)",
+    "fp": "f817fe4b8ea3",
+    "line": 17,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "pf",
+    "kind": "where",
+    "row_level": true,
+    "sql": "pay_status = 'SUCCESS'",
+    "norm": "pay_status = 'success'",
+    "fp": "227e33ba365d",
+    "line": 5,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "pf",
+    "kind": "qualify",
+    "row_level": true,
+    "sql": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY pay_time DESC) = 1",
+    "norm": "row_number() over (partition by order_id order by pay_time desc) = 1",
+    "fp": "773821108b65",
+    "line": 6,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "COALESCE(u.is_test_account, 0) = 0",
+    "norm": "coalesce(is_test_account, 0) = 0",
+    "fp": "ce03e7de9fbd",
+    "line": 42,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "o.is_risk_order = 0",
+    "norm": "is_risk_order = 0",
+    "fp": "7bbb1c780d04",
+    "line": 43,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "o.currency = r.currency",
+    "norm": "currency = currency",
+    "fp": "1c7730de32fb",
+    "line": 40,
+    "join_type": "LEFT",
+    "join_table": "rate",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "CAST(COALESCE(o.pay_time, o.order_time) AS DATE) BETWEEN r.effective_start AND r.effective_end",
+    "norm": "effective_end >= cast(coalesce(pay_time, order_time) as date) and effective_start <= cast(coalesce(pay_time, order_time) as date)",
+    "fp": "79cd2cde499a",
+    "line": 41,
+    "join_type": "LEFT",
+    "join_table": "rate",
+    "is_pure_key": false,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "ord_latest",
+    "kind": "qualify",
+    "row_level": false,
+    "sql": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC) = 1",
+    "norm": "row_number() over (partition by order_id order by binlog_ts desc) = 1",
+    "fp": "259a8084ad22",
+    "line": 5,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "usr",
+    "kind": "qualify",
+    "row_level": true,
+    "sql": "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY binlog_ts DESC) = 1",
+    "norm": "row_number() over (partition by user_id order by binlog_ts desc) = 1",
+    "fp": "661ecbeb07d7",
+    "line": 10,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   }
+  ],
+  "semantics": [
+   {
+    "model": "dm_user_new_stats_1d",
+    "scope": "main",
+    "type": "case_when",
+    "column": "repurchase_rate",
+    "sql": "CASE WHEN p.purchase_seq >= 2 THEN p.user_id END",
+    "line": 14,
+    "src_path": "warehouse/dbt_project/models/dm/dm_user_new_stats_1d.sql"
+   },
+   {
+    "model": "dwm_trade_order_flag_1d",
+    "scope": "main",
+    "type": "window",
+    "idiom": "sequence",
+    "column": "purchase_seq",
+    "func": "row_number()",
+    "partition_by": [
+     "p.user_id"
+    ],
+    "order_by": "p.pay_time",
+    "sql": "ROW_NUMBER() OVER (PARTITION BY p.user_id ORDER BY p.pay_time)",
+    "line": 30,
+    "src_path": "warehouse/dbt_project/models/dwm/dwm_trade_order_flag_1d.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "ord_latest",
+    "type": "window",
+    "idiom": "dedup",
+    "column": null,
+    "func": "row_number()",
+    "partition_by": [
+     "order_id"
+    ],
+    "order_by": "binlog_ts DESC",
+    "sql": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC)",
+    "line": 5,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   }
+  ]
+ },
+ "per_hop": [
+  {
+   "model": "app_business_overview_1d",
+   "layer": "app",
+   "columns": {
+    "repurchase_rate": {
+     "expression": "u.repurchase_rate",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dm.dm_user_new_stats_1d",
+       "column": "repurchase_rate"
+      }
+     ],
+     "special": []
+    }
+   },
+   "filters": [
+    {
+     "quote": "using (dt)",
+     "kind": "join_on",
+     "effect": "按日期与售后、物流、用户新客统计表进行左连接，保留主表所有行，关联维度数据",
+     "quote_verified": true,
+     "match": "pure_key"
+    }
+   ]
+  },
+  {
+   "model": "dm_user_new_stats_1d",
+   "layer": "dm",
+   "columns": {
+    "repurchase_rate": {
+     "expression": "round(count(distinct case when p.purchase_seq >= 2 then p.user_id end) * 1.0 / nullif(count(distinct p.user_id), 0), 6)",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwm.dwm_trade_order_flag_1d",
+       "column": "user_id"
+      },
+      {
+       "table": "metriclens_build.dwm.dwm_trade_order_flag_1d",
+       "column": "purchase_seq"
+      }
+     ],
+     "special": [
+      "按支付日期 p.dt 分组,统计每个日期的复购率",
+      "count(distinct case when p.purchase_seq >= 2 then p.user_id end) 计算复购用户数,仅包含购买次数≥2的去重用户",
+      "nullif(count(distinct p.user_id),0) 防止除零",
+      "*1.0 将整数除法转为浮点运算",
+      "round(...,6) 保留6位小数"
+     ]
+    }
+   },
+   "filters": [
+    {
+     "quote": "on p.user_id = fp.user_id",
+     "kind": "join_on",
+     "effect": "内连接 dwm_user_first_pay_1d,仅保留有首笔支付记录的用户,影响复购率计算的分母和分子统计范围",
+     "quote_verified": true,
+     "match": "pure_key"
+    }
+   ]
+  },
+  {
+   "model": "dwm_trade_order_flag_1d",
+   "layer": "dwm",
+   "columns": {
+    "purchase_seq": {
+     "expression": "row_number() over (partition by p.user_id order by p.pay_time)",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_trade_pay_suc_detail",
+       "column": "user_id"
+      },
+      {
+       "table": "metriclens_build.dwd.dwd_trade_pay_suc_detail",
+       "column": "pay_time"
+      }
+     ],
+     "special": [
+      "窗口函数 row_number() 按 user_id 分区、pay_time 升序生成购买序号"
+     ]
+    },
+    "user_id": {
+     "expression": "p.user_id",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_trade_pay_suc_detail",
+       "column": "user_id"
+      }
+     ],
+     "special": []
+    }
+   },
+   "filters": []
+  },
+  {
+   "model": "dwd_trade_pay_suc_detail",
+   "layer": "dwd",
+   "columns": {
+    "pay_time": {
+     "expression": "o.pay_time",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_trade_order_detail",
+       "column": "pay_time"
+      }
+     ],
+     "special": []
+    },
+    "user_id": {
+     "expression": "o.user_id",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_trade_order_detail",
+       "column": "user_id"
+      }
+     ],
+     "special": []
+    }
+   },
+   "filters": [
+    {
+     "quote": "where pay_status = 'SUCCESS'",
+     "kind": "where",
+     "effect": "限制支付流水仅为成功状态",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "qualify row_number() over (partition by order_id order by pay_time desc) = 1",
+     "kind": "qualify",
+     "effect": "每个订单取支付时间最新的支付流水",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "on o.order_id = p.order_id",
+     "kind": "join_on",
+     "effect": "订单与支付流水按订单ID关联",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "o.pay_time is not null",
+     "kind": "where",
+     "effect": "排除支付时间为空的订单",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "o.order_status in (20, 30, 40, 50, 90)",
+     "kind": "where",
+     "effect": "仅保留指定订单状态的记录",
+     "quote_verified": true,
+     "match": "matched"
+    }
+   ]
+  },
+  {
+   "model": "dwd_trade_order_detail",
+   "layer": "dwd",
+   "columns": {
+    "pay_time": {
+     "expression": "o.pay_time",
+     "source_columns": [
+      {
+       "table": "metriclens_build.ods.ods_order_info",
+       "column": "pay_time"
+      }
+     ],
+     "special": [
+      "按 order_id 取 binlog_ts 最新版本(ord_latest 窗口去重)"
+     ]
+    },
+    "user_id": {
+     "expression": "o.user_id",
+     "source_columns": [
+      {
+       "table": "metriclens_build.ods.ods_order_info",
+       "column": "user_id"
+      }
+     ],
+     "special": [
+      "按 order_id 取 binlog_ts 最新版本(ord_latest 窗口去重)"
+     ]
+    }
+   },
+   "filters": [
+    {
+     "quote": "row_number() over (partition by order_id order by binlog_ts desc) = 1",
+     "kind": "qualify",
+     "effect": "订单表按 order_id 取 binlog_ts 最新的一条",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "row_number() over (partition by user_id order by binlog_ts desc) = 1",
+     "kind": "qualify",
+     "effect": "用户表按 user_id 取 binlog_ts 最新的一条",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "o.user_id = u.user_id",
+     "kind": "join_on",
+     "effect": "订单与用户内连接,过滤无用户信息的订单",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "o.currency = r.currency",
+     "kind": "join_on",
+     "effect": "汇率表按币种关联(左连接)",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "cast(coalesce(o.pay_time, o.order_time) as date) between r.effective_start and r.effective_end",
+     "kind": "join_on",
+     "effect": "限定汇率版本有效期,取对应日期的汇率(左连接不滤波订单)",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "coalesce(u.is_test_account, 0) = 0",
+     "kind": "where",
+     "effect": "剔除测试账号(默认非测试)",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "o.is_risk_order = 0",
+     "kind": "where",
+     "effect": "剔除风控订单",
+     "quote_verified": true,
+     "match": "matched"
+    }
+   ]
+  }
+ ]
+}

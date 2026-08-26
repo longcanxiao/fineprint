@@ -1,0 +1,381 @@
+{
+ "metric_key": "delivered_rate",
+ "title": "妥投率",
+ "target": "app_business_overview_1d.delivered_rate",
+ "run_id": "68ed52a6",
+ "extra_targets": [],
+ "query_filter": null,
+ "generated_at": "2026-08-25T19:44:44",
+ "llm_model": "deepseek-v4-flash+deepseek-v4-pro",
+ "confidence": "high",
+ "status": "published",
+ "validation": {
+  "confidence": "high",
+  "s_missing_by_llm": [],
+  "s_extra_by_llm": [],
+  "s_condition_cols_by_llm": [
+   "ods_logistics_trace.waybill_id"
+  ],
+  "f1_total": 1,
+  "f1_covered": 1.0,
+  "f1_uncovered": [],
+  "f2_out_of_scope": [],
+  "f2_unparsed": [
+   "left join \"metriclens_build\".\"dm\".\"dm_logistics_stats_1d\"  l using (dt)"
+  ],
+  "f2_suspect": [],
+  "quote_verify_fail": 0,
+  "unverified_clauses": 0
+ },
+ "technical": {
+  "formula": "round(count(distinct case when d.sign_time is not null then d.waybill_id end) * 1.0 / nullif(count(distinct d.waybill_id), 0), 6) -- d.sign_time 为按运单取最早 SIGN 事件时间，按揽收日期分组，过滤 d.pickup_time is not null",
+  "window": "按揽收日期(pickup_time)归属统计日，无滚动窗口",
+  "special": [
+   "按揽收日期分组聚合，分子分母均对waybill_id去重",
+   "分子仅统计有签收事件的运单（sign_time非空，sign_time取最早SIGN事件时间）",
+   "分母使用nullif(count(distinct waybill_id),0)防止除零，为0时结果为NULL",
+   "结果保留6位小数并乘以1.0转为浮点"
+  ],
+  "key_filters": [
+   {
+    "text": "pickup_time is not null",
+    "layer": "DM"
+   }
+  ],
+  "summary": "妥投率按揽收日期分组统计，在过滤揽收时间非空的运单后，用有签收事件的运单数除以总运单数，并对分子分母做运单维度去重。签收事件以物流轨迹中最早SIGN事件时间为准，缺失视为未妥投，结果保留6位小数。"
+ },
+ "business": {
+  "definition": "妥投率=统计日内已揽收运单中，已签收运单数占比（分子分母均按运单去重），统计日按揽收日期归属。",
+  "clauses": [
+   {
+    "text": "统计日按揽收日期归属：以运单的揽收时间（pickup_time）截取日期作为统计日。",
+    "basis": "CAST(pickup_time AS DATE)",
+    "evidence_ids": [
+     "S2"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "分母为已揽收运单数：仅统计揽收时间非空的运单，并按运单去重；若分母为0，结果为NULL。",
+    "basis": "pickup_time is not null",
+    "evidence_ids": [
+     "Q1",
+     "E1",
+     "X2"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "分子为有签收事件的运单数：签收事件以物流轨迹中SIGN事件产生签收时间，sign_time非空计为已签收，并按运单去重。",
+    "basis": "CASE WHEN NOT sign_time IS NULL THEN waybill_id END",
+    "evidence_ids": [
+     "S1",
+     "S3",
+     "X2"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "妥投率结果保留6位小数。",
+    "basis": "ROUND(COUNT(DISTINCT CASE WHEN NOT \"dwd_logistics_ship_detail\".\"sign_time\" IS NULL THEN \"dwd_logistics_ship_detail\".\"waybill_id\" END) * 1.0 / NULLIF(COUNT(DISTINCT \"dwd_logistics_ship_detail\".\"waybill_id\"), 0), 6)",
+    "evidence_ids": [
+     "X2"
+    ],
+    "basis_verified": true
+   }
+  ],
+  "caveats": [
+   "统计日按揽收日期归属，签收事件可能晚于揽收日；回溯统计时，若签收尚未发生，该运单不计入分子。",
+   "签收时间取最早SIGN事件时间，但证据清单未直接体现该聚合逻辑（无确定性证据）"
+  ]
+ },
+ "evidence": [
+  {
+   "id": "E1",
+   "kind": "condition:where",
+   "model": "dm_logistics_stats_1d",
+   "line": 11,
+   "text": "NOT pickup_time IS NULL"
+  },
+  {
+   "id": "S1",
+   "kind": "semantic:case_when",
+   "model": "dm_logistics_stats_1d",
+   "line": 5,
+   "text": "CASE WHEN NOT sign_time IS NULL THEN waybill_id END"
+  },
+  {
+   "id": "S2",
+   "kind": "semantic:stat_date_key",
+   "model": "dm_logistics_stats_1d",
+   "line": 3,
+   "text": "CAST(pickup_time AS DATE)"
+  },
+  {
+   "id": "S3",
+   "kind": "semantic:case_when",
+   "model": "dwd_logistics_ship_detail",
+   "line": 7,
+   "text": "CASE WHEN event_type = 'SIGN' THEN event_time END"
+  },
+  {
+   "id": "X1",
+   "kind": "expression",
+   "model": "app_business_overview_1d",
+   "line": null,
+   "text": "delivered_rate = \"l\".\"delivered_rate\""
+  },
+  {
+   "id": "X2",
+   "kind": "expression",
+   "model": "dm_logistics_stats_1d",
+   "line": null,
+   "text": "delivered_rate = ROUND(COUNT(DISTINCT CASE WHEN NOT \"dwd_logistics_ship_detail\".\"sign_time\" IS NULL THEN \"dwd_logistics_ship_detail\".\"waybill_id\" END) * 1.0 / NULLIF(COUNT(DISTINCT \"dwd_logistics_ship_detail\".\"waybill_id\"), 0), 6)"
+  },
+  {
+   "id": "X3",
+   "kind": "expression",
+   "model": "dwd_logistics_ship_detail",
+   "line": null,
+   "text": "sign_time = \"ev\".\"sign_time\""
+  },
+  {
+   "id": "X4",
+   "kind": "expression",
+   "model": "dwd_logistics_ship_detail",
+   "line": null,
+   "text": "waybill_id = \"lo\".\"waybill_id\""
+  },
+  {
+   "id": "Q1",
+   "kind": "verified_quote:where",
+   "model": "dm_logistics_stats_1d",
+   "line": null,
+   "text": "pickup_time is not null"
+  }
+ ],
+ "governance": {
+  "duplicates": []
+ },
+ "trace": {
+  "depth": 3,
+  "models_visited": [
+   "app_business_overview_1d",
+   "dm_logistics_stats_1d",
+   "dwd_logistics_ship_detail"
+  ],
+  "sources": [
+   {
+    "table": "ods_logistics_order",
+    "column": "waybill_id"
+   },
+   {
+    "table": "ods_logistics_trace",
+    "column": "event_time"
+   },
+   {
+    "table": "ods_logistics_trace",
+    "column": "event_type"
+   }
+  ],
+  "conditions": [
+   {
+    "model": "app_business_overview_1d",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "dt",
+    "norm": "dt",
+    "fp": "3017d911efce",
+    "line": 3,
+    "join_type": "LEFT",
+    "join_table": "dm_after_sale_stats_1d",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/app/app_business_overview_1d.sql"
+   },
+   {
+    "model": "dm_logistics_stats_1d",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "NOT pickup_time IS NULL",
+    "norm": "not pickup_time is null",
+    "fp": "17f17b63faae",
+    "line": 11,
+    "src_path": "warehouse/dbt_project/models/dm/dm_logistics_stats_1d.sql"
+   },
+   {
+    "model": "dwd_logistics_ship_detail",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "lo.waybill_id = ev.waybill_id",
+    "norm": "waybill_id = waybill_id",
+    "fp": "07aba4072f1c",
+    "line": 31,
+    "join_type": "LEFT",
+    "join_table": "ev",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_logistics_ship_detail.sql"
+   },
+   {
+    "model": "dwd_logistics_ship_detail",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "lo.order_id = o.order_id",
+    "norm": "order_id = order_id",
+    "fp": "695fbd8b788e",
+    "line": 33,
+    "join_type": "inner",
+    "join_table": "dwd_trade_order_detail",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_logistics_ship_detail.sql"
+   }
+  ],
+  "semantics": [
+   {
+    "model": "dm_logistics_stats_1d",
+    "scope": "main",
+    "type": "case_when",
+    "column": "delivered_rate",
+    "sql": "CASE WHEN NOT sign_time IS NULL THEN waybill_id END",
+    "line": 5,
+    "src_path": "warehouse/dbt_project/models/dm/dm_logistics_stats_1d.sql"
+   },
+   {
+    "model": "dm_logistics_stats_1d",
+    "scope": "main",
+    "type": "stat_date_key",
+    "column": "dt",
+    "sql": "CAST(pickup_time AS DATE)",
+    "line": 3,
+    "src_path": "warehouse/dbt_project/models/dm/dm_logistics_stats_1d.sql"
+   },
+   {
+    "model": "dwd_logistics_ship_detail",
+    "scope": "ev",
+    "type": "case_when",
+    "column": "sign_time",
+    "sql": "CASE WHEN event_type = 'SIGN' THEN event_time END",
+    "line": 7,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_logistics_ship_detail.sql"
+   }
+  ]
+ },
+ "per_hop": [
+  {
+   "model": "app_business_overview_1d",
+   "layer": "app",
+   "columns": {
+    "delivered_rate": {
+     "expression": "l.delivered_rate",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dm.dm_logistics_stats_1d",
+       "column": "delivered_rate"
+      }
+     ],
+     "special": []
+    }
+   },
+   "filters": [
+    {
+     "quote": "left join \"metriclens_build\".\"dm\".\"dm_logistics_stats_1d\"  l using (dt)",
+     "kind": "join_on",
+     "effect": "以 dt 等值关联物流统计表，若日期无匹配则 delivered_rate 为 NULL",
+     "quote_verified": true,
+     "match": "unparsed"
+    }
+   ]
+  },
+  {
+   "model": "dm_logistics_stats_1d",
+   "layer": "dm",
+   "columns": {
+    "delivered_rate": {
+     "expression": "round(count(distinct case when sign_time is not null then waybill_id end) * 1.0 / nullif(count(distinct waybill_id), 0), 6)",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_logistics_ship_detail",
+       "column": "waybill_id"
+      },
+      {
+       "table": "metriclens_build.dwd.dwd_logistics_ship_detail",
+       "column": "sign_time"
+      }
+     ],
+     "special": [
+      "按揽收日期分组聚合，分子分母均对waybill_id去重",
+      "分子仅统计sign_time非空的运单数（签收口径）",
+      "分母使用nullif(count(distinct waybill_id),0)防止除零，分母为0时结果为NULL",
+      "乘以1.0转为浮点以计算比例",
+      "结果四舍五入保留6位小数"
+     ]
+    }
+   },
+   "filters": [
+    {
+     "quote": "pickup_time is not null",
+     "kind": "where",
+     "effect": "过滤掉揽收时间为空的记录，确保按揽收日分组有效且分母统计的是有效揽收单量",
+     "quote_verified": true,
+     "match": "matched"
+    }
+   ]
+  },
+  {
+   "model": "dwd_logistics_ship_detail",
+   "layer": "dwd",
+   "columns": {
+    "sign_time": {
+     "expression": "min(case when event_type = 'SIGN' then event_time end)",
+     "source_columns": [
+      {
+       "table": "metriclens_build.ods.ods_logistics_trace",
+       "column": "event_type"
+      },
+      {
+       "table": "metriclens_build.ods.ods_logistics_trace",
+       "column": "event_time"
+      },
+      {
+       "table": "metriclens_build.ods.ods_logistics_trace",
+       "column": "waybill_id"
+      }
+     ],
+     "special": [
+      "按运单分组取最早签收时间",
+      "CASE WHEN 筛选事件类型为 SIGN"
+     ]
+    },
+    "waybill_id": {
+     "expression": "waybill_id",
+     "source_columns": [
+      {
+       "table": "metriclens_build.ods.ods_logistics_order",
+       "column": "waybill_id"
+      }
+     ],
+     "special": []
+    }
+   },
+   "filters": [
+    {
+     "quote": "on lo.waybill_id = ev.waybill_id",
+     "kind": "join_on",
+     "effect": "左连接关联轨迹事件结果,决定 sign_time 等事件列取值",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "on lo.order_id = o.order_id",
+     "kind": "join_on",
+     "effect": "内连接订单明细,过滤无对应订单的发运记录",
+     "quote_verified": true,
+     "match": "pure_key"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,52 @@
+# MetricLens 数据模拟器场景配置 —— 每道口径陷阱在数据上"有感"的声明式开关
+seed: 42
+end_date: '2026-08-24'
+days: 90
+users: 100000
+orders_per_day: 10800
+promo_days:            # 大促脉冲
+  '2026-06-18': 2.6
+  '2026-08-08': 1.8
+hour_weights: [1,1,1,1,1,2,3,5,6,6,6,7,8,7,6,6,7,8,9,10,12,13,11,6]
+provinces: [[广东,12],[江苏,9],[浙江,9],[山东,7],[河南,6],[四川,6],[湖北,5],[湖南,5],[河北,4],[福建,4],[安徽,4],[上海,4],[北京,4],[辽宁,3],[陕西,3],[其他,15]]
+categories:
+  - {name: 美妆护肤, w: 16, mu: 4.6}
+  - {name: 服饰鞋包, w: 20, mu: 4.9}
+  - {name: 食品生鲜, w: 15, mu: 3.9}
+  - {name: 数码家电, w: 9,  mu: 6.3}
+  - {name: 家居日用, w: 13, mu: 4.2}
+  - {name: 母婴玩具, w: 9,  mu: 4.8}
+  - {name: 运动户外, w: 9,  mu: 5.2}
+  - {name: 图书文娱, w: 9,  mu: 3.6}
+channel: {app: 0.60, h5: 0.12, live_scene: 0.28}
+live_pay_in_live: 0.75          # 直播场景中直接在直播间支付的比例
+live_delayed_within_30m: 0.70   # T11 跳出支付且 30 分钟内完成(归因回直播间)
+usd_ratio: 0.05                 # T12 跨币种订单
+usd_ratio_on_switch_day: 0.15   # T12 汇率切换日加密采样
+exchange_rate_usd:              # T12 SCD2 分段;切换日 07-01 / 08-06
+  - {start: '2025-01-01', end: '2026-06-30', rate: 7.15}
+  - {start: '2026-07-01', end: '2026-08-05', rate: 7.02}
+  - {start: '2026-08-06', end: '2099-12-31', rate: 7.26}
+test_account_ratio: 0.003       # T1 测试账号
+risk_order_ratio: 0.004         # T1 风控单
+presale_ratio: 0.03             # T6 预售单
+pay_rate: 0.85
+refund:                          # 占支付成功订单的比例
+  flash_base: 0.008              # T1 秒退基础概率
+  flash_live_boost: 0.020        # T1 直播场景秒退加成
+  boundary_13: 0.0035            # T2 第 13/14/15 天边界退款
+  boundary_14: 0.0045
+  boundary_15: 0.0035
+  normal: 0.045
+  rejected_ratio: 0.08           # 拒绝的退款申请占比
+  partial_ratio: 0.25            # T13 部分退款
+  null_suc_amt_ratio: 0.06       # T13 打款金额缺失(NULL)
+  payout_delay_hours: [2, 72]    # T14 申请→打款延迟,产生跨日
+order_versions: {created_ratio: 0.6, paid_ratio: 0.4}   # T9 binlog 多版本
+logistics:
+  ship_hours: [4, 40]
+  presale_ship_days: [7, 20]     # T6 预售发货远晚于普通单
+  pickup_hours: [2, 10]
+  sign_hours: [24, 120]
+  reject_ratio: 0.015
+  dup_sign_ratio: 0.02           # T4 重复签收事件

@@ -1,0 +1,43 @@
+version: 2
+
+models:
+  - name: dwd_trade_order_detail
+    description: 交易域订单明细:ODS 多版本按 binlog_ts 去重取最新,剔除测试账号与风控单,外币订单按支付日 SCD2 汇率折人民币
+    columns:
+      - name: order_id
+        description: 订单号,明细层一单一行
+        tests: [unique, not_null]
+      - name: order_amt_cny
+        description: 订单金额(人民币,元)=order_amt×支付日汇率;CNY 订单汇率为 1
+      - name: channel_id
+        description: 支付发生端渠道
+        tests:
+          - accepted_values:
+              values: ['app', 'h5', 'live']
+  - name: dwd_trade_pay_suc_detail
+    description: 支付成功订单明细:限定支付后状态(20/30/40/50/90)并关联成功支付流水;pay_amt 由分折元
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: pay_amt
+        description: 实付金额(人民币,元)=支付流水 pay_amt_cent/100
+        tests: [not_null]
+  - name: dwd_after_refund_detail
+    description: 售后域退款明细:申请多版本去重;refund_amt=coalesce(打款金额,申请金额)/100 兜底;join 订单限定支付后状态以补 pay_time
+    columns:
+      - name: refund_id
+        tests: [unique, not_null]
+      - name: refund_amt
+        description: 退款金额(元):打款金额缺失时回退申请金额,单位分→元
+      - name: days_pay_to_refund
+        description: 支付→退款到账的日历天数,近14天退款口径的窗口变量
+  - name: dwd_logistics_ship_detail
+    description: 物流域发运明细:轨迹事件按运单去重拉宽(出库/揽收/签收/拒收),关联订单补支付时间与预售旗标
+    columns:
+      - name: waybill_id
+        tests: [unique, not_null]
+  - name: dwd_user_register_detail
+    description: 用户域注册明细:剔除测试账号
+    columns:
+      - name: user_id
+        tests: [unique, not_null]

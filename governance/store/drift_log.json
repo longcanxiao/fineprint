@@ -1,0 +1,160 @@
+{
+ "events": [
+  {
+   "detected_at": "2026-08-26T11:18:47",
+   "from_snapshot": "2026-08-26T11:18:43",
+   "to_snapshot": "2026-08-26T11:18:47",
+   "metric_key": "refund_amt_14d",
+   "kind": "semantic_removed",
+   "severity": "high",
+   "detail": {
+    "type": "case_when",
+    "model": "dwm_refund_order_agg_1d",
+    "sql": "case when days_pay_to_refund <= 14 then refund_amt else 0 end"
+   }
+  },
+  {
+   "detected_at": "2026-08-26T11:18:47",
+   "from_snapshot": "2026-08-26T11:18:43",
+   "to_snapshot": "2026-08-26T11:18:47",
+   "metric_key": "refund_amt_14d",
+   "kind": "semantic_added",
+   "severity": "high",
+   "detail": {
+    "type": "case_when",
+    "model": "dwm_refund_order_agg_1d",
+    "sql": "case when days_pay_to_refund <= 15 then refund_amt else 0 end"
+   }
+  },
+  {
+   "detected_at": "2026-08-26T11:18:47",
+   "from_snapshot": "2026-08-26T11:18:43",
+   "to_snapshot": "2026-08-26T11:18:47",
+   "metric_key": "refund_amt_14d",
+   "kind": "expr_changed",
+   "severity": "medium",
+   "detail": {
+    "column": "dwm_refund_order_agg_1d.refund_amt_14d_1d",
+    "old": "sum(case when dwd_after_refund_detail.days_pay_to_refund <= 14 then dwd_after_refund_detail.refund_amt else 0 end)",
+    "new": "sum(case when dwd_after_refund_detail.days_pay_to_refund <= 15 then dwd_after_refund_detail.refund_amt else 0 end)"
+   }
+  },
+  {
+   "detected_at": "2026-08-26T11:18:47",
+   "from_snapshot": "2026-08-26T11:18:43",
+   "to_snapshot": "2026-08-26T11:18:47",
+   "metric_key": "refund_rate_14d",
+   "kind": "semantic_removed",
+   "severity": "high",
+   "detail": {
+    "type": "case_when",
+    "model": "dwm_refund_order_agg_1d",
+    "sql": "case when days_pay_to_refund <= 14 then refund_amt else 0 end"
+   }
+  },
+  {
+   "detected_at": "2026-08-26T11:18:47",
+   "from_snapshot": "2026-08-26T11:18:43",
+   "to_snapshot": "2026-08-26T11:18:47",
+   "metric_key": "refund_rate_14d",
+   "kind": "semantic_added",
+   "severity": "high",
+   "detail": {
+    "type": "case_when",
+    "model": "dwm_refund_order_agg_1d",
+    "sql": "case when days_pay_to_refund <= 15 then refund_amt else 0 end"
+   }
+  },
+  {
+   "detected_at": "2026-08-26T11:18:47",
+   "from_snapshot": "2026-08-26T11:18:43",
+   "to_snapshot": "2026-08-26T11:18:47",
+   "metric_key": "refund_rate_14d",
+   "kind": "expr_changed",
+   "severity": "medium",
+   "detail": {
+    "column": "dwm_refund_order_agg_1d.refund_amt_14d_1d",
+    "old": "sum(case when dwd_after_refund_detail.days_pay_to_refund <= 14 then dwd_after_refund_detail.refund_amt else 0 end)",
+    "new": "sum(case when dwd_after_refund_detail.days_pay_to_refund <= 15 then dwd_after_refund_detail.refund_amt else 0 end)"
+   }
+  },
+  {
+   "detected_at": "2026-08-26T11:18:50",
+   "from_snapshot": "2026-08-26T11:18:47",
+   "to_snapshot": "2026-08-26T11:18:50",
+   "metric_key": "refund_amt_14d",
+   "kind": "semantic_removed",
+   "severity": "high",
+   "detail": {
+    "type": "case_when",
+    "model": "dwm_refund_order_agg_1d",
+    "sql": "case when days_pay_to_refund <= 15 then refund_amt else 0 end"
+   }
+  },
+  {
+   "detected_at": "2026-08-26T11:18:50",
+   "from_snapshot": "2026-08-26T11:18:47",
+   "to_snapshot": "2026-08-26T11:18:50",
+   "metric_key": "refund_amt_14d",
+   "kind": "semantic_added",
+   "severity": "high",
+   "detail": {
+    "type": "case_when",
+    "model": "dwm_refund_order_agg_1d",
+    "sql": "case when days_pay_to_refund <= 14 then refund_amt else 0 end"
+   }
+  },
+  {
+   "detected_at": "2026-08-26T11:18:50",
+   "from_snapshot": "2026-08-26T11:18:47",
+   "to_snapshot": "2026-08-26T11:18:50",
+   "metric_key": "refund_amt_14d",
+   "kind": "expr_changed",
+   "severity": "medium",
+   "detail": {
+    "column": "dwm_refund_order_agg_1d.refund_amt_14d_1d",
+    "old": "sum(case when dwd_after_refund_detail.days_pay_to_refund <= 15 then dwd_after_refund_detail.refund_amt else 0 end)",
+    "new": "sum(case when dwd_after_refund_detail.days_pay_to_refund <= 14 then dwd_after_refund_detail.refund_amt else 0 end)"
+   }
+  },
+  {
+   "detected_at": "2026-08-26T11:18:50",
+   "from_snapshot": "2026-08-26T11:18:47",
+   "to_snapshot": "2026-08-26T11:18:50",
+   "metric_key": "refund_rate_14d",
+   "kind": "semantic_removed",
+   "severity": "high",
+   "detail": {
+    "type": "case_when",
+    "model": "dwm_refund_order_agg_1d",
+    "sql": "case when days_pay_to_refund <= 15 then refund_amt else 0 end"
+   }
+  },
+  {
+   "detected_at": "2026-08-26T11:18:50",
+   "from_snapshot": "2026-08-26T11:18:47",
+   "to_snapshot": "2026-08-26T11:18:50",
+   "metric_key": "refund_rate_14d",
+   "kind": "semantic_added",
+   "severity": "high",
+   "detail": {
+    "type": "case_when",
+    "model": "dwm_refund_order_agg_1d",
+    "sql": "case when days_pay_to_refund <= 14 then refund_amt else 0 end"
+   }
+  },
+  {
+   "detected_at": "2026-08-26T11:18:50",
+   "from_snapshot": "2026-08-26T11:18:47",
+   "to_snapshot": "2026-08-26T11:18:50",
+   "metric_key": "refund_rate_14d",
+   "kind": "expr_changed",
+   "severity": "medium",
+   "detail": {
+    "column": "dwm_refund_order_agg_1d.refund_amt_14d_1d",
+    "old": "sum(case when dwd_after_refund_detail.days_pay_to_refund <= 15 then dwd_after_refund_detail.refund_amt else 0 end)",
+    "new": "sum(case when dwd_after_refund_detail.days_pay_to_refund <= 14 then dwd_after_refund_detail.refund_amt else 0 end)"
+   }
+  }
+ ]
+}

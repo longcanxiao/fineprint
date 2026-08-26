@@ -1,0 +1,7 @@
+metriclens:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('METRICLENS_DB', '../metriclens.duckdb') }}"
+      threads: 4

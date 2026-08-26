@@ -1,0 +1,14 @@
+name: metriclens_dwh
+version: '1.0.0'
+profile: metriclens
+model-paths: ["models"]
+macro-paths: ["macros"]
+target-path: target
+clean-targets: [target, dbt_packages]
+models:
+  metriclens_dwh:
+    +materialized: table
+    dwd: {+schema: dwd}
+    dwm: {+schema: dwm}
+    dm:  {+schema: dm}
+    app: {+schema: app}

@@ -1,0 +1,114 @@
+{
+ "run_id": "68ed52a6",
+ "at": "2026-08-25T19:52:22",
+ "cards": {
+  "atv": {
+   "title": "客单价",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "avg_ship_hours": {
+   "title": "平均发货时长",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "delivered_rate": {
+   "title": "妥投率",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "dm_refund_rate": {
+   "title": "退款率(DM 当日口径·治理对比)",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "flash_refund_order_ratio": {
+   "title": "秒退单占比",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "gmv": {
+   "title": "GMV",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "live_gmv": {
+   "title": "渠道归因GMV·直播",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "new_user_cnt": {
+   "title": "新客数",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "new_user_gmv_ratio": {
+   "title": "新客GMV占比",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:52:22",
+   "run_id": "68ed52a6"
+  },
+  "pay_amt": {
+   "title": "支付金额",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "pay_order_cnt": {
+   "title": "支付订单数",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "pay_user_cnt": {
+   "title": "支付人数",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "refund_amt_14d": {
+   "title": "退款金额(14天口径)",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "refund_rate_14d": {
+   "title": "近14天退款率",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  },
+  "repurchase_rate": {
+   "title": "复购率",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-25T19:44:44",
+   "run_id": "68ed52a6"
+  }
+ },
+ "requested": 15,
+ "succeeded": 15,
+ "mode": "full"
+}

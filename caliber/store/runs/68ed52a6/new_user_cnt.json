@@ -1,0 +1,918 @@
+{
+ "metric_key": "new_user_cnt",
+ "title": "新客数",
+ "target": "app_business_overview_1d.new_user_cnt",
+ "run_id": "68ed52a6",
+ "extra_targets": [],
+ "query_filter": null,
+ "generated_at": "2026-08-25T19:44:44",
+ "llm_model": "deepseek-v4-flash+deepseek-v4-pro",
+ "confidence": "high",
+ "status": "published",
+ "validation": {
+  "confidence": "high",
+  "s_missing_by_llm": [],
+  "s_extra_by_llm": [],
+  "s_condition_cols_by_llm": [],
+  "f1_total": 9,
+  "f1_covered": 1.0,
+  "f1_uncovered": [],
+  "f2_out_of_scope": [
+   "ROW_NUMBER() OVER (PARTITION BY refund_id ORDER BY binlog_ts DESC) = 1",
+   "DATE_DIFF('SECOND', p.pay_time, ra.apply_time) <= 60"
+  ],
+  "f2_unparsed": [],
+  "f2_suspect": [],
+  "quote_verify_fail": 0,
+  "unverified_clauses": 0
+ },
+ "technical": {
+  "formula": "COUNT(DISTINCT CASE WHEN MIN(CAST(pay_time AS DATE)) OVER (PARTITION BY user_id) = CAST(pay_time AS DATE) THEN user_id END)",
+  "window": "统计日归属为支付成功日期(pay_date)，按自然日分组；首笔支付日期与统计日比较，无额外滚动窗口。",
+  "special": [
+   "新客口径：首笔支付日期 = 统计日（非注册口径）",
+   "count(distinct) 对 user_id 去重",
+   "统计日归属：按支付成功日期(pay_date)分组",
+   "首笔支付日期：按 user_id 取最早成功支付日期(CAST(pay_time AS DATE))",
+   "订单去重：每 order_id 保留最新版本（支付时间最新/ODS binlog_ts 最新）",
+   "用户去重：每 user_id 保留最新版本（binlog_ts 最新）",
+   "过滤测试账号、风控订单及无效支付流水"
+  ],
+  "key_filters": [
+   {
+    "text": "支付状态为成功 pay_status = 'SUCCESS'",
+    "layer": "dwd"
+   },
+   {
+    "text": "订单状态为有效已支付/完成等 order_status in (20,30,40,50,90)",
+    "layer": "dwd"
+   },
+   {
+    "text": "支付时间非空 pay_time is not null",
+    "layer": "dwd"
+   },
+   {
+    "text": "订单按 order_id 去重，保留最新记录（支付时间最新/ODS binlog_ts 最新）",
+    "layer": "dwd"
+   },
+   {
+    "text": "用户按 user_id 去重，保留最新版本（binlog_ts 最新）",
+    "layer": "dwd"
+   },
+   {
+    "text": "过滤测试账号 coalesce(u.is_test_account,0) = 0",
+    "layer": "dwd"
+   },
+   {
+    "text": "过滤风控订单 o.is_risk_order = 0",
+    "layer": "dwd"
+   }
+  ],
+  "summary": "该指标统计每个支付成功日期的新客数，即用户首笔成功支付日期等于该统计日的去重用户数。统计基于支付成功流水，订单和用户均需去重，并排除测试账号、风控订单及无效支付/订单状态。新客口径按支付归因，非注册口径。"
+ },
+ "business": {
+  "definition": "统计各自然日首笔支付成功日期等于该日的去重用户数（非注册口径）",
+  "clauses": [
+   {
+    "text": "仅当用户历史首笔支付成功日期等于统计日时，该用户被计数为新客",
+    "basis": "CASE WHEN fp.first_pay_date = p.dt THEN p.user_id END",
+    "evidence_ids": [
+     "S1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "首笔支付日期按用户最早成功支付时间计算（取日期）",
+    "basis": "first_pay_date = CAST(MIN(\"dwd_trade_pay_suc_detail\".\"pay_time\") AS DATE)",
+    "evidence_ids": [
+     "X8"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "统计日按支付成功日期(pay_date)归属",
+    "basis": "dt = \"p\".\"pay_date\"",
+    "evidence_ids": [
+     "X3"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "对满足条件的 user_id 去重计数",
+    "basis": "new_user_cnt = COUNT(DISTINCT CASE WHEN \"fp\".\"first_pay_date\" = \"p\".\"dt\" THEN \"p\".\"user_id\" END)",
+    "evidence_ids": [
+     "X2"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "仅统计支付状态为成功的支付流水",
+    "basis": "pay_status = 'SUCCESS'",
+    "evidence_ids": [
+     "E3"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "订单状态限定为有效已支付/完成等（状态码20/30/40/50/90）",
+    "basis": "o.order_status IN (20, 30, 40, 50, 90)",
+    "evidence_ids": [
+     "E2"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "剔除支付时间为空的记录",
+    "basis": "NOT o.pay_time IS NULL",
+    "evidence_ids": [
+     "E1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "订单按 order_id 去重，保留支付时间最新的记录",
+    "basis": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY pay_time DESC) = 1",
+    "evidence_ids": [
+     "E4"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "订单按 order_id 去重，保留 binlog_ts 最新的版本",
+    "basis": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC) = 1",
+    "evidence_ids": [
+     "E8"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "用户按 user_id 去重，保留 binlog_ts 最新的版本",
+    "basis": "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY binlog_ts DESC) = 1",
+    "evidence_ids": [
+     "E9"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "剔除内部测试账号产生的订单",
+    "basis": "COALESCE(u.is_test_account, 0) = 0",
+    "evidence_ids": [
+     "E5"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "剔除风控系统拦截的订单",
+    "basis": "o.is_risk_order = 0",
+    "evidence_ids": [
+     "E6"
+    ],
+    "basis_verified": true
+   }
+  ],
+  "caveats": []
+ },
+ "evidence": [
+  {
+   "id": "E1",
+   "kind": "condition:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 16,
+   "text": "NOT o.pay_time IS NULL"
+  },
+  {
+   "id": "E2",
+   "kind": "condition:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 17,
+   "text": "o.order_status IN (20, 30, 40, 50, 90)"
+  },
+  {
+   "id": "E3",
+   "kind": "condition:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 5,
+   "text": "pay_status = 'SUCCESS'"
+  },
+  {
+   "id": "E4",
+   "kind": "condition:qualify",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": 6,
+   "text": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY pay_time DESC) = 1"
+  },
+  {
+   "id": "E5",
+   "kind": "condition:where",
+   "model": "dwd_trade_order_detail",
+   "line": 42,
+   "text": "COALESCE(u.is_test_account, 0) = 0"
+  },
+  {
+   "id": "E6",
+   "kind": "condition:where",
+   "model": "dwd_trade_order_detail",
+   "line": 43,
+   "text": "o.is_risk_order = 0"
+  },
+  {
+   "id": "E7",
+   "kind": "condition:join_on",
+   "model": "dwd_trade_order_detail",
+   "line": 41,
+   "text": "CAST(COALESCE(o.pay_time, o.order_time) AS DATE) BETWEEN r.effective_start AND r.effective_end"
+  },
+  {
+   "id": "E8",
+   "kind": "condition:qualify",
+   "model": "dwd_trade_order_detail",
+   "line": 5,
+   "text": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC) = 1"
+  },
+  {
+   "id": "E9",
+   "kind": "condition:qualify",
+   "model": "dwd_trade_order_detail",
+   "line": 10,
+   "text": "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY binlog_ts DESC) = 1"
+  },
+  {
+   "id": "S1",
+   "kind": "semantic:case_when",
+   "model": "dm_user_new_stats_1d",
+   "line": 10,
+   "text": "CASE WHEN fp.first_pay_date = p.dt THEN p.user_id END"
+  },
+  {
+   "id": "S2",
+   "kind": "semantic:window",
+   "model": "dwd_trade_order_detail",
+   "line": 5,
+   "text": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC)"
+  },
+  {
+   "id": "X1",
+   "kind": "expression",
+   "model": "app_business_overview_1d",
+   "line": null,
+   "text": "new_user_cnt = \"u\".\"new_user_cnt\""
+  },
+  {
+   "id": "X2",
+   "kind": "expression",
+   "model": "dm_user_new_stats_1d",
+   "line": null,
+   "text": "new_user_cnt = COUNT(DISTINCT CASE WHEN \"fp\".\"first_pay_date\" = \"p\".\"dt\" THEN \"p\".\"user_id\" END)"
+  },
+  {
+   "id": "X3",
+   "kind": "expression",
+   "model": "dwm_trade_order_flag_1d",
+   "line": null,
+   "text": "dt = \"p\".\"pay_date\""
+  },
+  {
+   "id": "X4",
+   "kind": "expression",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "pay_date = \"o\".\"pay_date\""
+  },
+  {
+   "id": "X5",
+   "kind": "expression",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "pay_date = CAST(\"o\".\"pay_time\" AS DATE)"
+  },
+  {
+   "id": "X6",
+   "kind": "expression",
+   "model": "dwm_trade_order_flag_1d",
+   "line": null,
+   "text": "user_id = \"p\".\"user_id\""
+  },
+  {
+   "id": "X7",
+   "kind": "expression",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "user_id = \"o\".\"user_id\""
+  },
+  {
+   "id": "X8",
+   "kind": "expression",
+   "model": "dwm_user_first_pay_1d",
+   "line": null,
+   "text": "first_pay_date = CAST(MIN(\"dwd_trade_pay_suc_detail\".\"pay_time\") AS DATE)"
+  },
+  {
+   "id": "X9",
+   "kind": "expression",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "pay_time = \"o\".\"pay_time\""
+  },
+  {
+   "id": "Q1",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "pay_status = 'SUCCESS'"
+  },
+  {
+   "id": "Q2",
+   "kind": "verified_quote:qualify",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "row_number() over (partition by order_id order by pay_time desc) = 1"
+  },
+  {
+   "id": "Q3",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "o.pay_time is not null"
+  },
+  {
+   "id": "Q4",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_pay_suc_detail",
+   "line": null,
+   "text": "o.order_status in (20, 30, 40, 50, 90)"
+  },
+  {
+   "id": "Q5",
+   "kind": "verified_quote:qualify",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "qualify row_number() over (partition by order_id order by binlog_ts desc) = 1"
+  },
+  {
+   "id": "Q6",
+   "kind": "verified_quote:qualify",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "qualify row_number() over (partition by user_id order by binlog_ts desc) = 1"
+  },
+  {
+   "id": "Q7",
+   "kind": "verified_quote:join_on",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "cast(coalesce(o.pay_time, o.order_time) as date) between r.effective_start and r.effective_end"
+  },
+  {
+   "id": "Q8",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "coalesce(u.is_test_account, 0) = 0"
+  },
+  {
+   "id": "Q9",
+   "kind": "verified_quote:where",
+   "model": "dwd_trade_order_detail",
+   "line": null,
+   "text": "o.is_risk_order = 0"
+  }
+ ],
+ "governance": {
+  "duplicates": []
+ },
+ "trace": {
+  "depth": 5,
+  "models_visited": [
+   "app_business_overview_1d",
+   "dm_user_new_stats_1d",
+   "dwm_trade_order_flag_1d",
+   "dwd_trade_pay_suc_detail",
+   "dwd_trade_order_detail",
+   "dwm_user_first_pay_1d"
+  ],
+  "sources": [
+   {
+    "table": "ods_order_info",
+    "column": "pay_time"
+   },
+   {
+    "table": "ods_order_info",
+    "column": "user_id"
+   }
+  ],
+  "conditions": [
+   {
+    "model": "app_business_overview_1d",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "dt",
+    "norm": "dt",
+    "fp": "3017d911efce",
+    "line": 3,
+    "join_type": "LEFT",
+    "join_table": "dm_after_sale_stats_1d",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/app/app_business_overview_1d.sql"
+   },
+   {
+    "model": "dm_user_new_stats_1d",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "p.user_id = fp.user_id",
+    "norm": "user_id = user_id",
+    "fp": "32ef789a9afd",
+    "line": 19,
+    "join_type": "inner",
+    "join_table": "fp",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dm/dm_user_new_stats_1d.sql"
+   },
+   {
+    "model": "dwm_trade_order_flag_1d",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "p.order_id = f.order_id",
+    "norm": "order_id = order_id",
+    "fp": "695fbd8b788e",
+    "line": 40,
+    "join_type": "LEFT",
+    "join_table": "flash",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dwm/dwm_trade_order_flag_1d.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "NOT o.pay_time IS NULL",
+    "norm": "not pay_time is null",
+    "fp": "f5b1d1097ba3",
+    "line": 16,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "o.order_status IN (20, 30, 40, 50, 90)",
+    "norm": "order_status in (20, 30, 40, 50, 90)",
+    "fp": "f817fe4b8ea3",
+    "line": 17,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "pf",
+    "kind": "where",
+    "row_level": true,
+    "sql": "pay_status = 'SUCCESS'",
+    "norm": "pay_status = 'success'",
+    "fp": "227e33ba365d",
+    "line": 5,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_trade_pay_suc_detail",
+    "scope": "pf",
+    "kind": "qualify",
+    "row_level": true,
+    "sql": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY pay_time DESC) = 1",
+    "norm": "row_number() over (partition by order_id order by pay_time desc) = 1",
+    "fp": "773821108b65",
+    "line": 6,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_pay_suc_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "COALESCE(u.is_test_account, 0) = 0",
+    "norm": "coalesce(is_test_account, 0) = 0",
+    "fp": "ce03e7de9fbd",
+    "line": 42,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "o.is_risk_order = 0",
+    "norm": "is_risk_order = 0",
+    "fp": "7bbb1c780d04",
+    "line": 43,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "o.currency = r.currency",
+    "norm": "currency = currency",
+    "fp": "1c7730de32fb",
+    "line": 40,
+    "join_type": "LEFT",
+    "join_table": "rate",
+    "is_pure_key": true,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "main",
+    "kind": "join_on",
+    "row_level": true,
+    "sql": "CAST(COALESCE(o.pay_time, o.order_time) AS DATE) BETWEEN r.effective_start AND r.effective_end",
+    "norm": "effective_end >= cast(coalesce(pay_time, order_time) as date) and effective_start <= cast(coalesce(pay_time, order_time) as date)",
+    "fp": "79cd2cde499a",
+    "line": 41,
+    "join_type": "LEFT",
+    "join_table": "rate",
+    "is_pure_key": false,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "ord_latest",
+    "kind": "qualify",
+    "row_level": false,
+    "sql": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC) = 1",
+    "norm": "row_number() over (partition by order_id order by binlog_ts desc) = 1",
+    "fp": "259a8084ad22",
+    "line": 5,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "usr",
+    "kind": "qualify",
+    "row_level": true,
+    "sql": "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY binlog_ts DESC) = 1",
+    "norm": "row_number() over (partition by user_id order by binlog_ts desc) = 1",
+    "fp": "661ecbeb07d7",
+    "line": 10,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   }
+  ],
+  "semantics": [
+   {
+    "model": "dm_user_new_stats_1d",
+    "scope": "main",
+    "type": "case_when",
+    "column": "new_user_cnt",
+    "sql": "CASE WHEN fp.first_pay_date = p.dt THEN p.user_id END",
+    "line": 10,
+    "src_path": "warehouse/dbt_project/models/dm/dm_user_new_stats_1d.sql"
+   },
+   {
+    "model": "dwd_trade_order_detail",
+    "scope": "ord_latest",
+    "type": "window",
+    "idiom": "dedup",
+    "column": null,
+    "func": "row_number()",
+    "partition_by": [
+     "order_id"
+    ],
+    "order_by": "binlog_ts DESC",
+    "sql": "ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY binlog_ts DESC)",
+    "line": 5,
+    "src_path": "warehouse/dbt_project/models/dwd/dwd_trade_order_detail.sql"
+   }
+  ]
+ },
+ "per_hop": [
+  {
+   "model": "app_business_overview_1d",
+   "layer": "app",
+   "columns": {
+    "new_user_cnt": {
+     "expression": "u.new_user_cnt",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dm.dm_user_new_stats_1d",
+       "column": "new_user_cnt"
+      }
+     ],
+     "special": []
+    }
+   },
+   "filters": [
+    {
+     "quote": "using (dt)",
+     "kind": "join_on",
+     "effect": "left join dm_after_sale_stats_1d a 的关联键",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "using (dt)",
+     "kind": "join_on",
+     "effect": "left join dm_logistics_stats_1d l 的关联键",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "using (dt)",
+     "kind": "join_on",
+     "effect": "left join dm_user_new_stats_1d u 的关联键",
+     "quote_verified": true,
+     "match": "pure_key"
+    }
+   ]
+  },
+  {
+   "model": "dm_user_new_stats_1d",
+   "layer": "dm",
+   "columns": {
+    "new_user_cnt": {
+     "expression": "count(distinct case when fp.first_pay_date = p.dt then p.user_id end)",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwm.dwm_trade_order_flag_1d",
+       "column": "dt"
+      },
+      {
+       "table": "metriclens_build.dwm.dwm_trade_order_flag_1d",
+       "column": "user_id"
+      },
+      {
+       "table": "metriclens_build.dwm.dwm_user_first_pay_1d",
+       "column": "first_pay_date"
+      }
+     ],
+     "special": [
+      "CASE WHEN 归因:首笔支付日期等于统计日(非注册口径)",
+      "count(distinct)对user_id去重",
+      "统计日归属:按p.dt分组"
+     ]
+    }
+   },
+   "filters": [
+    {
+     "quote": "p.user_id = fp.user_id",
+     "kind": "join_on",
+     "effect": "关联支付订单与用户首笔支付记录，仅保留存在首笔支付信息的用户",
+     "quote_verified": true,
+     "match": "pure_key"
+    }
+   ]
+  },
+  {
+   "model": "dwm_trade_order_flag_1d",
+   "layer": "dwm",
+   "columns": {
+    "dt": {
+     "expression": "p.pay_date",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_trade_pay_suc_detail",
+       "column": "pay_date"
+      }
+     ],
+     "special": []
+    },
+    "user_id": {
+     "expression": "p.user_id",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_trade_pay_suc_detail",
+       "column": "user_id"
+      }
+     ],
+     "special": []
+    }
+   },
+   "filters": [
+    {
+     "quote": "row_number() over (partition by refund_id order by binlog_ts desc) = 1",
+     "kind": "qualify",
+     "effect": "对退款申请按 refund_id 取 binlog_ts 最新的一条，用于构建退款最新状态",
+     "quote_verified": true,
+     "match": "out_of_scope"
+    },
+    {
+     "quote": "ra.order_id = p.order_id",
+     "kind": "join_on",
+     "effect": "关联退款申请与支付订单，用于识别秒退订单",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "datediff('second', p.pay_time, ra.apply_time) <= 60",
+     "kind": "join_on",
+     "effect": "限定支付到申请退款时间差不超过60秒，作为秒退判定条件",
+     "quote_verified": true,
+     "match": "out_of_scope"
+    },
+    {
+     "quote": "p.order_id = f.order_id",
+     "kind": "join_on",
+     "effect": "左连接秒退订单标记，输出 is_flash_refund 等派生字段，不影响主表行数",
+     "quote_verified": true,
+     "match": "pure_key"
+    }
+   ]
+  },
+  {
+   "model": "dwd_trade_pay_suc_detail",
+   "layer": "dwd",
+   "columns": {
+    "pay_date": {
+     "expression": "o.pay_date",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_trade_order_detail",
+       "column": "pay_date"
+      }
+     ],
+     "special": []
+    },
+    "pay_time": {
+     "expression": "o.pay_time",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_trade_order_detail",
+       "column": "pay_time"
+      }
+     ],
+     "special": []
+    },
+    "user_id": {
+     "expression": "o.user_id",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_trade_order_detail",
+       "column": "user_id"
+      }
+     ],
+     "special": []
+    }
+   },
+   "filters": [
+    {
+     "quote": "pay_status = 'SUCCESS'",
+     "kind": "where",
+     "effect": "从支付流水表中仅选取支付成功状态的记录",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "row_number() over (partition by order_id order by pay_time desc) = 1",
+     "kind": "qualify",
+     "effect": "按订单ID分组，保留支付时间最新的一条支付流水，实现每个订单去重",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "o.order_id = p.order_id",
+     "kind": "join_on",
+     "effect": "以订单ID为键关联订单明细表与支付流水表",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "o.pay_time is not null",
+     "kind": "where",
+     "effect": "排除支付时间为空的订单记录",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "o.order_status in (20, 30, 40, 50, 90)",
+     "kind": "where",
+     "effect": "限定订单状态为已支付/完成等有效状态",
+     "quote_verified": true,
+     "match": "matched"
+    }
+   ]
+  },
+  {
+   "model": "dwd_trade_order_detail",
+   "layer": "dwd",
+   "columns": {
+    "pay_date": {
+     "expression": "cast(o.pay_time as date)",
+     "source_columns": [
+      {
+       "table": "metriclens_build.ods.ods_order_info",
+       "column": "pay_time"
+      }
+     ],
+     "special": [
+      "对支付时间取日期部分",
+      "每订单按 binlog_ts 倒序去重取最新版本",
+      "仅保留非测试账号且非风控订单"
+     ]
+    },
+    "pay_time": {
+     "expression": "o.pay_time",
+     "source_columns": [
+      {
+       "table": "metriclens_build.ods.ods_order_info",
+       "column": "pay_time"
+      }
+     ],
+     "special": [
+      "每订单按 binlog_ts 倒序去重取最新版本",
+      "仅保留非测试账号且非风控订单"
+     ]
+    },
+    "user_id": {
+     "expression": "o.user_id",
+     "source_columns": [
+      {
+       "table": "metriclens_build.ods.ods_order_info",
+       "column": "user_id"
+      }
+     ],
+     "special": [
+      "每订单按 binlog_ts 倒序去重取最新版本",
+      "与用户最新版本 inner join,仅保留有用户且非测试账号的记录"
+     ]
+    }
+   },
+   "filters": [
+    {
+     "quote": "qualify row_number() over (partition by order_id order by binlog_ts desc) = 1",
+     "kind": "qualify",
+     "effect": "订单表按 order_id 去重,取 binlog_ts 最新一条",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "qualify row_number() over (partition by user_id order by binlog_ts desc) = 1",
+     "kind": "qualify",
+     "effect": "用户表按 user_id 去重,取 binlog_ts 最新一条",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "o.user_id = u.user_id",
+     "kind": "join_on",
+     "effect": "内连接用户最新版本,剔除无对应用户的订单",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "o.currency = r.currency",
+     "kind": "join_on",
+     "effect": "按币种关联汇率,用于订单金额折算(不影响本目标列取值)",
+     "quote_verified": true,
+     "match": "pure_key"
+    },
+    {
+     "quote": "cast(coalesce(o.pay_time, o.order_time) as date) between r.effective_start and r.effective_end",
+     "kind": "join_on",
+     "effect": "限定汇率在支付日期或下单日期生效,保证汇率版本匹配",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "coalesce(u.is_test_account, 0) = 0",
+     "kind": "where",
+     "effect": "过滤测试账号用户",
+     "quote_verified": true,
+     "match": "matched"
+    },
+    {
+     "quote": "o.is_risk_order = 0",
+     "kind": "where",
+     "effect": "过滤风控订单",
+     "quote_verified": true,
+     "match": "matched"
+    }
+   ]
+  },
+  {
+   "model": "dwm_user_first_pay_1d",
+   "layer": "dwm",
+   "columns": {
+    "first_pay_date": {
+     "expression": "cast(min(pay_time) as date)",
+     "source_columns": [
+      {
+       "table": "metriclens_build.dwd.dwd_trade_pay_suc_detail",
+       "column": "pay_time"
+      },
+      {
+       "table": "metriclens_build.dwd.dwd_trade_pay_suc_detail",
+       "column": "user_id"
+      }
+     ],
+     "special": [
+      "按 user_id 分组取最早支付时间",
+      "使用 CAST AS DATE 将支付时间戳转换为日期，得到首购日期"
+     ]
+    }
+   },
+   "filters": []
+  }
+ ]
+}

@@ -1,0 +1,97 @@
+# 血缘引擎 golden set:人工核验的期望结果(依据模型 SQL 人工阅读得出,独立于引擎实现)
+# sources: 期望的 ODS 源字段(值链);conds: 期望召回的关键过滤/语义(归一化子串匹配)
+# absent: 不得出现的模式(负向断言);pair_equal_sources: 两目标源字段集合必须一致(T8)
+targets:
+  - target: app_business_overview_1d.gmv
+    traps: [T1, T9, T12]
+    sources:
+      - ods_order_info.order_amt
+      - ods_exchange_rate.rate_to_cny
+      - ods_refund_apply.order_id
+    conds:
+      - "is_test_account"                                        # 剔测试
+      - "is_risk_order = 0"                                      # 剔风控
+      - "between effective_start and effective_end"              # T12 SCD2 区间 join
+      - "partition by order_id order by binlog_ts desc"          # T9 多版本去重
+      - "is_flash_refund = 0"                                    # T1 剔秒退(表达式级)
+      - "datediff('second'"                                      # T1 秒退定义
+  - target: app_business_overview_1d.refund_rate_14d
+    traps: [T2, T9, T13, T14]
+    sources:
+      - ods_refund_apply.refund_apply_amt_cent
+      - ods_refund_payment.refund_suc_amt_cent
+      - ods_refund_payment.refund_suc_time
+      - ods_order_info.pay_time
+      - ods_payment_flow.pay_amt_cent
+    conds:
+      - "<= 14"                                                  # T2 时间窗
+      - "order_status in (20, 30, 40, 50, 90)"                   # T2 join on 状态限定
+      - "refund_status = 'refunded'"
+      - "coalesce(refund_suc_amt_cent, refund_apply_amt_cent)"   # T13 兜底
+      - "partition by refund_id order by binlog_ts desc"         # T9
+      - "refund_suc_date"                                        # T14 统计日
+      - "pay_status = 'success'"
+  - target: app_business_overview_1d.atv
+    traps: [T5]
+    sources:
+      - ods_payment_flow.pay_amt_cent
+      - ods_order_info.user_id
+    conds:
+      - "pay_status = 'success'"
+      - "pay_user_cnt"                                           # T5 分母按人
+  - target: app_business_overview_1d.new_user_cnt
+    traps: [T3]
+    sources:
+      - ods_order_info.pay_time
+      - ods_order_info.user_id
+    conds:
+      - "first_pay_date"                                         # T3 首购口径
+      - "pay_status = 'success'"
+  - target: app_business_overview_1d.repurchase_rate
+    traps: [T10]
+    sources:
+      - ods_order_info.pay_time
+      - ods_order_info.user_id
+    conds:
+      - "purchase_seq >= 2"                                      # T10 序号阈值
+      - "partition by user_id order by pay_time"                 # T10 窗口序号
+  - target: app_business_overview_1d.delivered_rate
+    traps: [T4]
+    sources:
+      - ods_logistics_trace.event_type
+      - ods_logistics_trace.event_time
+      - ods_logistics_order.waybill_id
+    conds:
+      - "not pickup_time is null"                                # T4 分母=揽收
+      - "'sign'"                                                 # 分子=签收事件
+  - target: app_business_overview_1d.avg_ship_hours
+    traps: [T6]
+    sources:
+      - ods_logistics_trace.event_type
+      - ods_logistics_trace.event_time
+      - ods_order_info.pay_time
+      - ods_order_info.is_presale
+    conds:
+      - "is_presale = 0"                                         # T6 剔预售
+      - "epoch(pickup_time)"                                     # T6 揽收锚点
+  - target: app_channel_overview_1d.attributed_channel
+    traps: [T11]
+    sources:
+      - ods_order_info.channel_id
+      - ods_order_info.live_room_id
+      - ods_order_info.live_end_time
+      - ods_order_info.pay_time
+    conds:
+      - "interval '30' minute"                                   # T11 延迟归因窗口
+  - target: dm_trade_stats_1d.refund_rate
+    traps: [T7]
+    sources:
+      - ods_refund_apply.refund_apply_amt_cent
+      - ods_refund_payment.refund_suc_amt_cent
+      - ods_payment_flow.pay_amt_cent
+    conds:
+      - "refund_status = 'refunded'"
+    absent:
+      - "<= 14"                                                  # T7 当日口径不得含 14 天窗
+pair_equal_sources:                                              # T8 重复建设:源字段集合一致
+  - [dm_trade_stats_1d.refund_amt, dm_after_sale_stats_1d.refund_amt_total]

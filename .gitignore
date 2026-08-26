@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+dashboard/dist/
+*.duckdb
+*.duckdb.wal
+warehouse/dbt_project/target/
+warehouse/dbt_project/dbt_packages/
+warehouse/dbt_project/logs/
+logs/
+.metriclens/
+.env
+caliber/store/.llm_cache/
+*.log
+.DS_Store

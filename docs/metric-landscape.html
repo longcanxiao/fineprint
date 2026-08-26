@@ -1,0 +1,357 @@
+<meta charset="utf-8">
+<title>指标口径赛道扫描</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --page: #f6f7f4; --surface: #fdfdfc; --ink: #1a222c; --sub: #46515e; --muted: #87909c;
+  --line: #dfe3dc; --line-soft: #eaece6;
+  --accent: #2563c4; --accent-soft: rgba(37, 99, 196, 0.10);
+  --warn: #b45309; --warn-soft: rgba(180, 83, 9, 0.10);
+  --good: #1a7f37; --bad: #b23434; --code-bg: #eef0ea;
+  --sans: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0e1114; --surface: #161a1f; --ink: #e7ebf0; --sub: #aeb7c2; --muted: #737d89;
+    --line: #2a3138; --line-soft: #21272d; --accent: #689fe8; --accent-soft: rgba(104, 159, 232, 0.14);
+    --warn: #dd9a52; --warn-soft: rgba(221, 154, 82, 0.13);
+    --good: #5cb374; --bad: #d97a72; --code-bg: #1d2329;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #0e1114; --surface: #161a1f; --ink: #e7ebf0; --sub: #aeb7c2; --muted: #737d89;
+  --line: #2a3138; --line-soft: #21272d; --accent: #689fe8; --accent-soft: rgba(104, 159, 232, 0.14);
+  --warn: #dd9a52; --warn-soft: rgba(221, 154, 82, 0.13);
+  --good: #5cb374; --bad: #d97a72; --code-bg: #1d2329;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font-family: var(--sans); font-size: 15.5px; line-height: 1.78; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1020px; margin: 0 auto; padding: 56px 32px 96px; }
+header.masthead { padding: 8px 0 36px; border-bottom: 1px solid var(--line); margin-bottom: 44px; }
+.eyebrow { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.14em; color: var(--accent); text-transform: uppercase; margin: 0 0 14px; }
+h1 { font-size: 38px; line-height: 1.15; margin: 0 0 14px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+.lede { color: var(--sub); font-size: 17px; max-width: 47em; margin: 0; }
+.verdict {
+  margin-top: 22px; border-left: 3px solid var(--accent); background: var(--accent-soft);
+  border-radius: 0 10px 10px 0; padding: 14px 20px; font-size: 15.5px;
+}
+section { margin: 0 0 60px; }
+.sec-head { display: flex; align-items: baseline; gap: 14px; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 22px; }
+.sec-no { font-family: var(--mono); font-size: 13px; color: var(--accent); }
+h2 { font-size: 23px; margin: 0; font-weight: 700; }
+h3 { font-size: 16.5px; margin: 30px 0 10px; font-weight: 650; }
+p { margin: 0 0 14px; max-width: 70ch; }
+ul, ol { margin: 0 0 16px; padding-left: 1.4em; max-width: 68ch; }
+li { margin-bottom: 7px; }
+li::marker { color: var(--muted); }
+strong { font-weight: 650; }
+code { font-family: var(--mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 6px; border-radius: 5px; }
+a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; }
+a:hover { border-bottom-color: var(--accent); }
+
+figure { margin: 24px 0 28px; }
+.fig-frame { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px 16px 12px; overflow-x: auto; }
+.fig-frame svg { display: block; max-width: 100%; height: auto; min-width: 700px; margin: 0 auto; color: var(--ink); }
+figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; padding: 0 4px; }
+figcaption b { color: var(--sub); font-weight: 600; }
+
+.tbl-scroll { overflow-x: auto; margin: 12px 0 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th { text-align: left; font-weight: 600; font-size: 11.5px; letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase; font-family: var(--mono); padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+.lv { font-family: var(--mono); font-size: 11px; padding: 1px 8px; border-radius: 6px; white-space: nowrap; border: 1px solid var(--line); color: var(--sub); }
+.lv-2 { color: var(--sub); }
+.lv-3 { color: var(--warn); border-color: var(--warn); }
+.lv-35 { color: var(--bad); border-color: var(--bad); }
+.lv-4 { color: var(--good); border-color: var(--good); font-weight: 600; }
+.tag { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+.callout { border-left: 3px solid var(--warn); background: var(--warn-soft); border-radius: 0 10px 10px 0; padding: 14px 20px; margin: 18px 0 22px; max-width: none; }
+.callout p { max-width: none; margin: 0 0 8px; }
+.callout p:last-child { margin-bottom: 0; }
+.note { font-size: 13px; color: var(--muted); }
+footer { border-top: 1px solid var(--line); padding-top: 20px; color: var(--muted); font-size: 13px; }
+svg text { font-family: var(--sans); }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">竞品调研 · 检索日 2026-08-26 · 四路并行取证</p>
+  <h1>指标口径赛道扫描</h1>
+  <p class="lede">问题：全球云厂商数据平台与专业数据工具里，"自动化展示指标口径"上线了吗？
+  覆盖国际云厂商 5 家、国内厂商与指标平台 13 家、数据目录/治理工具 11 家、语义层与 BI 10 家，共 39 个产品，
+  以官方文档 / 发布说明为准（营销稿单独标注）。</p>
+  <div class="verdict"><strong>结论：没有任何一家达到 L4</strong>——"对存量多层 SQL 自动做字段级血缘 + LLM 逐层解读 →
+  互验合成业务/技术双口径 → 在看板指标卡上面向业务读者原生透出（带置信分级与证据溯源）"这条完整链路，截至检索日无人上线。
+  你之前的调研结论仍然成立。<strong>但窗口正在收窄</strong>：2026 年 Snowflake、Atlan、Aloudata 都在"自动提取存量指标语义"上发了真动作，只是没人走到消费端。</div>
+</header>
+
+<!-- §1 判定框架与格局图 -->
+<section>
+  <div class="sec-head"><span class="sec-no">§1</span><h2>判定框架与竞争格局</h2></div>
+  <p>为避免"有 AI 功能"和"能透出口径"混为一谈，全部产品按两个维度定位：<strong>自动化程度</strong>
+  （L1 人工登记 → L2 预定义语义层 → L3 AI 辅助元数据 → L4 存量口径自动合成）与<strong>产出落点</strong>
+  （开发者工具 → 治理/目录侧 → 消费端看板）。市面的分布高度一致：L2 在消费端有出口，L3 全部停在治理/开发者侧，右上角是空的。</p>
+
+  <figure>
+    <div class="fig-frame">
+    <svg viewBox="0 0 960 480" role="img" aria-label="竞争格局定位图：横轴为自动化程度 L1 到 L4，纵轴为产出落点从开发者工具、治理目录侧到消费端看板。预定义语义层类产品位于 L2 且部分达到消费端；AI 元数据类产品集中在 L3 的治理侧；逼近者 Aloudata、Snowflake、Atlan、euno 位于 L3.5 附近的治理与开发者侧；只有 MetricLens 位于 L4 与消费端交汇的右上角">
+      <defs>
+        <marker id="ga" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+      <!-- 轴 -->
+      <line x1="90" y1="400" x2="920" y2="400" stroke="currentColor" stroke-width="1.2" marker-end="url(#ga)"/>
+      <line x1="90" y1="400" x2="90" y2="40" stroke="currentColor" stroke-width="1.2" marker-end="url(#ga)"/>
+      <text x="905" y="424" font-size="12" text-anchor="end" fill="var(--sub)">自动化程度 →</text>
+      <text x="30" y="52" font-size="12" fill="var(--sub)" transform="rotate(0)">产出落点 ↑</text>
+      <!-- x 刻度 -->
+      <text x="170" y="424" font-size="11.5" text-anchor="middle" fill="var(--muted)">L1 人工登记</text>
+      <text x="390" y="424" font-size="11.5" text-anchor="middle" fill="var(--muted)">L2 预定义语义层</text>
+      <text x="610" y="424" font-size="11.5" text-anchor="middle" fill="var(--muted)">L3 AI 辅助元数据</text>
+      <text x="830" y="424" font-size="11.5" text-anchor="middle" fill="var(--muted)">L4 存量口径合成</text>
+      <line x1="500" y1="400" x2="500" y2="48" stroke="var(--line)" stroke-dasharray="3 5"/>
+      <line x1="720" y1="400" x2="720" y2="48" stroke="var(--line)" stroke-dasharray="3 5"/>
+      <!-- y 刻度带 -->
+      <text x="82" y="360" font-size="11.5" text-anchor="end" fill="var(--muted)">开发者工具</text>
+      <text x="82" y="240" font-size="11.5" text-anchor="end" fill="var(--muted)">治理 / 目录侧</text>
+      <text x="82" y="110" font-size="11.5" text-anchor="end" fill="var(--muted)">消费端看板</text>
+      <line x1="90" y1="300" x2="920" y2="300" stroke="var(--line)" stroke-dasharray="3 5"/>
+      <line x1="90" y1="170" x2="920" y2="170" stroke="var(--line)" stroke-dasharray="3 5"/>
+
+      <!-- L1 -->
+      <circle cx="170" cy="250" r="5" fill="var(--muted)"/>
+      <text x="170" y="236" font-size="11" text-anchor="middle" fill="var(--sub)">华为 DataArts</text>
+
+      <!-- L2 消费端 -->
+      <circle cx="390" cy="110" r="5" fill="var(--sub)"/>
+      <text x="390" y="96" font-size="11" text-anchor="middle" fill="var(--sub)">Databricks Metric Views</text>
+      <circle cx="330" cy="132" r="5" fill="var(--sub)"/>
+      <text x="330" y="152" font-size="11" text-anchor="middle" fill="var(--sub)">Tableau Pulse / Looker</text>
+      <circle cx="450" cy="132" r="5" fill="var(--sub)"/>
+      <text x="452" y="152" font-size="11" text-anchor="middle" fill="var(--sub)">Kyligence / 衡石 / 网易有数</text>
+      <!-- L2 治理 -->
+      <circle cx="370" cy="230" r="5" fill="var(--sub)"/>
+      <text x="370" y="216" font-size="11" text-anchor="middle" fill="var(--sub)">Dataphin / WeData 指标注册</text>
+      <circle cx="420" cy="262" r="5" fill="var(--sub)"/>
+      <text x="420" y="282" font-size="11" text-anchor="middle" fill="var(--sub)">dbt Semantic Layer</text>
+
+      <!-- L3 治理侧群 -->
+      <circle cx="575" cy="222" r="5" fill="var(--warn)"/>
+      <text x="575" y="208" font-size="11" text-anchor="middle" fill="var(--sub)">Google Knowledge Catalog</text>
+      <circle cx="620" cy="252" r="5" fill="var(--warn)"/>
+      <text x="620" y="240" font-size="11" text-anchor="middle" fill="var(--sub)">AWS SageMaker Catalog</text>
+      <circle cx="560" cy="282" r="5" fill="var(--warn)"/>
+      <text x="556" y="270" font-size="11" text-anchor="middle" fill="var(--sub)">DataHub / Atlan / Alation …</text>
+      <circle cx="650" cy="282" r="5" fill="var(--warn)"/>
+      <text x="660" y="270" font-size="11" text-anchor="middle" fill="var(--sub)">DataLeap / 小Q</text>
+      <!-- L3 开发者 -->
+      <circle cx="590" cy="350" r="5" fill="var(--warn)"/>
+      <text x="590" y="336" font-size="11" text-anchor="middle" fill="var(--sub)">dbt Copilot / Looker Gemini</text>
+      <circle cx="660" cy="372" r="5" fill="var(--warn)"/>
+      <text x="672" y="360" font-size="11" text-anchor="middle" fill="var(--sub)">AtScale / 数势语义工厂</text>
+
+      <!-- 逼近者 -->
+      <circle cx="742" cy="238" r="6" fill="var(--bad)"/>
+      <text x="742" y="222" font-size="11.5" font-weight="600" text-anchor="middle" fill="currentColor">Aloudata BIG</text>
+      <circle cx="762" cy="286" r="6" fill="var(--bad)"/>
+      <text x="770" y="272" font-size="11.5" font-weight="600" text-anchor="middle" fill="currentColor">Atlan Context Agents</text>
+      <circle cx="742" cy="352" r="6" fill="var(--bad)"/>
+      <text x="742" y="336" font-size="11.5" font-weight="600" text-anchor="middle" fill="currentColor">Snowflake Autopilot</text>
+      <circle cx="800" cy="322" r="6" fill="var(--bad)"/>
+      <text x="812" y="308" font-size="11.5" font-weight="600" text-anchor="middle" fill="currentColor">Cortex Sense ◦私预</text>
+      <circle cx="712" cy="316" r="6" fill="var(--bad)"/>
+      <text x="700" y="332" font-size="11.5" text-anchor="middle" fill="currentColor">euno.ai / Select Star</text>
+
+      <!-- MetricLens -->
+      <rect x="770" y="76" width="130" height="56" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.6"/>
+      <text x="835" y="100" font-size="13" font-weight="700" text-anchor="middle" fill="currentColor">MetricLens</text>
+      <text x="835" y="118" font-size="10.5" text-anchor="middle" fill="var(--sub)">L4 × 消费端 · 空位</text>
+      <path d="M806 238 Q850 190 838 136" stroke="var(--bad)" fill="none" stroke-dasharray="5 4" marker-end="url(#ga)" opacity="0.7"/>
+      <text x="880" y="185" font-size="10.5" fill="var(--muted)">逼近方向</text>
+    </svg>
+    </div>
+    <figcaption><b>图 · 竞争格局定位。</b>L2 产品能在消费端展示口径——但展示的是<em>人工预先定义</em>的口径；L3 产品会自动生成——但生成的是<em>表/列描述或定义草稿</em>，全部停在治理与开发者侧。红点是 2026 年出现的逼近者（自动提取存量指标语义），虚线是它们的演进方向。右上角（自动合成 × 消费端透出）截至检索日仍是空位。</figcaption>
+  </figure>
+</section>
+
+<!-- §2 四赛道 -->
+<section>
+  <div class="sec-head"><span class="sec-no">§2</span><h2>四赛道扫描结果</h2></div>
+
+  <h3>国际云厂商（5 家，均未达 L4）</h3>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>厂商 / 产品</th><th>最接近的功能</th><th>等级</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td><b>Snowflake</b> Semantic View Autopilot</td><td>分析表元数据 + <b>查询历史</b>自动生成语义视图草稿（实体映射、关系推断、指标建议），并持续监控用法漂移提议更新</td><td><span class="lv lv-35">L3.5 最接近</span></td><td class="tag">GA 2026-02</td></tr>
+      <tr><td>Snowflake Cortex Sense</td><td>从查询历史 + Power BI/Tableau 度量自动提取语义定义，冲突时提示人裁决——但服务对象是 AI agent 的查询准确率，不是给人看的看板</td><td><span class="lv lv-35">L3.7</span></td><td class="tag">私有预览 2026-06</td></tr>
+      <tr><td><b>Google</b> Knowledge Catalog（原 Dataplex）</td><td>Gemini 自动策展：生成描述、按 schema/查询日志推断业务意图、自动列级血缘——官方明确无指标口径合成</td><td><span class="lv lv-3">L3</span></td><td class="tag">GA</td></tr>
+      <tr><td><b>Databricks</b> Unity Catalog Business Semantics</td><td>Metric Views 人工定义（YAML/UI），定义在 AI/BI 看板透出、带血缘；AI 仅辅助起草单个 measure 表达式</td><td><span class="lv lv-2">L2+L3</span></td><td class="tag">GA 2026-06</td></tr>
+      <tr><td><b>AWS</b> SageMaker Catalog / Quick Suite</td><td>Bedrock 生成资产/列描述；Topics 语义层仍人工策展</td><td><span class="lv lv-3">L3</span></td><td class="tag">GA</td></tr>
+      <tr><td><b>Microsoft</b> Fabric IQ / Power BI Copilot</td><td>metric sets 已宣布退役（2025-10 停新建）；Copilot 仅解释单条 DAX；本体建模仍人工</td><td><span class="lv lv-2">L2+L3</span></td><td class="tag">IQ GA / 部分预览</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>国内厂商与指标平台（13 家，均未达 L4）</h3>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>厂商 / 产品</th><th>最接近的功能</th><th>等级</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td><b>Aloudata BIG</b>（大应科技）</td><td>算子级血缘自动解析存量 SQL/存储过程/报表，<b>"提取字段主要加工口径、自动化口径盘点"</b>、判定字段语义差异（聚合/粒度/周期/范围）——已产品化。纯 SQL 解析器路线（无 LLM 业务语义与互验），产出面向治理团队，不上 BI 看板</td><td><span class="lv lv-35">L3.5 国内最接近</span></td><td class="tag">已上线</td></tr>
+      <tr><td>数势科技 SwiftAgent 语义工厂</td><td>选表后 LLM + 行业指标库自动生成指标与语义层——AI 冷启动注册，起点是表而非存量多层 ETL，产物入语义层出口</td><td><span class="lv lv-3">L3</span></td><td class="tag">已上线 2025-04</td></tr>
+      <tr><td>阿里 Dataphin / DataWorks / Quick BI</td><td>指标中心规范注册（L2）；V5.0 智能生成表/指标属性描述（Beta）；小 Q 问数与波动归因</td><td><span class="lv lv-2">L2+L3</span></td><td class="tag">已上线</td></tr>
+      <tr><td>字节 DataLeap / DataWind</td><td>万级表血缘图谱、找数助手、ChatBI 智能体；口径一致靠预配置官方数据集</td><td><span class="lv lv-3">L3</span></td><td class="tag">已上线</td></tr>
+      <tr><td>腾讯 WeData</td><td>指标 MCP：Agent 调用<b>预注册</b>指标服务（NL→指标→结果），端到端血缘</td><td><span class="lv lv-2">L2+L3</span></td><td class="tag">已上线 2026-02</td></tr>
+      <tr><td>Kyligence / 网易有数 / 衡石 / 观远 / 华为 / 百度</td><td>清一色"先注册定义 → AI 消费"：指标平台 + NL2Metrics / ChatBI</td><td><span class="lv lv-2">L1–L3</span></td><td class="tag">已上线</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>数据目录 / 治理工具（11 家，均未达 L4）</h3>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>产品</th><th>最接近的功能</th><th>等级</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td><b>Atlan</b> Context Agents</td><td>读血缘 + SQL + 查询历史 + BI 语义，自动生成描述并<b>"推断 metrics"</b>与业务本体，人审认证后经 MCP 下发；描述生成已规模化（50+ 客户 69 万条，87% 达人写水准）。metrics 推断为 2026-06 新宣布，GA 未明；落点在目录，无互验/置信/证据 UI</td><td><span class="lv lv-35">L3.5</span></td><td class="tag">宣布 2026-06</td></tr>
+      <tr><td><b>euno.ai</b></td><td>把 Tableau/Looker 存量 measure <b>确定性代码化</b>为 dbt/MetricFlow 并双向同步 + 漂移告警——"从存量 BI 提取指标逻辑"最实的落地；治理向 shift-left，不生成业务口径叙述</td><td><span class="lv lv-35">L3.5</span></td><td class="tag">GA</td></tr>
+      <tr><td><b>Select Star</b></td><td>自动从 BI 仪表盘提取 measures + 列级血缘生成指标文档（Draft + 人审 + 查重），可反向生成 Cortex 语义模型——源是 BI 端元数据，非多层 SQL 端到端</td><td><span class="lv lv-35">L3.3</span></td><td class="tag">GA</td></tr>
+      <tr><td>DataHub Cloud / Alation / Collibra / OpenMetadata / Secoda</td><td>AI 生成表/列描述（血缘上下文 + 采样 + 使用模式），未人审加标记；均无指标端到端口径</td><td><span class="lv lv-3">L3</span></td><td class="tag">GA</td></tr>
+      <tr><td>Monte Carlo / Metaphor</td><td>可观测主线不碰口径；Metaphor 2025 被 KPMG 收购退场</td><td><span class="lv lv-3">—</span></td><td class="tag">—</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>语义层与 BI（10 家，均未达 L4）</h3>
+  <div class="tbl-scroll"><table>
+    <thead><tr><th>产品</th><th>最接近的功能</th><th>等级</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td><b>dbt Copilot</b>（dbt 已与 Fivetran 合并）</td><td>IDE 中对<b>单个</b>模型生成 semantic model/metrics YAML <b>草稿</b>，开发者逐个触发、人工把关；官方注明 spec 支持不全</td><td><span class="lv lv-3">L3</span></td><td class="tag">GA（Starter/Ent）</td></tr>
+      <tr><td>Cube D3 / AtScale One-Click Modeling</td><td>按 warehouse <b>schema</b> 一键起草语义模型（表结构驱动，非存量 SQL 逻辑提取）</td><td><span class="lv lv-3">L3</span></td><td class="tag">GA 2025</td></tr>
+      <tr><td>Tableau Pulse / ThoughtSpot Spotter / Omni / Sigma / Hex</td><td>指标层全部人工定义（L2），AI 做消费端问答/洞察/公式解释</td><td><span class="lv lv-2">L2+L3</span></td><td class="tag">GA</td></tr>
+      <tr><td>Looker / Power BI</td><td>LookML/DAX 正向语义层；Gemini/Copilot 辅助写定义代码</td><td><span class="lv lv-2">L2+L3</span></td><td class="tag">GA</td></tr>
+    </tbody>
+  </table></div>
+
+  <p class="note">调研方法与局限：四路并行检索，以官方 docs/changelog/发布稿为准，营销稿单独标注；国内一路因网络受限基于搜索摘要交叉验证，未逐页打开原文；私有预览功能（Cortex Sense、Purview 术语生成等）按公开信息判级。各条目来源 URL 见文末附注。</p>
+</section>
+
+<!-- §3 为什么没人做 -->
+<section>
+  <div class="sec-head"><span class="sec-no">§3</span><h2>为什么没人上线 L4——五个原因</h2></div>
+  <ol>
+    <li><strong>商业动机错位（最根本）。</strong>云厂商和指标平台卖的是"正向治理"：先注册定义、生产消费都走单一出口，客户为"收敛"付费。逆向从存量提取口径，等于承认"不先买我的指标平台也能把口径说清楚"——这与自家 L2 产品线左右互搏。所以巨头的 AI 全部长在"帮你更快建语义层"（AtScale 一键建模、dbt Copilot、数势语义工厂），而不是"替你解释存量"。</li>
+    <li><strong>责任与准确率风险。</strong>口径展示错了比不展示更糟：业务按错口径做决策，责任落在展示方。看遍 39 家，所有 AI 元数据功能一律是"草稿 + 人审 + AI 标记"形态（DataHub 的 sparkle 图标、Select Star 的 Draft 标签、Atlan 的人审认证），没有一家敢把 AI 生成的内容直接放到业务侧看板。缺一套"机器可验证"的置信机制，就不敢过这条线——这正是双通道互验 + 证据绑定要解决的问题。</li>
+    <li><strong>解析覆盖率是工程深坑。</strong>真实环境字段级血缘本身就是行业老大难（Aloudata 拿"Oracle/DB2 解析准确率 90%"当核心卖点），跨引擎方言、存储过程、脚本拼 SQL、Flink 代码都会断链。多层端到端<em>语义等效还原</em>比血缘更难一层。云厂商只看得到自己引擎内的那一段，谁都没有跨栈全量视角。</li>
+    <li><strong>买单人分裂。</strong>口径之痛长在消费端（业务、分析师），预算在生产端（数据平台团队），而生产端的 KPI 是"建好语义层"不是"解释存量"。没有天然采购路径，产品化动力不足。</li>
+    <li><strong>技术窗口 2024 年后才打开。</strong>可靠的 LLM 逐层 SQL 解读需要长上下文 + 强 SQL 理解 + 可接受的成本，这是近两年的事。巨头先摘的是低风险果子（表/列描述），指标级端到端是下一站——Snowflake Autopilot（2026-02 GA）、Cortex Sense（2026-06 私预）、Atlan Context Agents（2026-06）说明他们正在路上，只是当前目的地是"喂 AI agent / 建语义层"，不是"给人看"。</li>
+  </ol>
+  <div class="callout">
+    <p><strong>趋势判断：</strong>空位是真的，但不是永久的。三个信号——① Snowflake 已做"查询历史→指标建议 + 用法漂移监控"；② Atlan 宣布"推断 metrics"；③ Fabric metric sets 之死说明纯人工注册形态在退潮。合理预期 12–24 个月内会有巨头把"自动提取"推到消费端。先发优势要靠<strong>互验可信度</strong>（他们都没有）和<strong>消费端体验</strong>（他们都不在）来守。</p>
+  </div>
+</section>
+
+<!-- §4 差距 -->
+<section>
+  <div class="sec-head"><span class="sec-no">§4</span><h2>MetricLens 距真实线上应用的差距</h2></div>
+  <p>按"技术墙 → 信任墙 → 工程底座"三层排序；每条都对照当前实现（dbt + DuckDB、15 指标、单机）如实评估。</p>
+
+  <h3>技术墙：解析覆盖面（最硬的一堵）</h3>
+  <ul>
+    <li><strong>方言与形态。</strong>现在的 100% 血缘成立于"每个模型是一个干净 SELECT、单一 DuckDB 方言"。真实生产是 Hive/Spark/Flink/ClickHouse 混布 + 自定义 UDF + 存储过程 + Python 脚本拼 SQL + Flink DataStream（根本没有 SQL 文本）。血缘一断链，通道一为空，互验失去锚点，整卡降级——解析成功率直接决定产品可用面。</li>
+    <li><strong>BI 最后一公里。</strong>我们直读 APP 表；真实看板经过 BI 私有语义层（数据集/计算字段），"看板字段 → SQL"的映射要逐家 BI 适配（Tableau/QuickBI/自研）。euno 和 Select Star 恰好做的是这一段，是潜在的互补对象。</li>
+    <li><strong>规模与增量。</strong>15 指标全量重算分钟级；真实是数千看板 × 数万指标 × 日均数百次变更，需要增量血缘（只重算受影响子图）、变更触发定点刷新、LLM 成本预算控制。内容寻址缓存方向对，增量图计算还没有。</li>
+  </ul>
+
+  <h3>信任墙：口径的权威性与责任</h3>
+  <ul>
+    <li><strong>认证工作流缺失。</strong>自动提取的口径"无主"。真实落地形态几乎必然是"AI 起草 → 指标 owner 确认 → 盖章发布"，卡片要区分"AI 合成（高置信）"与"owner 已认证"两种状态，配争议与修订流程。这不是妥协——调研显示这是全行业铁律（无一家跳过人审），我们的置信分级恰好是这套工作流的天然底座。</li>
+    <li><strong>评测自证问题。</strong>14/14、100% 全部出在自造数仓 + 自造陷阱上。上线前需要：客户环境抽样人工标注 golden set、按库回归、线上"口径不对"反馈闭环。没有跨库 benchmark，准确率宣称不可信。</li>
+    <li><strong>LLM 私有化。</strong>SQL 含表结构与业务逻辑，多数数据团队不允许出内网——需要私有化模型部署或脱敏层；数万指标规模下 PROMPT_VER 升级引发的全量重跑是真金白银。</li>
+  </ul>
+
+  <h3>工程底座：从演示到服务</h3>
+  <ul>
+    <li>权限：技术口径会暴露底层表结构与过滤逻辑，需对齐行/列级权限（谁能看哪层口径）；多租户、审计、SSO。</li>
+    <li>高可用：单机 DuckDB + 文件指针 → 元数据库 + 对象存储 + 服务化部署。</li>
+    <li>漂移快照当前只覆盖 15 个看板指标，全列漂移在真实规模是增量图计算问题。</li>
+    <li>生态位：真实买家已有目录/元数据平台（DataHub/Dataphin/Atlan），MetricLens 更现实的形态是"口径引擎/插件"接入既有体系，而非再造一个平台。</li>
+  </ul>
+
+  <h3>落地形态建议（按可行性排序）</h3>
+  <ol>
+    <li><strong>存量口径考古工具</strong>——服务"要上指标平台但存量没人说得清"的团队，做一次性口径盘点与迁移 bootstrap。与 L2 指标平台是互补而非竞争（帮它们冷启动），也避开与巨头正面相撞。</li>
+    <li><strong>BI 口径插件</strong>——在既有看板上加"口径 ⓘ"层，不替换任何现有系统；消费端体验是全场唯一空位，也是我们已验证的部分。</li>
+    <li><strong>治理巡检服务</strong>——漂移检测 + 重复建设扫描作为持续订阅价值（Snowflake 已验证"用法漂移监控"是刚需方向）。</li>
+  </ol>
+  <p>要守住的差异化硬点：<strong>双通道互验 + 逐条证据绑定</strong>（全场 AI 功能都没有 verification story）、<strong>消费端原生透出</strong>（全场空位）、<strong>漂移与指纹治理</strong>（仅 Snowflake/euno 有雏形）。</p>
+</section>
+
+<footer>
+  <p>检索执行：2026-08-26，四路并行（国际云厂商 / 国内厂商与指标平台 / 数据目录治理 / 语义层与 BI），39 个产品。
+  主要来源（节选）：Snowflake docs（Semantic View Autopilot / Cortex Sense）、Databricks 官方博客（Business Semantics，2026-06）、
+  Google Cloud docs（Knowledge Catalog）、Microsoft Fabric 博客（metric sets 退役公告）、Atlan Snowflake Summit 2026 公告、
+  dbt docs（Copilot）、Select Star docs（Metrics Generation）、euno.ai、Aloudata 官网与官方号（营销稿已标注）、
+  阿里云/火山引擎/腾讯云/华为云官方文档。完整 URL 清单见项目 <code>docs/</code> 同名文档源码注释。</p>
+</footer>
+
+</div>
+<!-- ============ 调研来源 URL 清单(2026-08-26) ============
+国际云厂商:
+https://aws.amazon.com/about-aws/whats-new/2024/03/ai-recommendations-descriptions-amazon-datazone/
+https://docs.aws.amazon.com/sagemaker-unified-studio/latest/userguide/autodoc.html
+https://aws.amazon.com/blogs/business-intelligence/reimagine-business-intelligence-amazon-quicksight-evolves-to-amazon-quick-suite/
+https://docs.cloud.google.com/dataplex/docs/introduction
+https://cloud.google.com/blog/products/business-intelligence/looker-updates-for-agentic-bi-at-next26
+https://community.fabric.microsoft.com/t5/Power-BI-Updates-Blog/Announcing-Metrics-Sets-are-widely-available-in-Preview/ba-p/5174328
+https://learn.microsoft.com/en-us/fabric/iq/overview
+https://powerbi.microsoft.com/en-us/blog/generate-measure-descriptions-with-copilot-preview/
+https://www.databricks.com/blog/redefining-semantics-data-layer-future-bi-and-ai
+https://docs.databricks.com/aws/en/business-semantics/metric-views/create-edit
+https://docs.snowflake.com/en/user-guide/views-semantic/autopilot
+https://www.snowflake.com/en/news/press-releases/snowflake-delivers-semantic-view-autopilot-as-the-foundation-for-trusted-scalable-enterprise-ready-AI/ (营销通稿)
+https://docs.snowflake.com/en/user-guide/views-semantic/overview
+国内:
+https://help.aliyun.com/zh/dataworks/user-guide/overview
+https://help.aliyun.com/zh/dataphin/semimanaged-v4/product-overview/release-notes-for-2025
+https://help.aliyun.com/zh/quick-bi/user-guide/smartq
+https://www.volcengine.com/docs/4726/1185229
+https://www.doit.com.cn/p/502337.html
+https://cloud.tencent.com/developer/article/2631817
+https://support.huaweicloud.com/intl/zh-cn/productdesc-dataartsstudio/productdesc-dataartsstudio-pdf.pdf
+https://cloud.baidu.com/doc/SUGAR/s/Xlpqgy2fl
+https://cn.kyligence.io/blog/kyligence-zen-ai-kyligence-copilot/ (营销稿)
+https://aloudata.com/products/big
+https://blog.csdn.net/Aloudata/article/details/143204155 (官方号,营销稿)
+https://aloudata.com/products/agent
+https://www.qbitai.com/2025/04/274846.html
+https://www.6aiq.com/article/1701860112066
+https://docs.guandata.com/product/chatbi/ChatBI-product-introduction
+https://www.hengshi.com/blog/1213.html (营销稿)
+https://www.smartbi.com.cn/article/246
+数据目录/治理:
+https://atlan.com/snowflake-summit-2026-announcements/
+https://www.alation.com/product/allie-ai/
+https://www.collibra.com/blog/the-new-standard-for-metadata-documentation-meet-your-new-ai-writing-assistant
+https://docs.datahub.com/docs/automations/ai-docs
+https://blog.getcollate.io/introducing-collate-metapilot
+https://www.selectstar.com/resources/modern-data-governance-automating-data-documentation-with-lineage-and-ai
+https://www.secoda.co/blog/ultimate-technical-guide-secoda-ai
+https://kpmg.com/us/en/media/news/kpmg-acquires-metaphors-technology-platform.html
+https://www.montecarlodata.com/blog-agent-observability-announcement/
+https://euno.ai/use-cases/integrations/dbt/
+https://datahub.com/blog/what-is-snowflake-cortex-sense/
+语义层/BI:
+https://docs.getdbt.com/docs/dbt-ai/copilot-overview
+https://www.fivetran.com/press/fivetran-dbt-labs-complete-merger-to-create-the-data-infrastructure-for-trusted-ai-agents
+https://cube.dev/
+https://www.atscale.com/blog/atscale-2025-product-announcements/
+https://cloud.google.com/blog/products/data-analytics/gemini-in-looker-deep-dive
+https://help.tableau.com/current/tableau-next/en-us/tableau_next_setup_guide_enable_tua_ai.htm
+https://blog.crossjoin.co.uk/2025/08/10/power-bi-copilot-ai-instructions-and-dax-measure-definitions/
+https://www.thoughtspot.com/press-releases/thoughtspot-introduces-spotter-semantics-to-bring-trust-and-context-to-enterprise-ai
+https://omni.co/omni-vs-looker
+https://hex.tech/product/integrations/dbt/
+https://www.sigmacomputing.com/blog/sigma-fall-2025-release-your-path-to-smart-fast-insights
+https://docs.selectstar.com/features/documents/metrics/metrics-generation
+https://docs.snowflake.com/en/release-notes/2025/other/2025-12-02-cortex-analyst-optimization
+============ 清单结束 ============ -->

@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: dm_trade_stats_1d
+    description: 交易域日汇总(统计日=支付日)
+    columns:
+      - name: dt
+        tests: [unique, not_null]
+      - name: gmv
+        description: GMV(元):支付成功订单金额(人民币口径),剔除秒退单;测试/风控单已在明细层剔除
+      - name: refund_amt
+        description: 当日退款金额(元):按退款完成日归属——与售后域 refund_amt_total 重复建设(血缘指纹一致)
+      - name: refund_rate
+        description: 当日退款率=当日退款金额/当日支付金额,不限退款距支付的时间窗——与 APP 层 refund_rate_14d 同名不同义
+  - name: dm_after_sale_stats_1d
+    description: 售后域日汇总(统计日=退款完成日)
+    columns:
+      - name: dt
+        tests: [unique, not_null]
+      - name: refund_amt_14d
+        description: 近14天口径退款金额(元):仅计退款到账距支付≤14个日历日的部分
+  - name: dm_logistics_stats_1d
+    description: 物流域日汇总(揽收日 cohort)
+    columns:
+      - name: dt
+        tests: [unique, not_null]
+      - name: delivered_rate
+        description: 妥投率=已签收运单数/已揽收运单数(分母为揽收而非发货;签收按运单去重)
+      - name: avg_ship_hours
+        description: 平均发货时长(小时)=支付→快递揽收,剔除预售单;锚点非商家发货操作时间
+  - name: dm_user_new_stats_1d
+    description: 用户域日汇总(统计日=支付日)
+    columns:
+      - name: dt
+        tests: [unique, not_null]
+      - name: new_user_cnt
+        description: 新客数:历史首笔支付成功订单发生在当日的用户数(非注册口径)
+      - name: repurchase_rate
+        description: 复购率=当日支付用户中购买序号≥2 的用户占比

@@ -1,0 +1,24 @@
+version: 2
+
+models:
+  - name: dwm_trade_order_flag_1d
+    description: 支付订单旗标层:秒退旗标(支付后60秒内发起退款)、全历史购买序号、渠道延迟归因(直播结束30分钟内支付归直播间)
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: is_flash_refund
+        description: 秒退旗标:1=支付后 60 秒内发起退款申请(直播刷单特征),GMV 口径剔除
+      - name: purchase_seq
+        description: 该用户全历史第几笔支付成功订单(窗口序号);=1 即首购,>=2 即复购
+      - name: attributed_channel
+        description: 归因渠道:直播间下单且(直播间支付 或 直播结束30分钟内完成支付)归 live,否则归支付端渠道
+        tests:
+          - accepted_values:
+              values: ['app', 'h5', 'live']
+  - name: dwm_refund_order_agg_1d
+    description: 订单×日退款聚合:统计日=退款完成日;含14天窗口内退款分量
+  - name: dwm_user_first_pay_1d
+    description: 用户首购回溯:全历史最早支付成功时间,新客口径底表
+    columns:
+      - name: user_id
+        tests: [unique, not_null]

@@ -1,0 +1,172 @@
+version: 2
+
+sources:
+  - name: ods
+    description: 原始数据层——业务库/支付系统/物流系统经 binlog 增量同步落仓,保留多版本记录与原始命名,是口径追溯的终点
+    schema: ods
+    tables:
+      - name: ods_order_info
+        description: 订单主表(交易域,来自订单业务库)。增量同步,同一 order_id 存在多版本快照,以 binlog_ts 最大者为最新状态
+        columns:
+          - name: order_id
+            description: 订单号(业务主键;表内因多版本不唯一)
+          - name: user_id
+            description: 下单用户 ID
+          - name: order_time
+            description: 下单时间
+          - name: pay_time
+            description: 支付成功时间;未支付为 NULL
+          - name: order_status
+            description: '订单状态枚举: 10=已下单未支付, 20=已支付, 30=已发货, 40=已签收, 50=交易成功, 60=已取消, 90=交易关闭(全额退款)'
+          - name: channel_id
+            description: '支付发生端渠道: app=主站App, h5=H5/小程序, live=直播间内直接支付'
+          - name: live_room_id
+            description: 直播间 ID;订单产生于直播间场景时有值(即使最终跳到 App 支付),非直播场景为 NULL
+          - name: live_end_time
+            description: 关联直播场次的结束时间;仅直播间场景订单有值,用于渠道延迟归因
+          - name: category_id
+            description: 类目 ID(一级类目)
+          - name: category_name
+            description: 类目名称(下单时快照)
+          - name: province
+            description: 收货省份
+          - name: order_amt
+            description: 订单应付金额,单位:元,币种见 currency 字段(原币种金额,非人民币口径)
+          - name: currency
+            description: '币种: CNY=人民币, USD=美元(跨境单);人民币口径需按支付日汇率折算'
+          - name: item_cnt
+            description: 订单商品行数
+          - name: is_presale
+            description: '是否预售单: 1=预售(发货远晚于支付), 0=普通'
+          - name: is_risk_order
+            description: '是否风控拦截单: 1=风控命中(刷单/黄牛等),下游统计需剔除'
+          - name: binlog_ts
+            description: binlog 采集时间戳,同一订单取最大值即最新快照
+      - name: ods_order_item
+        description: 订单商品明细表(交易域),订单下的 SKU 行
+        columns:
+          - name: item_id
+            description: 明细行主键
+          - name: order_id
+            description: 所属订单号
+          - name: sku_id
+            description: SKU ID
+          - name: sku_name
+            description: SKU 名称
+          - name: category_id
+            description: 类目 ID
+          - name: category_name
+            description: 类目名称
+          - name: item_amt
+            description: 行金额(原币种,元)
+          - name: quantity
+            description: 购买件数
+          - name: currency
+            description: 币种,同订单主表
+          - name: binlog_ts
+            description: binlog 采集时间戳
+      - name: ods_payment_flow
+        description: 支付流水表(来自支付系统)。注意金额单位为**分**,且已按支付时点折算为人民币
+        columns:
+          - name: pay_id
+            description: 支付流水号
+          - name: order_id
+            description: 关联订单号
+          - name: pay_amt_cent
+            description: 支付金额,单位:分(人民币);使用时需 /100 折元
+          - name: pay_type
+            description: '支付方式: ALIPAY=支付宝, WXPAY=微信, CARD=银行卡, BALANCE=余额'
+          - name: pay_status
+            description: 'SUCCESS=支付成功, FAIL=支付失败(失败流水也会落表)'
+          - name: pay_time
+            description: 支付(尝试)时间
+      - name: ods_exchange_rate
+        description: 汇率表(SCD2 缓变维):每币种分段生效,折人民币需按业务时点落在 [effective_start, effective_end] 区间取汇率
+        columns:
+          - name: currency
+            description: 币种代码
+          - name: rate_to_cny
+            description: 1 单位外币折人民币汇率
+          - name: effective_start
+            description: 生效起始日(含)
+          - name: effective_end
+            description: 生效结束日(含)
+      - name: ods_refund_apply
+        description: 退款申请表(售后域,来自售后业务库)。增量同步多版本;金额单位为**分**
+        columns:
+          - name: refund_id
+            description: 退款单号(业务主键;表内因多版本不唯一)
+          - name: order_id
+            description: 关联订单号
+          - name: refund_type
+            description: 'ONLY_REFUND=仅退款, RETURN_REFUND=退货退款'
+          - name: refund_status
+            description: 'APPLY=申请中, REFUNDED=退款成功, REJECTED=已拒绝'
+          - name: refund_reason
+            description: 退款原因(文本枚举)
+          - name: refund_apply_amt_cent
+            description: 申请退款金额,单位:分;支持部分退款(小于支付金额)
+          - name: apply_time
+            description: 申请发起时间
+          - name: binlog_ts
+            description: binlog 采集时间戳,同一退款单取最大值即最新状态
+      - name: ods_refund_payment
+        description: 退款打款表(来自支付系统):退款成功后的实际打款记录;金额单位为**分**,且存在打款金额缺失(NULL)的脏数据
+        columns:
+          - name: refund_pay_id
+            description: 打款流水号
+          - name: refund_id
+            description: 关联退款单号
+          - name: order_id
+            description: 关联订单号
+          - name: refund_suc_amt_cent
+            description: 实际打款金额,单位:分;历史接口原因存在 NULL,使用时需回退到申请金额兜底
+          - name: payout_channel
+            description: 打款渠道
+          - name: refund_suc_time
+            description: 退款到账(打款成功)时间——售后统计的标准时间锚点
+      - name: ods_logistics_order
+        description: 物流运单表(物流域):一订单一运单(本仓演示简化)
+        columns:
+          - name: waybill_id
+            description: 运单号
+          - name: order_id
+            description: 关联订单号
+          - name: carrier
+            description: 承运商
+          - name: warehouse_code
+            description: 发货仓编码
+          - name: ship_op_time
+            description: 商家发货操作时间(点击发货);注意与实际揽收时间不同
+          - name: logistics_status
+            description: 'TO_SHIP=待发货, SHIPPED=已出库, IN_TRANSIT=运输中, SIGNED=已签收, REJECTED=拒收'
+      - name: ods_logistics_trace
+        description: 物流轨迹事件表(物流域):事件流,同一运单同一事件可能重复上报(如重复签收回传)
+        columns:
+          - name: trace_id
+            description: 事件主键
+          - name: waybill_id
+            description: 运单号
+          - name: event_type
+            description: 'SHIP=仓库出库, PICKUP=快递揽收, TRANSPORT=运输中转, DELIVERY=派送中, SIGN=签收, REJECT=拒收'
+          - name: event_time
+            description: 事件发生时间
+      - name: ods_user_info
+        description: 用户表(用户域):注册用户全量;含测试账号标记
+        columns:
+          - name: user_id
+            description: 用户 ID
+          - name: nick_name
+            description: 昵称
+          - name: gender
+            description: 'F=女, M=男, U=未知'
+          - name: province
+            description: 常用收货省份
+          - name: register_time
+            description: 注册时间(注意:新客口径以首次支付而非注册定义)
+          - name: register_channel
+            description: '注册渠道: app/h5/live/ground(地推)'
+          - name: is_test_account
+            description: '1=内部测试账号,统计需剔除'
+          - name: binlog_ts
+            description: binlog 采集时间戳
