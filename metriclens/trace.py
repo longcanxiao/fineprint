@@ -82,14 +82,15 @@ def trace(graph: dict, model: str, column: str) -> dict:
         scopes = model_scopes.get(m, {"main"})
         for c in models[m]["conditions"]:
             # 行集条件(main/FROM/inner join 闭包内)对全列生效;其余按值路径 scope 过滤
-            if not c.get("row_level") and c["scope"] not in scopes:
+            # (scope 唯一名可能带 @n 消歧后缀,列级 scopes 是裸别名,按 base 比对)
+            if not c.get("row_level") and c["scope"].split("@")[0] not in scopes:
                 continue
             if c["fp"] in seen_fp:
                 continue
             seen_fp.add(c["fp"])
             conds.append({**c, "src_path": models[m]["src_path"]})
         for s in models[m]["semantics"]:
-            if s.get("scope", "main") not in scopes:
+            if s.get("scope", "main").split("@")[0] not in scopes:
                 continue
             if s.get("column") and (m, s["column"]) not in visited and s["type"] != "stat_date_key":
                 continue

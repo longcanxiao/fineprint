@@ -152,14 +152,20 @@ class DbtProject:
     # ---------------- 业务注释(供口径合成)----------------
     @cached_property
     def column_docs(self) -> dict:
-        """{table_or_model_name: {column: description}},来自 manifest 的 schema.yml 文档。"""
+        """{table_or_model_name: {column: description}},来自 manifest 的 schema.yml 文档。
+        源表同时登记 'schema.identifier' 全名键——跨 schema 同名源表的裸名键会互相
+        覆盖,消费方应优先用全名查询。"""
         docs: dict = {}
         for coll in (self.manifest.get("nodes", {}), self.manifest.get("sources", {})):
             for n in coll.values():
                 tbl = n.get("identifier") or n.get("name")
+                keys = [tbl]
+                if n.get("resource_type") == "source" and n.get("schema"):
+                    keys.append(f'{n["schema"]}.{tbl}')
                 for col, meta in (n.get("columns") or {}).items():
                     if meta.get("description"):
-                        docs.setdefault(tbl, {})[col] = meta["description"]
+                        for k in keys:
+                            docs.setdefault(k, {})[col] = meta["description"]
         return docs
 
     # ---------------- 工作目录 ----------------

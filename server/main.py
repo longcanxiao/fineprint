@@ -243,7 +243,7 @@ def governance_report():
     f = GOV_STORE / "governance_report.json"
     if not f.exists():
         return {"generated_at": None, "duplicates": [], "distinct": [],
-                "note": "治理报告尚未生成(运行 python -m governance.arbitrate)"}
+                "note": "治理报告尚未生成(运行 metriclens govern --project <dbt 项目>)"}
     return json.loads(f.read_text())
 
 

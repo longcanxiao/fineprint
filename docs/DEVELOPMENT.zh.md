@@ -20,7 +20,7 @@ benchmark/              # 评测:eval_lineage.py(golden set) manifest_check.py e
 server/                 # FastAPI 取数服务(端口 8612;/api/lineage/* 血缘,/api/caliber/* 口径卡)
 dashboard/              # React 18 + TS + ECharts 5 业务大盘(端口 5273,/api 代理到 8612)
 jobs/                   # rebuild.sh(一键重建+后置漂移检测) caliber_refresh.sh governance_refresh.sh
-docs/                   # metriclens-asbuilt.html(M1-M5 demo 期落地方案,历史文档) metric-landscape.html(竞品调研) + 人工复核记录
+docs/                   # metric-landscape.html(竞品调研) + 人工复核记录;archive/ 存 demo 期历史落地方案
 ```
 
 ## 快速开始
@@ -54,17 +54,17 @@ bash jobs/caliber_refresh.sh        # 全量刷新 15 张口径卡(LLM 调用,�
 .venv/bin/metriclens synth --project warehouse/dbt_project --only gmv    # 单卡重跑
 ```
 
-双通道设计:通道一 = M3 确定性血缘(S₁/F₁/E₁);通道二 = DeepSeek 逐跳解析单模型 SQL
+双通道设计:通道一 = M3 确定性血缘(S₁/F₁/E₁);通道二 = LLM(任意 OpenAI 兼容端点,METRICLENS_LLM_* 配置)逐跳解析单模型 SQL
 (输入独立,不喂通道一结果),每条过滤必须附 SQL 原文引用并过机器校验(幻觉引用结构上无法通过)。
 互验规则:源字段集合逐项对齐(join 条件列豁免)、过滤条件经同一归一化管道指纹匹配,
 且每条 LLM 过滤按相关性标注(matched/纯关联键/范围外/未解析/可疑)——只有 matched 才进归并,
 范围外与可疑内容不得进入卡片(可疑同时惩罚置信)。
 一致→高置信,表述差异→中置信标注发布,实质分歧→低置信进人工审核队列;
 审核中的卡 API 只返回状态占位,技术/业务内容不对外暴露。
-业务口径 = 已互验技术口径 + 编号证据清单 + schema.yml 中文注释 + lexicon.yml 业务词典 → 受控生成:
+业务口径 = 已互验技术口径 + 编号证据清单 + schema.yml 中文注释 + metriclens.yml 的 lexicon 业务词典 → 受控生成:
 证据只来自血缘/AST/已验证原文(E 条件、S 语义、X 表达式、Q 引用),每条业务条款必须绑定有效证据 ID,
 任一未绑定条款该卡即不得 high;元数据缺失时降级"技术直译 + 待补充业务注释"。
-发布原子性:整批卡写入 `caliber/store/runs/<run_id>/`,全部成功后才切换 `active_run` 指针,
+发布原子性:整批卡写入 `.metriclens/store/runs/<run_id>/`,全部成功后才切换 `active_run` 指针,
 API 只读 active 批次——线上不存在半新半旧的中间态(--only 单卡重跑会从 active 批次补齐其余卡再整批发布)。
 指纹重复扫描(A 档)结果注入卡片 `governance` 字段,看板口径弹层展示"同源同构"治理提示。
 模型:deepseek-v4-flash(逐跳)+ v4-pro(归并/业务)。

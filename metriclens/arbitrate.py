@@ -76,6 +76,7 @@ def build_report(project: DbtProject, cfg: MLConfig, graph: dict) -> dict:
         "a_tier_pairs": len(r["duplicates"]) + len(r["agg_distinct"]),
         "a_tier_dup": len(r["duplicates"]), "a_tier_agg_distinct": len(r["agg_distinct"]),
         "b_tier_pairs": len(cand) - skipped, "b_tier_skipped": skipped,
+        "pairs_truncated": r.get("pairs_truncated", 0),
         "duplicates": duplicates, "distinct": distinct,
         "families": r["families"],
     }

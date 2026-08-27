@@ -17,6 +17,7 @@ import sqlglot
 
 from metriclens import prompts
 from metriclens.config import MetricDef, MLConfig
+from metriclens.governance import agg_signature
 from metriclens.governance import base as colbase
 from metriclens.governance import scan as governance_scan
 from metriclens.lineage import dialect, fingerprint, normalize_condition
@@ -67,27 +68,41 @@ def validate_biz(obj: dict):
 # ---------------- 自由文本词表校验 ----------------
 _FREETEXT_IDENT = re.compile(r"\b[a-z][a-z0-9]*(?:[._][a-z0-9]+)+\b")
 _FREETEXT_NUM = re.compile(r"\b\d{2,}(?:\.\d+)?\b")
+# 时间窗口数字:一位数也校验(限 7 天/1 日内是真口径数字,\d{2,} 拦不住篡改)
+_FREETEXT_WINNUM = re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:天|日|小时|周|个月|months?|days?|hours?|weeks?)")
 _NUM_WHITELIST = {"100"}   # 百分比换算常数,散文公式常见
+_AGG_FN = re.compile(r"\b(sum|count|avg|min|max)\s*\(\s*(distinct\b)?", re.I)
+_AGG_ROWCOUNT = re.compile(r"\b(?:count\s*\(\s*(?:\*|1)\s*\)|sum\s*\(\s*1\s*\))", re.I)
 
 
-def build_vocab(t: dict, title: str, query_filter, docs_ctx: dict, lexicon: dict) -> tuple:
+def build_vocab(t: dict, title: str, query_filter, lexicon: dict, graph: dict | None = None) -> tuple:
     """通道一确定性词表(标识符集 + 数字集):公式/定义/告诫等自由文本里的
-    复合标识符(snake_case/带点引用)与多位数字必须能在这里找到出处。
-    词表不含任何 LLM 产物,杜绝 LLM 自证。"""
+    复合标识符(snake_case/带点引用)与口径数字必须能在这里找到出处。
+    词表不含任何 LLM 产物,也不含 schema 文档——第三方 dbt 包的注释属不可信输入,
+    不得为卡片表述背书;lexicon 是用户在 metriclens.yml 亲手维护的一方配置,保留。
+    标识符集含全图模型/列/源表名:引用真实存在的对象(如维表 dim_user、对比指标列)
+    不是词法幻觉,不拦;口径数字仍限本指标链路——窗口/状态码不得跨指标借用。"""
     parts = [title or "", query_filter or ""]
     parts += [f"{e['model']} {e['column']} {e.get('expr') or ''}" for e in t["expr_chain"]]
     parts += [f"{s.get('schema', '')} {s['table']} {s['column']}" for s in t["sources"]]
     parts += [c["sql"] for c in t["conditions"]]
     parts += [str(s.get("sql") or "") for s in t["semantics"]]
     parts += list(t["models_visited"])
-    parts += [f"{k} {v}" for k, v in (docs_ctx or {}).items()]
     parts += [f"{k} {v}" for k, v in (lexicon or {}).items()]
     text = norm_text(" ".join(parts))
     idents = set()
     for tk in _FREETEXT_IDENT.findall(text):
         idents.add(tk)
         idents.update(tk.split("."))   # 别名点引用(o.is_test_account)按段入表:卡片常写裸列名
-    return idents, set(_FREETEXT_NUM.findall(text)) | _NUM_WHITELIST
+    nums = set(re.findall(r"\b\d+(?:\.\d+)?\b", text)) | _NUM_WHITELIST   # 词表侧宽收,含一位数
+    for name, m in (graph or {}).get("models", {}).items():
+        idents.add(name)
+        idents.update(c.lower() for c in m.get("columns", {}))
+        idents.update(str(tb).lower() for tb in m.get("row_set_tables") or [])
+    for rel, ident in (graph or {}).get("relations", {}).get("sources", {}).items():
+        idents.update((str(rel).lower(), str(ident).lower()))
+        idents.update(str(rel).lower().split("."))
+    return idents, nums
 
 
 def verify_freetext(text, idents: set, nums: set) -> list:
@@ -103,7 +118,29 @@ def verify_freetext(text, idents: set, nums: set) -> list:
 
     bad = [tk for tk in _FREETEXT_IDENT.findall(s) if not ok(tk)]
     bad += [tk for tk in _FREETEXT_NUM.findall(s) if tk not in nums]
+    bad += [tk for tk in _FREETEXT_WINNUM.findall(s) if tk not in nums and tk not in bad]
     return bad
+
+
+def formula_agg_check(formula, link_aggs: set) -> list:
+    """公式聚合一致性(语义锚点):formula 声称的聚合语义必须与通道一表达式链的
+    聚合签名一致——纯散文公式(链路有聚合而公式一个都没写)或凭空多出的聚合都拦。
+    链路签名为空 = 证据不可见,不下结论(与治理同原则)。avg 与 sum/count 互为
+    展开形,豁免。返回失配描述列表;空 = 通过。"""
+    if not link_aggs:
+        return []
+    text = norm_text(str(formula or ""))
+    f_aggs = set()
+    if _AGG_ROWCOUNT.search(text):
+        f_aggs.add("rowcount")
+        text = _AGG_ROWCOUNT.sub(" ", text)   # 剔除行数形,剩余文本按普通聚合抓取
+    f_aggs |= {fn.lower() + (":distinct" if dist else "") for fn, dist in _AGG_FN.findall(text)}
+    if not f_aggs:
+        return [f"公式未表达任何聚合(链路聚合: {sorted(link_aggs)})"]
+    extra = f_aggs - set(link_aggs)
+    if "avg" in extra and {"sum", "count"} <= set(link_aggs):
+        extra.discard("avg")   # avg = sum/count 展开形
+    return [f"公式聚合 {sorted(extra)} 不在链路聚合 {sorted(link_aggs)} 中"] if extra else []
 
 
 # ---------------- 通道二:逐跳抽取 ----------------
@@ -224,20 +261,54 @@ def classify_filters(t: dict, hops_by_model: dict, graph: dict) -> dict:
     return {"f1_fps": f1_fps, "f2_fps": f2_fps, **agg}
 
 
+def _src_ident(s: dict) -> str:
+    """源表身份:schema.table(schema 缺失时裸名)。跨 schema 同名表必须区分。"""
+    sch = s.get("schema") or ""
+    return f"{sch}.{s['table']}" if sch else s["table"]
+
+
 def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set) -> dict:
     # 通道一溯到的叶子表并入源表集:seed / 未在 dbt sources 声明的表(如 jaffle_shop)
     # 也是合法源,否则 s2 永远对不上;保留传入集合以捕捉 LLM 报链路外真实源表的情况
-    source_names = set(source_names) | {s["table"] for s in t["sources"]}
+    idents = {_src_ident(s) for s in t["sources"]}
+    bare_index: dict = {}
+    for s in t["sources"]:
+        bare_index.setdefault(s["table"], set()).add(_src_ident(s))
+    legal = set(source_names) | idents | set(bare_index)
     # 表级源(column="*",COUNT(*) 类行集依赖):LLM 指认该表任意列即视为命中
-    star_tables = {s["table"] for s in t["sources"] if s["column"] == "*"}
-    s1 = {f"{s['table']}.{s['column']}" for s in t["sources"] if s["column"] != "*"}
+    star_tables = {_src_ident(s) for s in t["sources"] if s["column"] == "*"}
+    s1 = {f"{_src_ident(s)}.{s['column']}" for s in t["sources"] if s["column"] != "*"}
+
+    def resolve(raw: str) -> str | None:
+        """LLM 报的表名 → 通道一源表身份。带 schema 时精确比对(明确的 schema 不得
+        被裸名回退改写);裸名仅在无歧义时补全——跨 schema 同名表的裸名指认无法
+        对齐,不补全,诚实进 missing。链路外真实源表保留身份,交给 extra 惩罚。"""
+        tb = raw.replace('"', "").strip()
+        if not tb:
+            return None
+        if "." in tb:
+            two = ".".join(tb.split(".")[-2:])
+            if two in idents:
+                return two
+            if tb in idents:
+                return tb
+            if two in legal or tb in legal:
+                return two   # 已知的链路外表身份:保留,交给 extra 惩罚(不掰正明确指认)
+            tb = tb.split(".")[-1]   # 非已知身份的多段名视为物理修饰(db.schema.tbl),取尾段
+        opts = bare_index.get(tb, set())
+        if len(opts) == 1:
+            return next(iter(opts))
+        if len(opts) > 1:
+            return None
+        return tb if tb in legal else None
+
     s2 = set()
     for out in hops_by_model.values():
         for cinfo in out.get("columns", {}).values():
             for sc in cinfo.get("source_columns", []):
-                tbl = str(sc.get("table", "")).split(".")[-1].strip('"')
-                if tbl in source_names:
-                    s2.add(f"{tbl}.{sc.get('column')}")
+                ident = resolve(str(sc.get("table", "")))
+                if ident:
+                    s2.add(f"{ident}.{sc.get('column')}")
     s2_tables = {e.rsplit(".", 1)[0] for e in s2}
     f1_fps, f2_fps = cls["f1_fps"], cls["f2_fps"]
     covered = len(f2_fps) / len(f1_fps) if f1_fps else 1.0
@@ -306,7 +377,8 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
             hops_by_model[mo] = fut.result()
 
     cls = classify_filters(t, hops_by_model, graph)
-    source_names = set(graph.get("relations", {}).get("sources", {}).values())
+    rel_sources = graph.get("relations", {}).get("sources", {})
+    source_names = set(rel_sources.values()) | set(rel_sources.keys())   # 裸名 + schema 全名
     val = cross_validate(t, hops_by_model, cls, source_names)
 
     order = {mm: i for i, mm in enumerate(t["models_visited"])}
@@ -324,7 +396,7 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
     docs = project.column_docs
     docs_ctx = {}
     for s in t["sources"]:
-        d = docs.get(s["table"], {}).get(s["column"])
+        d = (docs.get(_src_ident(s)) or docs.get(s["table"]) or {}).get(s["column"])
         if d:
             docs_ctx[f"{s['table']}.{s['column']}"] = d
     for e in t["expr_chain"]:
@@ -369,8 +441,16 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
 
     # 自由文本词表校验:公式/摘要/定义/告诫/关键过滤是展示层最显眼的字段,
     # 其中的字段引用与口径数字必须可溯源到通道一词表;失配 → 该卡不得 high
-    v_idents, v_nums = build_vocab(t, m.title, m.query_filter, docs_ctx, cfg.lexicon)
+    v_idents, v_nums = build_vocab(t, m.title, m.query_filter, cfg.lexicon, graph)
     freetext_bad = {}
+    # 聚合锚点比较集 = 值链聚合 + 途经模型内全部列的聚合(LLM 公式重构常内联
+    # 途经模型的中间取数逻辑,如 sign_time = min(case …);凭空聚合仍在集外被拦)
+    link_aggs = set(agg_signature(t))
+    for mo in t["models_visited"]:
+        link_aggs |= set(graph["models"].get(mo, {}).get("agg_fns") or [])
+    agg_bad = formula_agg_check(technical.get("formula"), link_aggs)
+    if agg_bad:
+        freetext_bad["formula_aggs"] = agg_bad
     checks = [("formula", technical.get("formula")), ("summary", technical.get("summary")),
               ("definition", business.get("definition"))]
     checks += [(f"key_filters[{i}]", kf.get("text"))

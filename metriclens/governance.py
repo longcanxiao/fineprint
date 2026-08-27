@@ -15,6 +15,7 @@ import sqlglot
 from sqlglot import exp
 
 from metriclens.config import MLConfig
+from metriclens.lineage import agg_one as _agg_one
 from metriclens.lineage import dialect
 from metriclens.trace import trace
 
@@ -25,17 +26,6 @@ def fingerprint_of(t: dict) -> str:
     conds = sorted({c["fp"] for c in t["conditions"] if not c.get("is_pure_key")})
     return hashlib.md5(json.dumps([src, conds]).encode()).hexdigest()[:16]
 
-
-def _agg_one(f: exp.AggFunc) -> str:
-    """单个聚合的规范签名;行数等价类归一化:COUNT(*) ≡ COUNT(1) ≡ COUNT(常量) ≡ SUM(1)
-    都是行数语义,不同写法不能据此直判"不同指标"。"""
-    name = type(f).__name__.lower()
-    arg = f.this
-    if isinstance(f, exp.Count) and (arg is None or isinstance(arg, (exp.Star, exp.Literal))):
-        return "rowcount"
-    if isinstance(f, exp.Sum) and isinstance(arg, exp.Literal) and arg.name == "1":
-        return "rowcount"
-    return name + (":distinct" if f.find(exp.Distinct) else "")
 
 
 def agg_signature(t: dict) -> tuple:
@@ -52,6 +42,13 @@ def agg_signature(t: dict) -> tuple:
         for f in node.find_all(exp.AggFunc):
             sigs.add(_agg_one(f))
     return tuple(sorted(sigs))
+
+
+def agg_maybe_equivalent(a: tuple, b: tuple) -> bool:
+    """签名不同但可能语义等价的已知展开形:AVG(x) ↔ SUM(x)/COUNT(x)。
+    此类不得确定性判不同义,降入 B 档 LLM 仲裁。"""
+    sa, sb = set(a), set(b)
+    return (sa == {"avg"} and {"sum", "count"} <= sb) or (sb == {"avg"} and {"sum", "count"} <= sa)
 
 
 def base(col: str, suffixes: list) -> str:
@@ -83,13 +80,21 @@ def scan(graph: dict, cfg: MLConfig) -> dict:
             grains[(name, col)] = next(
                 (tuple(graph["models"][e["model"]].get("grain") or [])
                  for e in t["expr_chain"] if graph["models"][e["model"]].get("grain")), ())
+    # 每类结对上限:同指纹组 O(n²) 在大项目可能爆炸,封顶防内存;截断量入报告。
+    # 成员与指纹都排序——结果确定,不随 manifest 顺序漂移
+    PAIR_CAP = max(2000, 50 * (cfg.max_llm_pairs or 40))
     dup_pairs, cand_pairs, families, agg_distinct = [], [], [], []
-    for fp, members in groups.items():
+    truncated = 0
+    for fp in sorted(groups):
+        members = sorted(groups[fp])
         tables = {m for m, _ in members}
         if len(members) < 2 or len(tables) < 2:
             continue
         for i in range(len(members)):
             for j in range(i + 1, len(members)):
+                if len(dup_pairs) + len(cand_pairs) + len(families) + len(agg_distinct) >= PAIR_CAP:
+                    truncated += 1
+                    continue
                 a, b = members[i], members[j]
                 if a[0] == b[0]:
                     continue
@@ -97,8 +102,12 @@ def scan(graph: dict, cfg: MLConfig) -> dict:
                     continue          # 血缘直系是引用,不是重复
                 pair = {"fingerprint": fp, "a": f"{a[0]}.{a[1]}", "b": f"{b[0]}.{b[1]}"}
                 # 签名为空 = 证据不可见(聚合藏在模型内 CTE / 全链无分组),不可比:
-                # 只在两侧证据都在场时下确定性结论,缺证一侧一律落到下一级判据
+                # 只在两侧证据都在场时下确定性结论,缺证一侧一律落到下一级判据;
+                # 已知等价展开形(avg ↔ sum/count)不直判,降入 B 档仲裁
                 if aggs[a] and aggs[b] and aggs[a] != aggs[b]:
+                    if agg_maybe_equivalent(aggs[a], aggs[b]):
+                        cand_pairs.append(pair)
+                        continue
                     agg_distinct.append({**pair, "agg_a": list(aggs[a]), "agg_b": list(aggs[b])})
                     continue          # 聚合语义不同 → 确定性不同义,无须 LLM
                 if grains[a] and grains[b] and grains[a] != grains[b]:
@@ -107,4 +116,5 @@ def scan(graph: dict, cfg: MLConfig) -> dict:
                 same_base = base(a[1], cfg.base_suffixes) == base(b[1], cfg.base_suffixes)
                 (dup_pairs if same_base else cand_pairs).append(pair)
     return {"duplicates": dup_pairs, "candidates": cand_pairs,
-            "families": families, "agg_distinct": agg_distinct}
+            "families": families, "agg_distinct": agg_distinct,
+            "pairs_truncated": truncated}

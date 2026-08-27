@@ -88,16 +88,35 @@ def split_and(e: exp.Expression):
         yield e
 
 
-def scope_name(node: exp.Expression) -> str:
-    """所属作用域:最近的 CTE 别名或内联子查询别名;顶层为 main。
+def _scope_base(anc: exp.Expression) -> str:
+    return anc.alias if isinstance(anc, exp.CTE) else (anc.alias_or_name or "_subq")
+
+
+def scope_ids(ast: exp.Expression) -> dict:
+    """CTE/内联子查询节点 → 唯一 scope 名。别名可被合法复用(并列/嵌套同名子查询),
+    以前序出现次序加 @n 后缀消歧——否则重名 scope 合并,left join 子查询的内部
+    条件会蹭上同名 FROM scope 的行集资格。首个保持裸名,与列级血缘的 scope 名兼容。"""
+    ids: dict = {}
+    seen: dict = {}
+    for node in ast.walk():
+        if isinstance(node, (exp.CTE, exp.Subquery)):
+            base = _scope_base(node)
+            n = seen.get(base, 0) + 1
+            seen[base] = n
+            ids[id(node)] = base if n == 1 else f"{base}@{n}"
+    return ids
+
+
+def scope_name(node: exp.Expression, ids: dict | None = None) -> str:
+    """所属作用域:最近的 CTE/内联子查询的唯一 scope 名;顶层为 main。
     内联子查询必须有独立 scope——否则 left join (select … where …) 的内部条件
     会被误标 main 并进入行集闭包(实际只影响补列)。"""
     anc = node.find_ancestor(exp.CTE, exp.Subquery)
     if anc is None:
         return "main"
-    if isinstance(anc, exp.CTE):
-        return anc.alias
-    return anc.alias_or_name or "_subq"
+    if ids is not None:
+        return ids.get(id(anc)) or _scope_base(anc)
+    return _scope_base(anc)
 
 
 def from_arg(sel: exp.Select):
@@ -105,47 +124,59 @@ def from_arg(sel: exp.Select):
     return sel.args.get("from") or sel.args.get("from_")
 
 
-def _scope_child(t, cte_names: set) -> str | None:
-    """FROM/JOIN 挂接对象 → 子 scope 名(CTE 名或内联子查询别名);真实表返回 None。"""
+def _scope_child(t, cte_names: set, ids: dict) -> str | None:
+    """FROM/JOIN 挂接对象 → 子 scope 名(CTE 名或内联子查询唯一名);真实表返回 None。"""
     if isinstance(t, exp.Table) and t.name in cte_names:
         return t.name
     if isinstance(t, exp.Subquery):
-        return t.alias_or_name or "_subq"
+        return ids.get(id(t)) or _scope_base(t)
     return None
 
 
-def row_scope_closure(raw_ast: exp.Expression) -> set:
-    """main 出发,沿 FROM 与 inner join 可达的 CTE/内联子查询 scope 集合——
-    其条件约束整个行集;left join 挂接的不在闭包内:内部条件只影响补列的值。"""
-    cte_names = {c.alias for c in raw_ast.find_all(exp.CTE)}
-    edges = {}
-    for sel in raw_ast.find_all(exp.Select):
-        sc = scope_name(sel)
-        outs = edges.setdefault(sc, [])
+def _scope_edges(ast: exp.Expression, ids: dict) -> dict:
+    """scope → [(子 scope, 挂接方式)]:from / inner / left / right / full。"""
+    cte_names = {c.alias for c in ast.find_all(exp.CTE)}
+    edges: dict = {}
+    for sel in ast.find_all(exp.Select):
+        outs = edges.setdefault(scope_name(sel, ids), [])
         f = from_arg(sel)
         if f is not None:
-            child = _scope_child(f.this, cte_names)
+            child = _scope_child(f.this, cte_names, ids)
             if child:
                 outs.append((child, "from"))
         for j in sel.args.get("joins") or []:
-            child = _scope_child(j.this, cte_names)
+            child = _scope_child(j.this, cte_names, ids)
             if child:
                 outs.append((child, (j.side or "inner").lower()))
+    return edges
+
+
+def _closure(edges: dict, kinds: tuple | None) -> set:
+    """main 出发沿边可达的 scope 集合;kinds=None 表示全部挂接方式。"""
     closure, stack = {"main"}, ["main"]
     while stack:
         cur = stack.pop()
         for child, kind in edges.get(cur, []):
-            if kind in ("from", "inner") and child not in closure:
+            if (kinds is None or kind in kinds) and child not in closure:
                 closure.add(child)
                 stack.append(child)
     return closure
 
 
+def row_scope_closure(raw_ast: exp.Expression, ids: dict | None = None) -> set:
+    """条件行集闭包:main 沿 FROM 与 inner join 可达的 scope——其条件约束整个行集;
+    left join 挂接的不在内:内部条件只影响补列的值。"""
+    ids = ids if ids is not None else scope_ids(raw_ast)
+    return _closure(_scope_edges(raw_ast, ids), ("from", "inner"))
+
+
 def row_set_tables(ast: exp.Expression) -> list:
-    """行集闭包内引用的真实表(排除 CTE 名):COUNT(*) 等无列引用的输出列
-    没有列级血缘可走,其行数仍由这些表(经行集条件过滤)决定,以表级上游兜底。"""
+    """行数依赖闭包内引用的真实表(排除 CTE 名):COUNT(*) 等无列引用的输出列的
+    行数由 FROM 与全部 join 表共同决定——inner 收缩、left 一对多膨胀都改变行数,
+    因此这里沿所有 join 方向收表,比条件行集闭包(排除 left)更宽。"""
+    ids = scope_ids(ast)
     cte_names = {c.alias for c in ast.find_all(exp.CTE)}
-    closure = row_scope_closure(ast)
+    closure = _closure(_scope_edges(ast, ids), None)
     tables = []
 
     def add(t):
@@ -155,28 +186,29 @@ def row_set_tables(ast: exp.Expression) -> list:
                 tables.append(tk)
 
     for sel in ast.find_all(exp.Select):
-        if scope_name(sel) not in closure:
+        if scope_name(sel, ids) not in closure:
             continue
         f = from_arg(sel)
         if f is not None:
             add(f.this)
         for j in sel.args.get("joins") or []:
-            if (j.side or "inner").lower() == "inner":
-                add(j.this)
+            add(j.this)
     return tables
 
 
 def extract_conditions(raw_ast: exp.Expression, file_text: str, model: str):
     """七类口径藏身结构的语义化抽取(基于未 qualify 的原始 AST,便于行号锚定)。"""
     conds, semantics = [], []
-    row_scopes = row_scope_closure(raw_ast)
+    ids = scope_ids(raw_ast)
+    row_scopes = row_scope_closure(raw_ast, ids)
 
-    def add_cond(kind, e, extra=None):
+    def add_cond(kind, e, extra=None, row_level=None):
         sql = e.sql(dialect=_DIALECT)
         norm = normalize_condition(e)
-        sc = scope_name(e)
+        sc = scope_name(e, ids)
         conds.append({
-            "model": model, "scope": sc, "kind": kind, "row_level": sc in row_scopes,
+            "model": model, "scope": sc, "kind": kind,
+            "row_level": (sc in row_scopes) if row_level is None else row_level,
             "sql": sql, "norm": norm, "fp": fingerprint(norm),
             "line": anchor_line(sql, file_text), **(extra or {}),
         })
@@ -196,6 +228,9 @@ def extract_conditions(raw_ast: exp.Expression, file_text: str, model: str):
                 add_cond("qualify", c)
         for j in sel.args.get("joins") or []:
             side = (j.side or "") + (" " + j.kind if j.kind else "") or "inner"
+            # 非 inner join 的 ON 条件不过滤主行集(left 只决定补列是否匹配),
+            # 不得标 row_level——否则右表筛选会被误并入 COUNT(*) 类指标的行集口径
+            j_row = None if (j.side or "inner").lower() == "inner" else False
             jt = j.this
             jtable = jt.name if isinstance(jt, (exp.Table, exp.Subquery)) else jt.sql(dialect=_DIALECT)[:40]
             on = j.args.get("on")
@@ -204,11 +239,11 @@ def extract_conditions(raw_ast: exp.Expression, file_text: str, model: str):
                     is_key = (isinstance(c, exp.EQ) and isinstance(c.this, exp.Column)
                               and isinstance(c.expression, exp.Column))
                     add_cond("join_on", c, {"join_type": side.strip(), "join_table": jtable,
-                                            "is_pure_key": bool(is_key)})
+                                            "is_pure_key": bool(is_key)}, row_level=j_row)
             using = j.args.get("using")
             if using:
                 add_cond("join_on", exp.column(using[0].name), {"join_type": side.strip(),
-                         "join_table": jtable, "is_pure_key": True})
+                         "join_table": jtable, "is_pure_key": True}, row_level=j_row)
 
     for w in raw_ast.find_all(exp.Window):
         func = w.this.sql(dialect=_DIALECT).lower()
@@ -227,7 +262,7 @@ def extract_conditions(raw_ast: exp.Expression, file_text: str, model: str):
         wsql = w.sql(dialect=_DIALECT)
         walias = w.find_ancestor(exp.Alias)
         semantics.append({
-            "model": model, "scope": scope_name(w), "type": "window", "idiom": idiom,
+            "model": model, "scope": scope_name(w, ids), "type": "window", "idiom": idiom,
             "column": walias.alias if walias is not None else None,
             "func": func, "partition_by": part, "order_by": order_s,
             "sql": wsql, "line": anchor_line(wsql, file_text),
@@ -240,7 +275,7 @@ def extract_conditions(raw_ast: exp.Expression, file_text: str, model: str):
                 if node is not None:
                     nsql = node.sql(dialect=_DIALECT)
                     semantics.append({
-                        "model": model, "scope": scope_name(proj), "type": tname,
+                        "model": model, "scope": scope_name(proj, ids), "type": tname,
                         "column": colname, "sql": nsql[:200], "line": anchor_line(nsql, file_text),
                     })
     for sel in raw_ast.find_all(exp.Select):
@@ -258,7 +293,7 @@ def extract_conditions(raw_ast: exp.Expression, file_text: str, model: str):
                 continue
             if re.search(r"date|dt|day", str(name).lower()) or "date" in expr_sql.lower():
                 semantics.append({
-                    "model": model, "scope": scope_name(g), "type": "stat_date_key",
+                    "model": model, "scope": scope_name(g, ids), "type": "stat_date_key",
                     "column": name, "sql": expr_sql[:160], "line": anchor_line(expr_sql, file_text),
                 })
     return conds, semantics
@@ -268,9 +303,10 @@ def output_grain(ast: exp.Expression) -> list:
     """输出行粒度:沿 main → FROM 主链找第一个带 group-by 的 SELECT,解析其分组键
     (序号/表达式归位到投影别名)。顶层 join 拼列不改变行粒度,粒度由主链聚合层决定;
     全链无分组(明细/纯直通)返回 []。治理指纹用它区分"同指标家族的不同粒度物化"。"""
+    ids = scope_ids(ast)
     sel_by_scope: dict = {}
     for sel in ast.find_all(exp.Select):   # 前序遍历:每个 scope 首个 select 即其顶层
-        sel_by_scope.setdefault(scope_name(sel), sel)
+        sel_by_scope.setdefault(scope_name(sel, ids), sel)
     cur, seen = "main", set()
     while cur in sel_by_scope and cur not in seen:
         seen.add(cur)
@@ -290,10 +326,26 @@ def output_grain(ast: exp.Expression) -> list:
         if f is not None and isinstance(f.this, exp.Table):
             cur = f.this.name              # 继续沿 FROM 进入 CTE;真实表则自然终止
         elif f is not None and isinstance(f.this, exp.Subquery):
-            cur = f.this.alias_or_name or "_subq"   # 内联聚合子查询同样在主链上
+            cur = ids.get(id(f.this)) or _scope_base(f.this)   # 内联聚合子查询同样在主链上
         else:
             break
     return []
+
+
+def agg_one(f: exp.AggFunc) -> str:
+    """单个聚合的规范签名;行数等价类归一化:COUNT(*) ≡ COUNT(1) ≡ COUNT(常量) ≡ SUM(1)。"""
+    arg = f.this
+    if isinstance(f, exp.Count) and (arg is None or isinstance(arg, (exp.Star, exp.Literal))):
+        return "rowcount"
+    if isinstance(f, exp.Sum) and isinstance(arg, exp.Literal) and arg.name == "1":
+        return "rowcount"
+    return type(f).__name__.lower() + (":distinct" if f.find(exp.Distinct) else "")
+
+
+def model_agg_fns(raw_ast: exp.Expression) -> list:
+    """模型 SQL 中出现过的全部聚合签名(含 CTE 内投影——列级 expr 只存顶层直通,
+    min(case …) 藏在 CTE 里时这是唯一的确定性记录)。"""
+    return sorted({agg_one(f) for f in raw_ast.find_all(exp.AggFunc)})
 
 
 # ---------------- 图构建 ----------------
@@ -315,6 +367,7 @@ def build_graph(project: DbtProject) -> dict:
         qast = qualify(raw.copy(), schema=project.schema, dialect=_DIALECT)
         conds, semantics = extract_conditions(raw, m["sql"], name)
         rowset = row_set_tables(qast)      # qualified 表名带 schema,可反查模型/源表
+        agg_fns = model_agg_fns(raw)
         out_cols = [p.alias_or_name for p in qast.expressions]
         col_edges = {}
         for col in out_cols:
@@ -350,7 +403,7 @@ def build_graph(project: DbtProject) -> dict:
         graph["models"][name] = {
             "layer": m["layer"], "table": f'{m["schema"]}.{m["alias"]}',
             "compiled_path": m["compiled_path"], "src_path": m["src_path"],
-            "row_set_tables": rowset, "grain": output_grain(raw),
+            "row_set_tables": rowset, "agg_fns": agg_fns, "grain": output_grain(raw),
             "columns": col_edges, "conditions": conds, "semantics": semantics,
         }
     return graph

@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.6.2 — 2026-08-27
+
+Fifth external review: trust ceiling, join-cardinality modeling, full-chain identity.
+
+- **Trust**: free-text screening now catches single-digit time windows ("限 7
+  天内"), prose formulas (formula must express aggregations consistent with the
+  channel-1 aggregate signature — fabricated aggregations and aggregation-free
+  prose both cap confidence), and fabricated table joins (probe: an invented
+  `dim_user` join is caught). The trusted lexicon drops third-party schema
+  docs, keeps the user's own metriclens.yml lexicon, and includes all
+  graph-known model/column/source names so referencing real objects is never
+  flagged; graphs store per-model aggregate signatures (CTE-inner aggregations
+  included) to anchor formula checks.
+- **Row-count dependencies**: `row_set_tables` follows all join directions
+  (LEFT JOIN fan-out changes COUNT(*)), while non-inner join ON conditions are
+  no longer marked row-level — the "dependency missing yet condition kept"
+  inconsistency is gone.
+- **Identity**: cross-validation compares schema-qualified source identities
+  (wrong-schema attributions now downgrade with missing+extra recorded; bare
+  names only auto-resolve when unambiguous); column docs get schema-qualified
+  keys; physical three-part names still resolve.
+- **Scopes**: subquery scope names are made unique per AST occurrence
+  (alias@n), so legally reused aliases no longer merge scopes and leak
+  row-level status.
+- **Governance**: AVG ↔ SUM/COUNT expansion pairs go to B-tier arbitration
+  instead of a deterministic distinct verdict; pair generation is
+  deterministic (sorted) and capped with truncation counts in the report.
+- **Config**: NFC+casefold key dedup (case-insensitive filesystems), clear
+  errors for non-mapping YAML roots, strict `model.column` target format.
+- **Ops**: LLM cache keys include endpoint and max_tokens (same model name on
+  a different provider no longer reuses stale responses); the final failed
+  retry no longer sleeps; CI builds and typechecks the dashboard; docs/dead
+  hints refreshed; as-built demo doc moved to docs/archive/.
+
+
 ## 0.6.1 — 2026-08-27
 
 Fourth external review: scope correctness, identity, and trust hardening.

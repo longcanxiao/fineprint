@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """第四轮外部复审探针固化:内联子查询作用域、跨包/跨 schema 身份、聚合等价类、漂移全名源。"""
+import json
 import sys
 from pathlib import Path
 
@@ -103,7 +104,7 @@ class TestFreetextLexicon:
              "sources": [{"table": "ods_refund", "schema": "ods", "column": "refund_amt"}],
              "conditions": [{"sql": "date_diff <= 14"}], "semantics": [],
              "models_visited": ["dm_stats"]}
-        return build_vocab(t, "退款率", None, {}, {})
+        return build_vocab(t, "退款率", None, {})
 
     def test_real_references_pass(self):
         from metriclens.synth import verify_freetext
@@ -126,6 +127,27 @@ class TestFreetextLexicon:
         assert verify_freetext("Total payment amount attributed to each customer.",
                                idents, nums) == []
 
+    def test_single_digit_window_caught(self):
+        from metriclens.synth import verify_freetext
+        idents, nums = self._vocab()
+        assert verify_freetext("限 7 天内退款", idents, nums) == ["7"]      # 篡改窗口
+        assert verify_freetext("限 14 天内退款", idents, nums) == []        # 真实窗口
+
+    def test_prose_formula_without_aggregation_caught(self):
+        from metriclens.synth import formula_agg_check
+        assert formula_agg_check("退款金额除以支付人数", {"sum", "count:distinct"})
+
+    def test_fabricated_aggregation_caught(self):
+        from metriclens.synth import formula_agg_check
+        assert formula_agg_check("count(distinct order_id)", {"sum"})
+
+    def test_matching_aggregation_passes(self):
+        from metriclens.synth import formula_agg_check
+        assert formula_agg_check("sum(refund_amt) / sum(pay_amt)", {"sum"}) == []
+        assert formula_agg_check("count(*)", {"rowcount"}) == []
+        assert formula_agg_check("avg(x)", {"sum", "count"}) == []          # 展开形豁免
+        assert formula_agg_check("任意散文", set()) == []                    # 缺证不下结论
+
 
 class TestConfigContract:
     def _load(self, tmp_path, body):
@@ -147,6 +169,20 @@ class TestConfigContract:
         with pytest.raises(ValueError, match="scan_layers"):
             self._load(tmp_path, "language: zh\nmetrics:\n  - key: a\n    target: m.c\n"
                                  "governance:\n  scan_layers: dm\n")
+
+    def test_case_insensitive_key_collision_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="重复"):
+            self._load(tmp_path, "language: zh\nmetrics:\n  - key: GMV\n    target: m.c\n"
+                                 "  - key: gmv\n    target: m.d\n")
+
+    def test_toplevel_list_clear_error(self, tmp_path):
+        with pytest.raises(ValueError, match="顶层须为映射"):
+            self._load(tmp_path, "- a\n- b\n")
+
+    def test_malformed_target_rejected(self, tmp_path):
+        for bad in ("a.b.c", "m.", ".", "m c.x"):
+            with pytest.raises(ValueError, match="model.column"):
+                self._load(tmp_path, f"language: zh\nmetrics:\n  - key: a\n    target: {json.dumps(bad)}\n")
 
 
 class TestDriftSourcesFull:

@@ -4,6 +4,7 @@
 放在 dbt 项目根目录。密钥永不进配置文件——LLM 凭据只走环境变量(见 llm.py)。
 """
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import yaml
 
 # key 直接用作批次目录内的文件名:限定字符集,杜绝路径分隔符与 ../ 逃逸
 KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+TARGET_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$")
 RESERVED_KEYS = {"index", "active_run"}
 
 EXAMPLE = """\
@@ -63,24 +65,31 @@ class MLConfig:
             raise FileNotFoundError(
                 f"未找到 {f}\n请先执行 metriclens init 生成配置,或手工创建(模板见 README)")
         raw = yaml.safe_load(f.read_text()) or {}
+        if not isinstance(raw, dict):
+            raise ValueError(f"{f} 顶层须为映射(language/metrics/…),实得 {type(raw).__name__}")
         gov = raw.get("governance") or {}
+        if not isinstance(gov, dict):
+            raise ValueError(f"governance 须为映射,实得 {type(gov).__name__}")
         metrics, seen_keys = [], set()
         for m in raw.get("metrics") or []:
-            if not m.get("key") or not m.get("target"):
+            if not isinstance(m, dict) or not m.get("key") or not m.get("target"):
                 raise ValueError(f"metrics 条目缺少 key/target: {m}")
             key = str(m["key"])
             if not KEY_RE.match(key):
                 raise ValueError(f"metric key 非法: {key!r}(须匹配 {KEY_RE.pattern},不得含路径分隔符)")
             if key.lower() in RESERVED_KEYS:
                 raise ValueError(f"metric key 为保留名: {key!r}(保留: {sorted(RESERVED_KEYS)})")
-            if key in seen_keys:
-                raise ValueError(f"metric key 重复: {key!r}(同批发布会互相覆盖)")
-            seen_keys.add(key)
+            # 大小写不敏感文件系统(macOS/Windows 默认)上 GMV.json 与 gmv.json 同文件,
+            # NFC + casefold 判重杜绝跨平台互相覆盖
+            folded = unicodedata.normalize("NFC", key).casefold()
+            if folded in seen_keys:
+                raise ValueError(f"metric key 重复: {key!r}(大小写不敏感文件系统上同批发布会互相覆盖)")
+            seen_keys.add(folded)
             targets = [m["target"], *(m.get("extra_targets") or [])]
             for tgt in targets:
-                if not isinstance(tgt, str) or "." not in tgt:
-                    raise ValueError(f"metric {key!r} 的 target/extra_targets 须为 'model.column' 字符串,"
-                                     f"实得 {tgt!r}")
+                if not isinstance(tgt, str) or not TARGET_RE.match(tgt):
+                    raise ValueError(f"metric {key!r} 的 target/extra_targets 须为 'model.column'"
+                                     f"(两段,各为合法标识符),实得 {tgt!r}")
             qf = m.get("query_filter")
             if qf is not None and not isinstance(qf, str):
                 raise ValueError(f"metric {key!r} 的 query_filter 须为字符串,实得 {type(qf).__name__}")

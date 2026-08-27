@@ -23,7 +23,7 @@ from pathlib import Path
 
 import requests
 
-PROMPT_VER = "v3"
+PROMPT_VER = "v4"
 _CACHE_DIR: Path | None = None
 # 同 key 并发去重:首跑全 miss 时,多个指标途经同一模型会同时发起相同请求,
 # 各拿到不同回答导致下游 prompt 分叉、缓存键漂移(温度 0 也不保证逐字节一致)
@@ -109,7 +109,8 @@ def chat_json(system: str, user: str, max_tokens: int = 4000, use_cache: bool = 
     model = model or cfg["model"]
     if use_cache and _CACHE_DIR is not None:
         _CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        key = hashlib.md5(f"{PROMPT_VER}|{model}|{system}|{user}".encode()).hexdigest()
+        key = hashlib.md5(
+            f"{PROMPT_VER}|{cfg['base_url']}|{model}|{max_tokens}|{system}|{user}".encode()).hexdigest()
         cf = _CACHE_DIR / f"{key}.json"
         with _INFLIGHT_GUARD:
             lock = _INFLIGHT.setdefault(key, threading.Lock())
@@ -174,5 +175,6 @@ def _request(cfg: dict, model: str, system: str, user: str, max_tokens: int,
             raise
         except Exception as e:
             last_err = e
-            time.sleep(_backoff(attempt, retry_after))
+            if attempt < 7:                  # 最后一轮失败直接抛出,不再空等退避
+                time.sleep(_backoff(attempt, retry_after))
     raise RuntimeError(f"LLM 调用失败(重试 8 次): {last_err}")
