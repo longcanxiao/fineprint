@@ -4,26 +4,45 @@ build-backend = "hatchling.build"
 
 [project]
 name = "metriclens"
-version = "0.5.0"
-description = "指标口径自动透出:电商数仓实验场 + 业务大盘 + 血缘×LLM 口径智能系统"
-requires-python = ">=3.13"
+version = "0.6.0"
+description = "Metric caliber synthesis for dbt projects: deterministic column-level lineage x LLM reading, cross-validated, evidence-bound caliber cards"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+keywords = ["dbt", "lineage", "metrics", "data-governance", "semantic-layer", "sqlglot"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Database",
+]
+# 核心包只依赖解析与请求;数仓/看板/模拟器等 demo 依赖走 extras
 dependencies = [
-  "duckdb", "dbt-duckdb", "pandas", "numpy", "pyyaml", "faker",
-  "fastapi", "uvicorn[standard]", "sqlglot", "requests",
+  "pyyaml>=6.0",
+  "sqlglot>=30,<32",
+  "requests>=2.28",
 ]
 
 [project.scripts]
 metriclens = "metriclens.cli:main"
 
+[project.optional-dependencies]
+demo = [
+  "duckdb", "dbt-duckdb", "pandas", "numpy", "faker",
+  "fastapi", "uvicorn[standard]",
+]
+dev = ["pytest", "ruff", "httpx"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["metriclens"]
 
-[project.optional-dependencies]
-dev = ["pytest", "ruff", "httpx"]
-
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py310"
 exclude = ["dashboard", ".venv", "warehouse/dbt_project/target"]
 
 [tool.ruff.lint]

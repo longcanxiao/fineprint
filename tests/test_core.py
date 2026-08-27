@@ -12,6 +12,10 @@ sys.path.insert(0, str(ROOT))
 
 from metriclens.lineage import fingerprint, normalize_condition  # noqa: E402
 
+# benchmark 数仓产物(不入库):本地 jobs/rebuild.sh 生成;CI 上跳过依赖它们的用例
+DB_EXISTS = (ROOT / "warehouse" / "metriclens.duckdb").exists()
+GRAPH_EXISTS = (ROOT / "warehouse" / "dbt_project" / ".metriclens" / "graph.json").exists()
+
 
 def _norm(sql):
     return normalize_condition(sqlglot.parse_one(sql, read="duckdb"))
@@ -87,6 +91,7 @@ class TestCrossValidateSeeds:
 
 
 class TestGovernanceScan:
+    @pytest.mark.skipif(not GRAPH_EXISTS, reason="需要本地血缘图(jobs/rebuild.sh)")
     def test_t8_pair_auto_discovered(self):
         import subprocess
         r = subprocess.run([sys.executable, "-m", "benchmark.governance_scan_check"],
@@ -209,6 +214,7 @@ class TestAPIContract:
     def test_bad_date_format_422(self, client):
         assert client.get("/api/trend?start=notadate&end=2026-08-10").status_code == 422
 
+    @pytest.mark.skipif(not DB_EXISTS, reason="需要本地 benchmark 数仓(jobs/rebuild.sh)")
     def test_share_denominator_is_global(self, client):
         r = client.get("/api/breakdown?start=2026-07-26&end=2026-08-24&dim=live_room").json()
         top_share = sum(row["share"] for row in r["rows"])

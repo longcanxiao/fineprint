@@ -1,34 +1,34 @@
-# MetricLens 指标透镜
+# MetricLens 指标透镜(开发文档)
 
-在数据看板上自动嵌入指标**业务口径**与**技术口径**的演示系统。当前进度:M1 数据底座 + M2 业务大盘 + M3 血缘引擎 + M4 口径合成 + M5 治理与漂移已完成。
+在数据看板上自动嵌入指标**业务口径**与**技术口径**。M1 数据底座 + M2 业务大盘 + M3 血缘引擎 + M4 口径合成 + M5 治理与漂移已完成,并已通用化重构为 `metriclens` pip 包(任意 dbt 项目可用,见根 README)。
 
 ## 结构
 
 ```
+metriclens/             # 通用包:project.py(dbt artifacts 读取) lineage.py(字段级 DAG+七类结构语义)
+│                       #   trace.py(S/F/E 回溯) synth.py(双通道口径合成) llm.py(OpenAI 兼容客户端)
+│                       #   store.py(批次原子发布) drift.py(快照+漂移) governance.py(指纹扫描)
+│                       #   arbitrate.py(B 档仲裁) config.py(metriclens.yml) prompts.py(zh/en) cli.py report.py
 warehouse/
 ├── simulator/          # 数据模拟器:scenarios.yml(14 道口径陷阱的场景注入配置) + generate.py
 ├── dbt_project/        # 四域数仓:ODS(9 源表) → DWD(5) → DWM(3) → DM(4) → APP(2),schema.yml 含中文口径元数据
+│                       #   metriclens.yml(15 指标配置);.metriclens/(图/口径批次/快照/治理报告,不入库)
 ├── evaluate/           # validate_traps.py(14 陷阱数据可验证) + handcheck_metrics.py(指标手算对账)
 └── metriclens.duckdb   # DuckDB 单文件数仓(由模拟器 + dbt 生成)
-lineage/                # M3 血缘引擎:core.py(字段级 DAG+七类结构语义抽取) trace.py(S/F/E 回溯)
-│                       #   manifest_check.py(骨架校验) golden/+eval_lineage.py(golden set 评测)
-caliber/                # M4 口径合成:llm.py(DeepSeek 客户端) pipeline.py(逐跳解析+双通道互验+业务口径)
-│                       #   lexicon.yml(业务词典) store/runs/(口径知识库批次) eval_caliber.py(陷阱揭示评测)
-governance/             # M5 治理与漂移:snapshot.py(指标口径快照) drift.py(漂移检测+事件日志)
-│                       #   arbitrate.py(B 档 LLM 语义仲裁→治理报告) eval_governance.py(M5 验收)
+benchmark/              # 评测:eval_lineage.py(golden set) manifest_check.py eval_caliber.py(陷阱揭示)
+│                       #   eval_governance.py governance_scan_check.py golden_set.yml
 server/                 # FastAPI 取数服务(端口 8612;/api/lineage/* 血缘,/api/caliber/* 口径卡)
 dashboard/              # React 18 + TS + ECharts 5 业务大盘(端口 5273,/api 代理到 8612)
 jobs/                   # rebuild.sh(一键重建+后置漂移检测) caliber_refresh.sh governance_refresh.sh
-docs/                   # metriclens-asbuilt.html(落地技术方案) metric-landscape.html(竞品调研:39 产品口径功能扫描) + 人工复核记录
+docs/                   # metriclens-asbuilt.html(M1-M5 demo 期落地方案,历史文档) metric-landscape.html(竞品调研) + 人工复核记录
 ```
 
 ## 快速开始
 
 ```bash
-# 0) 依赖(首次):uv venv .venv && uv pip install -p .venv/bin/python -r requirements.txt
-#    (含 duckdb/dbt-duckdb/pandas/numpy/pyyaml/faker/fastapi/uvicorn/sqlglot/requests,已锁版本)
+# 0) 依赖(首次):uv venv .venv && uv pip install -p .venv/bin/python -e ".[demo,dev]"
 #    前端(首次):cd dashboard && npm install
-#    LLM 配置:export CALIBER_ENV_FILE=/path/to/.env(模板见 .env.example)
+#    LLM 配置:cp .env.example warehouse/dbt_project/.env 并填入(METRICLENS_LLM_*)
 bash jobs/rebuild.sh                                             # 原子重建:build 库上全验收通过后才替换正式库
 .venv/bin/python -m uvicorn server.main:app --port 8612 &        # 取数 API
 cd dashboard && npm run dev                                      # 大盘 http://localhost:5273
@@ -37,11 +37,10 @@ cd dashboard && npm run dev                                      # 大盘 http:/
 ## 血缘引擎(M3)
 
 ```bash
-.venv/bin/python -m lineage.core                                  # dbt 编译产物 → 字段级血缘图
-.venv/bin/python -m lineage.cli trace app_business_overview_1d refund_rate_14d   # 一键回溯
-.venv/bin/python -m lineage.cli list                              # 列出全部模型
-.venv/bin/python -m lineage.manifest_check                        # 表级骨架三方对拍
-.venv/bin/python -m lineage.eval_lineage                          # golden set 评测
+.venv/bin/metriclens graph --project warehouse/dbt_project        # dbt 编译产物 → 字段级血缘图
+.venv/bin/metriclens trace --project warehouse/dbt_project app_business_overview_1d.refund_rate_14d
+.venv/bin/python -m benchmark.manifest_check                      # 表级骨架三方对拍
+.venv/bin/python -m benchmark.eval_lineage                        # golden set 评测
 ```
 
 回溯输出 S/F/E 三元组:源字段集合(ODS)、过滤条件集(where/having/qualify/join_on 分类,含
@@ -52,7 +51,7 @@ cd dashboard && npm run dev                                      # 大盘 http:/
 
 ```bash
 bash jobs/caliber_refresh.sh        # 全量刷新 15 张口径卡(LLM 调用,带缓存)+ 陷阱揭示评测
-.venv/bin/python -m caliber.pipeline --only gmv    # 单卡重跑
+.venv/bin/metriclens synth --project warehouse/dbt_project --only gmv    # 单卡重跑
 ```
 
 双通道设计:通道一 = M3 确定性血缘(S₁/F₁/E₁);通道二 = DeepSeek 逐跳解析单模型 SQL
@@ -73,10 +72,10 @@ API 只读 active 批次——线上不存在半新半旧的中间态(--only 单
 ## 治理与漂移(M5)
 
 ```bash
-.venv/bin/python -m governance.drift               # 口径漂移检测:当前图快照 vs 最近快照(rebuild.sh 已后置挂载)
-.venv/bin/python -m governance.drift --strict      # high 级漂移非零退出(可作发布门禁)
+.venv/bin/metriclens drift --project warehouse/dbt_project             # 口径漂移检测(rebuild.sh 已后置挂载)
+.venv/bin/metriclens drift --project warehouse/dbt_project --strict    # 门禁:high 漂移退出 1 且基线/日志不推进
 bash jobs/governance_refresh.sh                    # 治理报告:指纹扫描 + B 档 LLM 语义仲裁(有 LLM 调用,带缓存)
-.venv/bin/python -m governance.eval_governance     # M5 验收
+.venv/bin/python -m benchmark.eval_governance      # M5 验收
 ```
 
 三件事:
@@ -100,15 +99,15 @@ refund_rate_14d / refund_amt_14d 两个指标(语义点替换 high + 表达式�
 - ✅ 大盘 14 指标与 DWD 独立手算 SQL 完全一致(`handcheck_metrics.py`,3 个抽样日)
 - ✅ M3:任一 APP 指标一键回溯至 ODS;golden set 源字段识别召回/精确 100%、关键条件召回 100%(目标≥95%);manifest 骨架 14 模型三方一致
 - ✅ M4:15 张口径卡全部生成(14 看板指标 + 1 张 T7 治理对比卡),置信分布以 active 批次索引为准(`/api/caliber/index`);**14 道陷阱揭示 14/14**(验收线 ≥12);看板口径 ⓘ 点亮,L1 业务口径 + L2 技术口径(条款级证据编号)+ 双通道互验状态 + 治理提示 + 行号溯源引用
-- ✅ M5:治理报告 A 档 16 对直判 + B 档 10 对 LLM 仲裁全部有判据(T8 靶向对判重复,比率 vs 计数类判不同义);漂移演练(14→15 天窗口往返)精准命中受影响指标;快照与当前图账实一致;看板治理台 + 变更角标 + 血缘画布点亮(`eval_governance` 6/6)
+- ✅ M5:治理报告分档(粒度/聚合签名后):A 档 4 对真重复直判(T8 靶向对在列)+ 聚合语义直判 4 对不同义 + 同家族不同粒度 12 对单列 + B 档 6 对 LLM 仲裁全部有判据(比率 vs 计数类判不同义);漂移演练(14→15 天窗口往返)精准命中受影响指标;快照与当前图账实一致;看板治理台 + 变更角标 + 血缘画布点亮(`eval_governance` 6/6)
 
 ## 质量门禁
 
 ```bash
 .venv/bin/python -m pytest tests/ -q     # 归一化判等/LLM 校验/空&幻觉引用拒绝(调生产函数)/批次原子性/漂移对比/仲裁校验/API 契约
 .venv/bin/ruff check .                   # lint(已清零)
-.venv/bin/python -m lineage.governance_scan   # 指纹重复扫描(A 档重复建设/B 档同源候选)
-.venv/bin/python -m governance.eval_governance # M5 治理与漂移验收
+.venv/bin/python -m benchmark.governance_scan_check   # 指纹重复扫描(T8 靶向对自动发现)
+.venv/bin/python -m benchmark.eval_governance         # M5 治理与漂移验收
 ```
 
 已知工程债(记录在案,后续治理):模拟器主函数偏长待拆分;缺 LLM 限流/损坏缓存注入测试、

@@ -16,3 +16,4 @@ warehouse/dbt_project/.metriclens/
 .env
 *.log
 .DS_Store
+.user.yml

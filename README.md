@@ -24,7 +24,7 @@ dbt artifacts ──────► │  sources / filters / expression chain (s
 
 - **Channel 1** traces every metric column back to source tables: source columns, every filter that shapes the row set (WHERE / JOIN ON / QUALIFY / HAVING, with scope analysis), window-dedup idioms, CASE WHEN attribution, COALESCE fallbacks, stat-date assignment — all with file/line anchors.
 - **Channel 2** has an LLM read each model's SQL independently. Every claimed filter must carry a **verbatim quote** that is machine-checked against the source — fabricated citations are structurally impossible.
-- The two channels are fingerprint-matched condition by condition. Only cross-validated facts enter the merged caliber. Business clauses must cite numbered deterministic evidence (`E`/`S`/`X`/`Q` ids); any unbound clause caps the card's confidence.
+- The two channels are fingerprint-matched condition by condition. Only cross-validated filters enter the merged technical caliber. Business clauses must cite numbered deterministic evidence (`E`/`S`/`X`/`Q` ids); an unbound clause — or an empty clause list — caps the card's confidence. (The one-line definition and caveats are LLM prose over that evidence, not themselves machine-verified.)
 - Low-confidence cards go to a review queue instead of being published. Batches publish atomically — consumers never see a half-updated state.
 
 Beyond caliber cards, MetricLens ships two governance tools built on the same lineage:
@@ -35,7 +35,8 @@ Beyond caliber cards, MetricLens ships two governance tools built on the same li
 ## Quickstart
 
 ```bash
-pip install -e .            # from this repo (PyPI release planned)
+pip install -e .            # core CLI only (PyPI release planned)
+pip install -e ".[demo,dev]"   # + benchmark warehouse / dashboard / test deps
 
 cd your-dbt-project
 dbt compile && dbt docs generate    # MetricLens reads artifacts only — no DB connection
@@ -49,7 +50,8 @@ export METRICLENS_LLM_MODEL=deepseek-chat       # or gpt-4.1-mini, etc.
 metriclens synth            # synthesize caliber cards (cached, atomic batch publish)
 metriclens report           # export a self-contained HTML caliber report
 
-metriclens drift            # caliber drift check (wire into CI with --strict)
+metriclens drift            # caliber drift check (--strict = CI gate: high drift
+                            #   exits 1 and leaves baseline + log untouched)
 metriclens govern           # duplicate-metric governance report
 ```
 
@@ -71,9 +73,13 @@ We believe this is the first ground-truthed benchmark for *metric-definition ext
 
 ## Status & scope
 
-Works today: dbt projects on any adapter (schema comes from `catalog.json`, dialect from `manifest.json` — DuckDB, Snowflake, BigQuery, Postgres, Redshift, Databricks, …). Parsing covers what sqlglot can qualify; dbt's compiled, single-`SELECT`-per-model world is exactly that sweet spot.
+Works today: dbt projects on 12 adapters (DuckDB, Snowflake, BigQuery, Postgres, Redshift, Databricks, Spark, Trino, Athena, ClickHouse, SQL Server, MySQL) — schema comes from `catalog.json`, dialect from `manifest.json`, no warehouse connection needed. Unlisted adapters fail with a clear error rather than guessing a dialect. Parsing covers what sqlglot can qualify; dbt's compiled, single-`SELECT`-per-model world is exactly that sweet spot.
 
-Not yet: non-dbt pipelines (stored procedures, script-generated SQL, Flink/Spark code), BI-layer lineage (dashboard field → dataset → SQL), incremental graph builds, owner sign-off workflow. See the roadmap in `docs/`.
+Not yet: multi-database projects where two relations share the same `schema.table` name (detected and refused explicitly, not silently folded), non-dbt pipelines (stored procedures, script-generated SQL, Flink/Spark code), BI-layer lineage (dashboard field → dataset → SQL), incremental graph builds, owner sign-off workflow. See the roadmap in `docs/`.
+
+### Data egress & privacy
+
+Channel 2 sends **compiled model SQL, column descriptions from your schema.yml, and your `metriclens.yml` lexicon** to the LLM endpoint you configure (`METRICLENS_LLM_BASE_URL`) — nothing else, and never warehouse data. If your SQL is sensitive, point it at a self-hosted or VPC endpoint; Channel 1 (lineage, drift, fingerprint scan) runs fully offline. LLM responses are cached content-addressed under `.metriclens/cache/` in your project — treat that directory as containing your SQL. Note that SQL comments and third-party dbt package SQL are untrusted input to the LLM; quote verification and evidence binding bound what a prompt-injected model can smuggle into a published card (structurally unverifiable claims cap confidence), but review cards from untrusted model code before publishing them to consumers.
 
 A demo dashboard (FastAPI + React) that renders caliber cards, drift badges, a governance console and a lineage canvas against the benchmark warehouse lives in `server/` + `dashboard/`.
 
