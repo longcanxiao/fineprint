@@ -81,7 +81,8 @@ def cmd_drift(args):
     from metriclens.drift import print_events, run_check
     project = _project(args)
     cfg = _cfg(args)
-    events = run_check(project, cfg, _graph(project), save=not args.dry_run)
+    events = run_check(project, cfg, _graph(project), save=not args.dry_run,
+                       block_high=args.strict)
     print_events(events)
     if args.strict and any(e["severity"] == "high" for e in events):
         sys.exit(1)

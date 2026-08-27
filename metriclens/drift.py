@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """口径快照与漂移检测。
 
-快照只含确定性事实(源字段集/条件指纹/语义点/表达式链)——漂移检测建立在可复算证据上。
-严重度:源字段/过滤条件/语义点(窗口去重、CASE WHEN、COALESCE、统计日)增删 = high(口径实质变化);
+快照只含确定性事实(源字段集/条件指纹/语义点/表达式链/目标与取数过滤)——漂移检测建立在可复算证据上。
+严重度:源字段/过滤条件/语义点(窗口去重、CASE WHEN、COALESCE、统计日)增删、目标改指向 = high;
 表达式文本变化 = medium(可能是无害重构);指标集合增减 = info。
-默认只记录不拦截;strict 模式 high 事件非零退出可作发布门禁。
+默认只记录不拦截;strict 模式为门禁语义:high 事件非零退出且基线与事件日志均不推进,
+保证门禁失败可复现(第二次执行仍失败),处理后由一次通过的运行提交新基线。
 """
+import contextlib
 import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -24,6 +27,7 @@ def metric_snapshot(graph: dict, m) -> dict:
     t = merged_trace(graph, m)
     return {
         "target": m.target,
+        "query_filter": m.query_filter,
         "sources": sorted(f"{s['table']}.{s['column']}" for s in t["sources"]),
         "conditions": {c["fp"]: {"sql": c["sql"], "kind": c["kind"], "model": c["model"]}
                        for c in t["conditions"] if not c.get("is_pure_key")},
@@ -36,7 +40,8 @@ def metric_snapshot(graph: dict, m) -> dict:
 
 def take_snapshot(graph: dict, cfg: MLConfig) -> dict:
     return {
-        "taken_at": datetime.now().isoformat(timespec="seconds"),
+        # 微秒精度定宽 6 位:近邻两次运行不得互相覆盖快照文件,文件名保持字典序=时间序
+        "taken_at": datetime.now().isoformat(timespec="microseconds"),
         "metrics": {m.key: metric_snapshot(graph, m) for m in cfg.metrics},
     }
 
@@ -52,7 +57,7 @@ def drift_log_path(project: DbtProject) -> Path:
 def save_snapshot(project: DbtProject, snap: dict) -> Path:
     d = snap_dir(project)
     d.mkdir(parents=True, exist_ok=True)
-    f = d / f"{snap['taken_at'].replace(':', '').replace('-', '')}.json"
+    f = d / f"{snap['taken_at'].replace(':', '').replace('-', '').replace('.', '')}.json"
     tmp = f.with_suffix(".tmp")
     tmp.write_text(json.dumps(snap, ensure_ascii=False, indent=1))
     tmp.replace(f)
@@ -73,6 +78,12 @@ def diff_metric(key: str, old: dict, new: dict) -> list:
     def add(kind, severity, detail):
         ev.append({"metric_key": key, "kind": kind, "severity": severity, "detail": detail})
 
+    # 配置层口径:目标改指向 / 取数过滤变化同为口径实质变化;老快照缺键(旧版本产物)跳过
+    if old.get("target") and old["target"] != new["target"]:
+        add("target_changed", "high", {"old": old["target"], "new": new["target"]})
+    if "query_filter" in old and old.get("query_filter") != new.get("query_filter"):
+        add("query_filter_changed", "high",
+            {"old": old.get("query_filter"), "new": new.get("query_filter")})
     for s in sorted(set(old["sources"]) - set(new["sources"])):
         add("source_removed", "high", {"source": s})
     for s in sorted(set(new["sources"]) - set(old["sources"])):
@@ -116,19 +127,39 @@ def load_log(project: DbtProject) -> dict:
     return json.loads(f.read_text()) if f.exists() else {"events": []}
 
 
+@contextlib.contextmanager
+def _file_lock(f: Path):
+    """读-改-写全程互斥,防并发运行丢事件;无 fcntl 的平台(Windows)降级为无锁。"""
+    lockf = f.with_suffix(".lock")
+    fh = open(lockf, "w")
+    try:
+        with contextlib.suppress(ImportError):
+            import fcntl
+            fcntl.flock(fh, fcntl.LOCK_EX)
+        yield
+    finally:
+        fh.close()
+
+
 def append_events(project: DbtProject, events: list, from_at: str, to_at: str):
-    log = load_log(project)
-    now = datetime.now().isoformat(timespec="seconds")
-    for e in events:
-        log["events"].append({"detected_at": now, "from_snapshot": from_at, "to_snapshot": to_at, **e})
     f = drift_log_path(project)
-    tmp = f.with_suffix(".tmp")
-    tmp.write_text(json.dumps(log, ensure_ascii=False, indent=1))
-    tmp.replace(f)
+    with _file_lock(f):
+        log = load_log(project)
+        now = datetime.now().isoformat(timespec="seconds")
+        for e in events:
+            log["events"].append({"detected_at": now, "from_snapshot": from_at, "to_snapshot": to_at, **e})
+        tmp = f.with_suffix(".tmp")
+        tmp.write_text(json.dumps(log, ensure_ascii=False, indent=1))
+        tmp.replace(f)
 
 
-def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True) -> list:
-    """基线不存在则建立基线(无事件);否则对比最近快照并追加事件、保存新快照。"""
+def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True,
+              block_high: bool = False) -> list:
+    """基线不存在则建立基线(无事件);否则对比最近快照。
+
+    save=True 时追加事件并提交新快照为基线;block_high=True(strict 门禁)且存在
+    high 事件时基线与事件日志均不推进——门禁失败必须可复现,而不是失败一次后自动放行。
+    """
     prev = latest_snapshot(project)
     cur = take_snapshot(graph, cfg)
     if prev is None:
@@ -137,10 +168,14 @@ def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True
         print(f"基线快照已建立({len(cur['metrics'])} 个指标),无对比对象")
         return []
     events = diff_snapshots(prev, cur)
-    if save:
+    blocked = block_high and any(e["severity"] == "high" for e in events)
+    if save and not blocked:
         if events:
             append_events(project, events, prev["taken_at"], cur["taken_at"])
         save_snapshot(project, cur)
+    if blocked:
+        print("⛔ strict 门禁: high 级漂移,基线与事件日志均不推进;"
+              "确认为预期变更后去掉 --strict 运行一次以提交新基线", file=sys.stderr)
     return events
 
 

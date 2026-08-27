@@ -14,8 +14,10 @@ finish_reason=length 时自动扩容重试(温度 0 下同预算必然复现)。
 import hashlib
 import json
 import os
+import random
 import threading
 import time
+import uuid
 from functools import lru_cache
 from pathlib import Path
 
@@ -27,6 +29,32 @@ _CACHE_DIR: Path | None = None
 # 各拿到不同回答导致下游 prompt 分叉、缓存键漂移(温度 0 也不保证逐字节一致)
 _INFLIGHT: dict[str, threading.Lock] = {}
 _INFLIGHT_GUARD = threading.Lock()
+# 全局并发上限:synth 外层指标池 × 内层逐跳池可叠出几十路并发,统一在请求处限流
+_SEM: threading.BoundedSemaphore | None = None
+_SEM_GUARD = threading.Lock()
+
+
+class FatalLLMError(RuntimeError):
+    """不可重试的调用错误(4xx 凭据/模型名/请求体类):立即失败,不烧重试预算。"""
+
+
+def _sem() -> threading.BoundedSemaphore:
+    global _SEM
+    with _SEM_GUARD:
+        if _SEM is None:
+            n = max(1, int(os.environ.get("METRICLENS_LLM_CONCURRENCY", "8")))
+            _SEM = threading.BoundedSemaphore(n)
+    return _SEM
+
+
+def _backoff(attempt: int, retry_after: str | None) -> float:
+    """指数退避 + 抖动;服务端给出 Retry-After 时优先遵循。"""
+    if retry_after:
+        try:
+            return min(float(retry_after), 120.0)
+        except ValueError:
+            pass
+    return min(2 ** attempt + random.uniform(0, 1), 60.0)
 
 
 def set_cache_dir(p: Path | None):
@@ -110,12 +138,17 @@ def _request(cfg: dict, model: str, system: str, user: str, max_tokens: int,
             "max_tokens": budget,
             "response_format": {"type": "json_object"},
         }
+        retry_after = None
         try:
-            r = requests.post(f"{cfg['base_url']}/chat/completions", timeout=180,
-                              headers={"Authorization": f"Bearer {cfg['api_key']}"}, json=payload)
-            if r.status_code == 429 or r.status_code >= 500:
+            with _sem():
+                r = requests.post(f"{cfg['base_url']}/chat/completions", timeout=180,
+                                  headers={"Authorization": f"Bearer {cfg['api_key']}"}, json=payload)
+            if r.status_code in (408, 429) or r.status_code >= 500:
+                retry_after = r.headers.get("Retry-After")
                 raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
-            r.raise_for_status()
+            if 400 <= r.status_code < 500:
+                # 凭据/模型名/请求体错误重试不会好转,速死并给出可行动信息
+                raise FatalLLMError(f"HTTP {r.status_code}(不可重试,请检查 API key/模型名/请求): {r.text[:300]}")
             ch = r.json()["choices"][0]
             content = ch["message"]["content"] or ""
             if not content.strip():
@@ -132,12 +165,14 @@ def _request(cfg: dict, model: str, system: str, user: str, max_tokens: int,
             if validator:
                 validator(obj)
             if cf is not None:
-                tmp = cf.with_suffix(".tmp")
+                # 进程内同 key 已由 _INFLIGHT 串行;tmp 名加随机后缀防跨进程互踩
+                tmp = cf.parent / f"{cf.name}.{uuid.uuid4().hex[:6]}.tmp"
                 tmp.write_text(json.dumps(obj, ensure_ascii=False))
                 tmp.replace(cf)
             return obj
+        except FatalLLMError:
+            raise
         except Exception as e:
             last_err = e
-            transient = isinstance(e, (requests.RequestException,)) or "HTTP" in str(e)
-            time.sleep((5 if transient else 2) * (attempt + 1))
+            time.sleep(_backoff(attempt, retry_after))
     raise RuntimeError(f"LLM 调用失败(重试 8 次): {last_err}")

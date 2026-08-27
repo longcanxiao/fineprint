@@ -320,6 +320,10 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
     val["unverified_clauses"] = unverified
     if unverified and val["confidence"] == "high":
         val["confidence"] = "medium"
+    # 空条款 = 业务口径不含任何可验证事实,绑定机制整体失效,不得 high
+    val["empty_clauses"] = not business.get("clauses")
+    if val["empty_clauses"] and val["confidence"] == "high":
+        val["confidence"] = "medium"
 
     # 治理提示:指纹重复对命中本卡链路(同模型 + 同基名)时挂告示
     chain_pairs = set()

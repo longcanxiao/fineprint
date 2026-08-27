@@ -176,3 +176,97 @@ class TestTargetPathResolution:
         monkeypatch.setenv("DBT_TARGET_PATH", "env_target")
         with pytest.raises(FileNotFoundError, match="env_target"):
             DbtProject(proj)                     # 环境变量优先于 yml
+
+
+class TestDriftGate:
+    """strict 门禁语义:high 漂移时基线与事件日志均不推进,失败可复现。"""
+
+    def _setup(self, rowset_project):
+        from metriclens.config import MetricDef, MLConfig
+        from metriclens.drift import run_check
+        cfg = MLConfig(metrics=[MetricDef(key="amt", title="amt", target="metric.amt")])
+        g = build_graph(rowset_project)
+        run_check(rowset_project, cfg, g)        # 建基线
+        import copy
+        g2 = copy.deepcopy(g)
+        c = g2["models"]["filtered"]["conditions"][0]
+        c.update(sql="active = 2", norm="active = 2", fp="fp_changed_xx")
+        return cfg, g2, run_check
+
+    def test_strict_high_blocks_commit(self, rowset_project):
+        cfg, g2, run_check = self._setup(rowset_project)
+        ws = rowset_project.workspace
+        ev = run_check(rowset_project, cfg, g2, block_high=True)
+        assert any(e["severity"] == "high" for e in ev)
+        assert len(list((ws / "snapshots").glob("*.json"))) == 1   # 基线未推进
+        assert not (ws / "drift_log.json").exists()                # 日志未写入
+        ev2 = run_check(rowset_project, cfg, g2, block_high=True)  # 第二次仍失败
+        assert any(e["severity"] == "high" for e in ev2)
+
+    def test_non_strict_commits(self, rowset_project):
+        cfg, g2, run_check = self._setup(rowset_project)
+        ws = rowset_project.workspace
+        run_check(rowset_project, cfg, g2)
+        assert len(list((ws / "snapshots").glob("*.json"))) == 2
+        assert (ws / "drift_log.json").exists()
+
+
+class TestConfigDrift:
+    """target 改指向与 query_filter 变化是口径实质变化;老快照缺键不误报。"""
+
+    _base = {"target": "m.c", "query_filter": None, "sources": [], "conditions": {},
+             "semantics": [], "exprs": {}}
+
+    def test_target_changed_high(self):
+        from metriclens.drift import diff_metric
+        new = {**self._base, "target": "m.d"}
+        assert [(e["kind"], e["severity"]) for e in diff_metric("k", self._base, new)] \
+            == [("target_changed", "high")]
+
+    def test_query_filter_changed_high(self):
+        from metriclens.drift import diff_metric
+        new = {**self._base, "query_filter": "channel = 'live'"}
+        assert [(e["kind"], e["severity"]) for e in diff_metric("k", self._base, new)] \
+            == [("query_filter_changed", "high")]
+
+    def test_legacy_snapshot_without_key_silent(self):
+        from metriclens.drift import diff_metric
+        old = {k: v for k, v in self._base.items() if k != "query_filter"}
+        new = {**self._base, "query_filter": "x = 1"}
+        assert diff_metric("k", old, new) == []
+
+
+class TestLLMErrorClassification:
+    """4xx(非 408/429)不可重试:一次即失败,不烧 8 轮退避。"""
+
+    def _fake_response(self, status, body="denied"):
+        class R:
+            status_code = status
+            text = body
+            headers = {}
+        return R()
+
+    def test_401_fails_fast(self, monkeypatch):
+        from metriclens import llm
+        calls = {"n": 0}
+
+        def fake_post(*a, **k):
+            calls["n"] += 1
+            return self._fake_response(401)
+        monkeypatch.setattr(llm.requests, "post", fake_post)
+        cfg = {"base_url": "http://x", "api_key": "k"}
+        with pytest.raises(llm.FatalLLMError, match="401"):
+            llm._request(cfg, "m", "s", "u", 100, None, None)
+        assert calls["n"] == 1
+
+    def test_429_honors_retry_after(self, monkeypatch):
+        from metriclens import llm
+        r = self._fake_response(429)
+        r.headers = {"Retry-After": "3"}
+        seen = []
+        monkeypatch.setattr(llm.time, "sleep", seen.append)
+        monkeypatch.setattr(llm.requests, "post", lambda *a, **k: r)
+        cfg = {"base_url": "http://x", "api_key": "k"}
+        with pytest.raises(RuntimeError, match="重试 8 次"):
+            llm._request(cfg, "m", "s", "u", 100, None, None)
+        assert seen and all(s == 3.0 for s in seen)
