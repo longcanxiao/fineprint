@@ -34,7 +34,7 @@ $PY -m benchmark.governance_scan_check
 
 mv -f "$BUILD_DB" "$FINAL_DB"
 mv -f "$BUILD_GRAPH" "$FINAL_GRAPH"
-echo "✅ 全部验证通过,已原子发布 → $FINAL_DB + $FINAL_GRAPH(如 API 在运行,重启以刷新血缘缓存)"
+echo "✅ 全部验证通过,已原子发布 → $FINAL_DB + $FINAL_GRAPH(API 按 mtime 自动重载血缘图,无须重启)"
 
 echo "==> [后置] 口径漂移检测(基于正式图快照对比;记录不拦截)"
 unset METRICLENS_DB METRICLENS_GRAPH   # 漂移快照必须基于刚发布的正式图
