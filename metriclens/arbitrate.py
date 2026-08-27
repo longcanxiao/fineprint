@@ -56,15 +56,26 @@ def build_report(project: DbtProject, cfg: MLConfig, graph: dict) -> dict:
         duplicates.append({**p, "tier": "A", "verdict": "duplicate",
                            "reason": "基名一致且指纹相同:同一指标在多处物化",
                            "suggestion": "收敛到血缘最上游的单一出口,下游改为直接引用"})
-    for p in r["candidates"]:
+    for p in r["agg_distinct"]:
+        distinct.append({**p, "tier": "A", "verdict": "distinct",
+                         "reason": f"聚合语义不同({p['agg_a']} vs {p['agg_b']}):同源上的不同指标"})
+    # B 档逐对 LLM 仲裁有真实调用成本:按配置上限截断,截断量显式入报告
+    cand = r["candidates"]
+    skipped = max(0, len(cand) - cfg.max_llm_pairs)
+    if skipped:
+        print(f"B 档候选 {len(cand)} 对超出上限,仅仲裁前 {cfg.max_llm_pairs} 对"
+              f"(governance.max_llm_pairs 可调)")
+    for p in cand[:cfg.max_llm_pairs]:
         arb = arbitrate_pair(cfg.language, graph, p, docs)
         item = {**p, "tier": "B", **arb}
         (duplicates if arb["verdict"] == "duplicate" else distinct).append(item)
     report = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "llm_model": fast_model(),
-        "a_tier_pairs": len(r["duplicates"]), "b_tier_pairs": len(r["candidates"]),
+        "a_tier_pairs": len(r["duplicates"]),
+        "b_tier_pairs": len(cand) - skipped, "b_tier_skipped": skipped,
         "duplicates": duplicates, "distinct": distinct,
+        "families": r["families"],
     }
     f = report_path(project)
     tmp = f.with_suffix(".tmp")
@@ -84,3 +95,10 @@ def print_report(report: dict):
     for p in report["distinct"]:
         print(f"  ✓ [{p['tier']}] {p['a']}  ~  {p['b']}")
         print(f"       判据: {p['reason'][:90]}")
+    fams = report.get("families") or []
+    if fams:
+        print(f"\n同指标家族·不同粒度 {len(fams)} 对(非重复,建议统一命名口径):")
+        for p in fams:
+            print(f"  ◇ {p['a']}({','.join(p['grain_a']) or '明细'})  ~  {p['b']}({','.join(p['grain_b']) or '明细'})")
+    if report.get("b_tier_skipped"):
+        print(f"\n(B 档截断 {report['b_tier_skipped']} 对未仲裁,governance.max_llm_pairs 可调)")

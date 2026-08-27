@@ -236,6 +236,32 @@ class TestConfigDrift:
         assert diff_metric("k", old, new) == []
 
 
+class TestGrainAndAggSignature:
+    """治理粒度签名:grain 沿 FROM 主链取第一个聚合层;空签名不可比(缺证不下结论)。"""
+
+    def test_grain_from_cte_chain(self):
+        from metriclens.lineage import output_grain
+        ast = sqlglot.parse_one(
+            "with agg as (select dt, sum(x) as gmv from t group by dt) "
+            "select a.dt, a.gmv, b.y from agg a join other b on a.dt = b.dt", read="duckdb")
+        assert output_grain(ast) == ["dt"]
+
+    def test_grain_top_level_group(self):
+        from metriclens.lineage import output_grain
+        ast = sqlglot.parse_one("select dt, ch, sum(x) as v from t group by 1, 2", read="duckdb")
+        assert output_grain(ast) == ["ch", "dt"]
+
+    def test_grain_detail_empty(self):
+        from metriclens.lineage import output_grain
+        ast = sqlglot.parse_one("select id, x from t where x > 0", read="duckdb")
+        assert output_grain(ast) == []
+
+    def test_agg_signature_distinct_marked(self):
+        from metriclens.governance import agg_signature
+        t = {"expr_chain": [{"expr": "COUNT(DISTINCT user_id)"}, {"expr": "MIN(dt)"}]}
+        assert agg_signature(t) == ("count:distinct", "min")
+
+
 class TestLLMErrorClassification:
     """4xx(非 408/429)不可重试:一次即失败,不烧 8 轮退避。"""
 

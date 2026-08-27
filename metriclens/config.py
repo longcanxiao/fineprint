@@ -31,6 +31,7 @@ governance:
   base_suffixes: [_total, _14d, _1d, _7d, _30d]   # 判定"同基名"时剥离的后缀
   skip_columns: []      # 扫描跳过的列名
   skip_suffixes: [_id, _date, _time, _key]
+  max_llm_pairs: 40     # B 档 LLM 仲裁的候选上限(超出截断并提示,控制成本)
 """
 
 
@@ -52,6 +53,7 @@ class MLConfig:
     base_suffixes: list = field(default_factory=lambda: ["_total", "_14d", "_1d", "_7d", "_30d"])
     skip_columns: list = field(default_factory=list)
     skip_suffixes: list = field(default_factory=lambda: ["_id", "_date", "_time", "_key"])
+    max_llm_pairs: int = 40
     path: Path | None = None
 
     @classmethod
@@ -86,6 +88,7 @@ class MLConfig:
             base_suffixes=gov.get("base_suffixes") or cls().base_suffixes,
             skip_columns=gov.get("skip_columns") or [],
             skip_suffixes=gov.get("skip_suffixes") or cls().skip_suffixes,
+            max_llm_pairs=int(gov.get("max_llm_pairs", cls().max_llm_pairs)),
             path=f)
         if cfg.language not in ("zh", "en"):
             raise ValueError(f"language 须为 zh|en,实得 {cfg.language!r}")

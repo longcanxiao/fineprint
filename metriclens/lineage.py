@@ -246,6 +246,36 @@ def extract_conditions(raw_ast: exp.Expression, file_text: str, model: str):
     return conds, semantics
 
 
+def output_grain(ast: exp.Expression) -> list:
+    """输出行粒度:沿 main → FROM 主链找第一个带 group-by 的 SELECT,解析其分组键
+    (序号/表达式归位到投影别名)。顶层 join 拼列不改变行粒度,粒度由主链聚合层决定;
+    全链无分组(明细/纯直通)返回 []。治理指纹用它区分"同指标家族的不同粒度物化"。"""
+    sel_by_scope: dict = {}
+    for sel in ast.find_all(exp.Select):   # 前序遍历:每个 scope 首个 select 即其顶层
+        sel_by_scope.setdefault(scope_name(sel), sel)
+    cur, seen = "main", set()
+    while cur in sel_by_scope and cur not in seen:
+        seen.add(cur)
+        sel = sel_by_scope[cur]
+        g = sel.args.get("group")
+        if g:
+            proj_by_pos = {str(i + 1): p for i, p in enumerate(sel.expressions)}
+            proj_by_name = {p.alias_or_name: p for p in sel.expressions}
+            keys = set()
+            for k in g.expressions:
+                ks = k.name if isinstance(k, exp.Column) else k.sql(dialect=_DIALECT)
+                p = proj_by_pos.get(ks) or proj_by_name.get(ks)
+                name = p.alias_or_name if p is not None else ks
+                keys.add(str(name).strip('"').lower())
+            return sorted(keys)
+        f = from_arg(sel)
+        if f is not None and isinstance(f.this, exp.Table):
+            cur = f.this.name              # 继续沿 FROM 进入 CTE;真实表则自然终止
+        else:
+            break
+    return []
+
+
 # ---------------- 图构建 ----------------
 def build_graph(project: DbtProject) -> dict:
     set_dialect(project.dialect)
@@ -300,7 +330,7 @@ def build_graph(project: DbtProject) -> dict:
         graph["models"][name] = {
             "layer": m["layer"], "table": f'{m["schema"]}.{m["alias"]}',
             "compiled_path": m["compiled_path"], "src_path": m["src_path"],
-            "row_set_tables": rowset,
+            "row_set_tables": rowset, "grain": output_grain(raw),
             "columns": col_edges, "conditions": conds, "semantics": semantics,
         }
     return graph
