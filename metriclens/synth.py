@@ -64,6 +64,48 @@ def validate_biz(obj: dict):
         _need(c, "evidence_ids", list, "biz.clauses[]")
 
 
+# ---------------- 自由文本词表校验 ----------------
+_FREETEXT_IDENT = re.compile(r"\b[a-z][a-z0-9]*(?:[._][a-z0-9]+)+\b")
+_FREETEXT_NUM = re.compile(r"\b\d{2,}(?:\.\d+)?\b")
+_NUM_WHITELIST = {"100"}   # 百分比换算常数,散文公式常见
+
+
+def build_vocab(t: dict, title: str, query_filter, docs_ctx: dict, lexicon: dict) -> tuple:
+    """通道一确定性词表(标识符集 + 数字集):公式/定义/告诫等自由文本里的
+    复合标识符(snake_case/带点引用)与多位数字必须能在这里找到出处。
+    词表不含任何 LLM 产物,杜绝 LLM 自证。"""
+    parts = [title or "", query_filter or ""]
+    parts += [f"{e['model']} {e['column']} {e.get('expr') or ''}" for e in t["expr_chain"]]
+    parts += [f"{s.get('schema', '')} {s['table']} {s['column']}" for s in t["sources"]]
+    parts += [c["sql"] for c in t["conditions"]]
+    parts += [str(s.get("sql") or "") for s in t["semantics"]]
+    parts += list(t["models_visited"])
+    parts += [f"{k} {v}" for k, v in (docs_ctx or {}).items()]
+    parts += [f"{k} {v}" for k, v in (lexicon or {}).items()]
+    text = norm_text(" ".join(parts))
+    idents = set()
+    for tk in _FREETEXT_IDENT.findall(text):
+        idents.add(tk)
+        idents.update(tk.split("."))   # 别名点引用(o.is_test_account)按段入表:卡片常写裸列名
+    return idents, set(_FREETEXT_NUM.findall(text)) | _NUM_WHITELIST
+
+
+def verify_freetext(text, idents: set, nums: set) -> list:
+    """返回文本中无法溯源的 token;空列表 = 通过。散文普通单词(无下划线/点)
+    不校验——zh/en 文本都只拦"看起来像字段/表引用的词"和"口径数字"。"""
+    s = norm_text(str(text or ""))
+
+    def ok(tk: str) -> bool:
+        if tk in idents:
+            return True
+        # model.column 式点引用:拆段判定,具备标识符特征(含下划线)的段必须可溯源
+        return all(p in idents or "_" not in p for p in tk.split("."))
+
+    bad = [tk for tk in _FREETEXT_IDENT.findall(s) if not ok(tk)]
+    bad += [tk for tk in _FREETEXT_NUM.findall(s) if tk not in nums]
+    return bad
+
+
 # ---------------- 通道二:逐跳抽取 ----------------
 def verify_quotes(out: dict, sql: str) -> dict:
     """原文引用机器校验(纯函数):空引用与不在原文中的引用一律判失败。"""
@@ -325,6 +367,23 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
     if val["empty_clauses"] and val["confidence"] == "high":
         val["confidence"] = "medium"
 
+    # 自由文本词表校验:公式/摘要/定义/告诫/关键过滤是展示层最显眼的字段,
+    # 其中的字段引用与口径数字必须可溯源到通道一词表;失配 → 该卡不得 high
+    v_idents, v_nums = build_vocab(t, m.title, m.query_filter, docs_ctx, cfg.lexicon)
+    freetext_bad = {}
+    checks = [("formula", technical.get("formula")), ("summary", technical.get("summary")),
+              ("definition", business.get("definition"))]
+    checks += [(f"key_filters[{i}]", kf.get("text"))
+               for i, kf in enumerate(technical.get("key_filters") or [])]
+    checks += [(f"caveats[{i}]", cv) for i, cv in enumerate(business.get("caveats") or [])]
+    for field, txt in checks:
+        b = verify_freetext(txt, v_idents, v_nums)
+        if b:
+            freetext_bad[field] = b[:6]
+    val["freetext_unverified"] = freetext_bad
+    if freetext_bad and val["confidence"] == "high":
+        val["confidence"] = "medium"
+
     # 治理提示:指纹重复对命中本卡链路(同模型 + 同基名)时挂告示
     chain_pairs = set()
     for tc in (m.target, *m.extra_targets):
@@ -377,7 +436,8 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
                 v = r["validation"]
                 print(f"  ✓ {m.key:<26} conf={r['confidence']:<6} F覆盖 {v['f1_covered']:.0%}"
                       f"  S漏/多 {len(v['s_missing_by_llm'])}/{len(v['s_extra_by_llm'])}"
-                      f"  可疑 {len(v.get('f2_suspect', []))}  未证条款 {v.get('unverified_clauses', 0)}")
+                      f"  可疑 {len(v.get('f2_suspect', []))}  未证条款 {v.get('unverified_clauses', 0)}"
+                      f"  词表失配 {len(v.get('freetext_unverified') or {})}")
             except Exception as e:
                 failed.append(m.key)
                 print(f"  ✗ {m.key}: {e}")

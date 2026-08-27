@@ -16,6 +16,12 @@ for unpatched vulnerabilities.
 - LLM credentials are read from environment variables / a project `.env` only;
   they never enter configuration files or generated artifacts.
 - SQL comments and third-party dbt package SQL are untrusted LLM input.
-  Verbatim-quote verification and evidence binding constrain what a
-  prompt-injected response can put into a published card, but cards generated
-  from untrusted model code deserve human review before publishing.
+  Machine checks constrain a prompt-injected response in layers: verbatim
+  quotes are verified against the SQL, only cross-matched conditions enter
+  the merge, business clauses must cite deterministic evidence ids, and
+  field references / metric numbers in free-text fields (formula, summary,
+  definition, caveats) are screened against a channel-1 lexicon — any
+  mismatch caps confidence below `high`. The prose semantics of those
+  free-text fields are still LLM output and are NOT proven correct;
+  cards generated from untrusted model code deserve human review before
+  publishing.
