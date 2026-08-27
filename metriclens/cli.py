@@ -44,20 +44,23 @@ def cmd_init(args):
 
 
 def cmd_graph(args):
-    from metriclens.lineage import build_and_save
+    from metriclens.lineage import build_graph, save_graph
     project = _project(args)
-    graph = build_and_save(project)
+    graph = build_graph(project)
     ncols = sum(len(m["columns"]) for m in graph["models"].values())
     nconds = sum(len(m["conditions"]) for m in graph["models"].values())
     nsem = sum(len(m["semantics"]) for m in graph["models"].values())
     errs = [(n, c) for n, m in graph["models"].items() for c, d in m["columns"].items() if d.get("error")]
+    if errs and not args.allow_partial:
+        # 校验不过不落盘:失败运行不得覆盖上一次可用的图(trace/synth 仍读旧图)
+        print(f"column lineage errors ({len(errs)}):", errs[:8], file=sys.stderr)
+        print("图未写出,旧图保持不变;确认可接受后用 --allow-partial 强制写出", file=sys.stderr)
+        sys.exit(1)
+    save_graph(project, graph)
     print(f"graph: {len(graph['models'])} models, {ncols} columns, {nconds} conditions, "
           f"{nsem} semantic points → {project.graph_path()}  (dialect={graph['meta']['dialect']})")
     if errs:
-        print(f"column lineage errors ({len(errs)}):", errs[:8], file=sys.stderr)
-        if not args.allow_partial:
-            print("图已写出但存在解析失败的列;确认可接受后用 --allow-partial 放行", file=sys.stderr)
-            sys.exit(1)
+        print(f"column lineage errors ({len(errs)}, --allow-partial):", errs[:8], file=sys.stderr)
 
 
 def cmd_trace(args):

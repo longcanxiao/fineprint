@@ -356,11 +356,15 @@ def build_graph(project: DbtProject) -> dict:
     return graph
 
 
-def build_and_save(project: DbtProject) -> dict:
-    graph = build_graph(project)
+def save_graph(project: DbtProject, graph: dict) -> None:
     out = project.graph_path()
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_suffix(".tmp")
     tmp.write_text(json.dumps(graph, ensure_ascii=False, indent=1))
     tmp.replace(out)
+
+
+def build_and_save(project: DbtProject) -> dict:
+    graph = build_graph(project)
+    save_graph(project, graph)
     return graph

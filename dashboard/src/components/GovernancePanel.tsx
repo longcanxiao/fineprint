@@ -37,7 +37,7 @@ export default function GovernancePanel({ onClose }: { onClose: () => void }) {
             <div className="m-title">指标治理台</div>
             {report?.generated_at && (
               <span className="m-target">
-                指纹扫描 A 档 {report.a_tier_pairs} 对直判 + B 档 {report.b_tier_pairs} 对 LLM 仲裁 · {report.generated_at.replace('T', ' ')}
+                指纹扫描 A 档 {report.a_tier_pairs} 对直判 + B 档 {report.b_tier_pairs} 对 LLM 仲裁{(report.b_tier_skipped ?? 0) > 0 && ` · ${report.b_tier_skipped} 对超上限未仲裁`} · {report.generated_at.replace('T', ' ')}
               </span>
             )}
           </div>
@@ -63,12 +63,15 @@ export default function GovernancePanel({ onClose }: { onClose: () => void }) {
               </ul>
             </section>
             <section>
-              <h3>同源不同义 <span className="m-target">{report.distinct.length} 对 · LLM 仲裁判合理,不收敛</span></h3>
+              <h3>同源不同义 <span className="m-target">{report.distinct.length} 对 · A 档聚合直判 / B 档 LLM 仲裁,不收敛</span></h3>
+              {(report.b_tier_skipped ?? 0) > 0 && (
+                <p className="src-list">⚠ 另有 {report.b_tier_skipped} 对 B 档候选超出 max_llm_pairs 上限未仲裁,本清单不完整。</p>
+              )}
               <ul className="refs">
                 {report.distinct.map((p, i) => (
                   <li key={i}>
                     <span>
-                      <span className="tier tier-ok">合理</span>
+                      <span className="tier tier-ok">{p.tier === 'A' ? 'A 直判' : 'B·LLM'}</span>
                       <code>{p.a} ~ {p.b}</code>
                       {p.reason && <div className="gov-reason">{p.reason}</div>}
                     </span>

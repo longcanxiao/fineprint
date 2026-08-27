@@ -14,7 +14,17 @@ from metriclens.trace import load_graph, trace as lineage_trace
 
 DB = Path(__file__).resolve().parent.parent / "warehouse" / "metriclens.duckdb"
 _store = CaliberStore(WORKSPACE / "store")
-_graph_cache = {"graph": None}
+_graph_cache = {"graph": None, "mtime": None}
+
+
+def _graph():
+    """血缘图缓存按文件 mtime 失效:rebuild 原子替换 graph.json 后无须重启服务。"""
+    mt = GRAPH.stat().st_mtime if GRAPH.exists() else None
+    if _graph_cache["graph"] is None or _graph_cache["mtime"] != mt:
+        _graph_cache["graph"] = load_graph(GRAPH)
+        _graph_cache["mtime"] = mt
+    return _graph_cache["graph"]
+
 
 app = FastAPI(title="MetricLens API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -194,10 +204,8 @@ def caliber_card(key: str):
 @app.get("/api/lineage/{model}/{column}")
 def lineage_api(model: str, column: str):
     """字段级血缘回溯:S(源字段)/F(过滤条件)/E(表达式链) 三元组,M4 口径卡的数据底座。"""
-    if _graph_cache["graph"] is None:
-        _graph_cache["graph"] = load_graph(GRAPH)
     try:
-        return lineage_trace(_graph_cache["graph"], model, column)
+        return lineage_trace(_graph(), model, column)
     except KeyError as e:
         raise HTTPException(404, str(e))
 
@@ -205,9 +213,7 @@ def lineage_api(model: str, column: str):
 @app.get("/api/lineage/graph/{model}/{column}")
 def lineage_graph_api(model: str, column: str):
     """指标链路子图(模型级节点 + 依赖边),供看板血缘画布渲染。"""
-    if _graph_cache["graph"] is None:
-        _graph_cache["graph"] = load_graph(GRAPH)
-    g = _graph_cache["graph"]
+    g = _graph()
     try:
         t = lineage_trace(g, model, column)
     except KeyError as e:

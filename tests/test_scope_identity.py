@@ -93,6 +93,62 @@ class TestAggEquivalence:
         assert self._sig("sum(x)") == {"sum"}
 
 
+class TestFreetextLexicon:
+    """展示层自由文本(公式/定义/告诫)的字段引用与口径数字必须可溯源。"""
+
+    def _vocab(self):
+        from metriclens.synth import build_vocab
+        t = {"expr_chain": [{"model": "dm_stats", "column": "refund_amt_14d",
+                             "expr": "sum(refund_amt)"}],
+             "sources": [{"table": "ods_refund", "schema": "ods", "column": "refund_amt"}],
+             "conditions": [{"sql": "date_diff <= 14"}], "semantics": [],
+             "models_visited": ["dm_stats"]}
+        return build_vocab(t, "退款率", None, {}, {})
+
+    def test_real_references_pass(self):
+        from metriclens.synth import verify_freetext
+        idents, nums = self._vocab()
+        assert verify_freetext("sum(dm_stats.refund_amt_14d) 窗口 14 天", idents, nums) == []
+
+    def test_fabricated_column_caught(self):
+        from metriclens.synth import verify_freetext
+        idents, nums = self._vocab()
+        assert verify_freetext("sum(fake_table.fake_col)", idents, nums)
+
+    def test_fabricated_number_caught(self):
+        from metriclens.synth import verify_freetext
+        idents, nums = self._vocab()
+        assert verify_freetext("限 15 天内的退款", idents, nums) == ["15"]
+
+    def test_plain_prose_not_flagged(self):
+        from metriclens.synth import verify_freetext
+        idents, nums = self._vocab()
+        assert verify_freetext("Total payment amount attributed to each customer.",
+                               idents, nums) == []
+
+
+class TestConfigContract:
+    def _load(self, tmp_path, body):
+        from metriclens.config import MLConfig
+        (tmp_path / "metriclens.yml").write_text(body)
+        return MLConfig.load(tmp_path)
+
+    def test_negative_max_llm_pairs_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="max_llm_pairs"):
+            self._load(tmp_path, "language: zh\nmetrics:\n  - key: a\n    target: m.c\n"
+                                 "governance:\n  max_llm_pairs: -1\n")
+
+    def test_string_extra_targets_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="extra_targets"):
+            self._load(tmp_path, "language: zh\nmetrics:\n  - key: a\n    target: m.c\n"
+                                 "    extra_targets: m2.d\n")
+
+    def test_bad_scan_layers_rejected(self, tmp_path):
+        with pytest.raises(ValueError, match="scan_layers"):
+            self._load(tmp_path, "language: zh\nmetrics:\n  - key: a\n    target: m.c\n"
+                                 "governance:\n  scan_layers: dm\n")
+
+
 class TestDriftSourcesFull:
     _old = {"target": "m.c", "sources": ["orders.amount"],
             "conditions": {}, "semantics": [], "exprs": {}}

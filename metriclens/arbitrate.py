@@ -72,7 +72,9 @@ def build_report(project: DbtProject, cfg: MLConfig, graph: dict) -> dict:
     report = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "llm_model": fast_model(),
-        "a_tier_pairs": len(r["duplicates"]),
+        # A 档直判 = 基名重复 + 聚合语义不同义两类;都是零 LLM 的确定性结论
+        "a_tier_pairs": len(r["duplicates"]) + len(r["agg_distinct"]),
+        "a_tier_dup": len(r["duplicates"]), "a_tier_agg_distinct": len(r["agg_distinct"]),
         "b_tier_pairs": len(cand) - skipped, "b_tier_skipped": skipped,
         "duplicates": duplicates, "distinct": distinct,
         "families": r["families"],
@@ -85,7 +87,9 @@ def build_report(project: DbtProject, cfg: MLConfig, graph: dict) -> dict:
 
 
 def print_report(report: dict):
-    print(f"=== 治理报告(A 档 {report['a_tier_pairs']} 对直判 + B 档 {report['b_tier_pairs']} 对 LLM 仲裁)===\n")
+    skipped = report.get("b_tier_skipped", 0)
+    print(f"=== 治理报告(A 档 {report['a_tier_pairs']} 对直判 + B 档 {report['b_tier_pairs']} 对 LLM 仲裁"
+          + (f",另 {skipped} 对超出 max_llm_pairs 未仲裁" if skipped else "") + ")===\n")
     print(f"重复建设 {len(report['duplicates'])} 对:")
     for p in report["duplicates"]:
         print(f"  ⚠ [{p['tier']}] {p['a']}  ≡  {p['b']}")

@@ -76,19 +76,40 @@ class MLConfig:
             if key in seen_keys:
                 raise ValueError(f"metric key 重复: {key!r}(同批发布会互相覆盖)")
             seen_keys.add(key)
+            targets = [m["target"], *(m.get("extra_targets") or [])]
+            for tgt in targets:
+                if not isinstance(tgt, str) or "." not in tgt:
+                    raise ValueError(f"metric {key!r} 的 target/extra_targets 须为 'model.column' 字符串,"
+                                     f"实得 {tgt!r}")
+            qf = m.get("query_filter")
+            if qf is not None and not isinstance(qf, str):
+                raise ValueError(f"metric {key!r} 的 query_filter 须为字符串,实得 {type(qf).__name__}")
             metrics.append(MetricDef(
                 key=key, title=m.get("title", key), target=m["target"],
-                extra_targets=m.get("extra_targets") or [], query_filter=m.get("query_filter")))
+                extra_targets=list(m.get("extra_targets") or []), query_filter=qf))
         if not metrics:
             raise ValueError(f"{f} 的 metrics 为空:至少配置一个 model.column 目标")
+
+        def _strlist(field_name: str, v, default: list) -> list:
+            v = v if v is not None else default
+            if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+                raise ValueError(f"governance.{field_name} 须为字符串列表,实得 {v!r}")
+            return v
+
+        pairs = gov.get("max_llm_pairs", cls().max_llm_pairs)
+        if not isinstance(pairs, int) or isinstance(pairs, bool) or pairs < 0:
+            raise ValueError(f"governance.max_llm_pairs 须为非负整数,实得 {pairs!r}")
+        lex = raw.get("lexicon") or {}
+        if not isinstance(lex, dict):
+            raise ValueError(f"lexicon 须为映射(术语 → 解释),实得 {type(lex).__name__}")
         cfg = cls(
             language=raw.get("language", "zh"), metrics=metrics,
-            lexicon=raw.get("lexicon") or {},
-            scan_layers=gov.get("scan_layers") or [],
-            base_suffixes=gov.get("base_suffixes") or cls().base_suffixes,
-            skip_columns=gov.get("skip_columns") or [],
-            skip_suffixes=gov.get("skip_suffixes") or cls().skip_suffixes,
-            max_llm_pairs=int(gov.get("max_llm_pairs", cls().max_llm_pairs)),
+            lexicon=lex,
+            scan_layers=_strlist("scan_layers", gov.get("scan_layers"), []),
+            base_suffixes=_strlist("base_suffixes", gov.get("base_suffixes"), cls().base_suffixes),
+            skip_columns=_strlist("skip_columns", gov.get("skip_columns"), []),
+            skip_suffixes=_strlist("skip_suffixes", gov.get("skip_suffixes"), cls().skip_suffixes),
+            max_llm_pairs=pairs,
             path=f)
         if cfg.language not in ("zh", "en"):
             raise ValueError(f"language 须为 zh|en,实得 {cfg.language!r}")
