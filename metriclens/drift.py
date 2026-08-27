@@ -29,6 +29,9 @@ def metric_snapshot(graph: dict, m) -> dict:
         "target": m.target,
         "query_filter": m.query_filter,
         "sources": sorted(f"{s['table']}.{s['column']}" for s in t["sources"]),
+        # schema 全名版:捕捉"跨 schema 改指向"(erp.orders → crm.orders 裸名不变)
+        "sources_full": sorted(f"{s.get('schema', '')}.{s['table']}.{s['column']}"
+                               for s in t["sources"]),
         "conditions": {c["fp"]: {"sql": c["sql"], "kind": c["kind"], "model": c["model"]}
                        for c in t["conditions"] if not c.get("is_pure_key")},
         "semantics": sorted({(s.get("type", ""), s.get("model", ""), _norm(s.get("sql")))
@@ -84,9 +87,12 @@ def diff_metric(key: str, old: dict, new: dict) -> list:
     if "query_filter" in old and old.get("query_filter") != new.get("query_filter"):
         add("query_filter_changed", "high",
             {"old": old.get("query_filter"), "new": new.get("query_filter")})
-    for s in sorted(set(old["sources"]) - set(new["sources"])):
+    # 双方都有 schema 全名版(sources_full)时用它比较——能捕捉跨 schema 改指向;
+    # 一侧是旧版本快照则回退裸名,不因格式升级误报
+    skey = "sources_full" if ("sources_full" in old and "sources_full" in new) else "sources"
+    for s in sorted(set(old[skey]) - set(new[skey])):
         add("source_removed", "high", {"source": s})
-    for s in sorted(set(new["sources"]) - set(old["sources"])):
+    for s in sorted(set(new[skey]) - set(old[skey])):
         add("source_added", "high", {"source": s})
     oc, nc = old["conditions"], new["conditions"]
     for fp in sorted(set(oc) - set(nc)):

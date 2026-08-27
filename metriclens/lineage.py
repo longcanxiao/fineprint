@@ -89,8 +89,15 @@ def split_and(e: exp.Expression):
 
 
 def scope_name(node: exp.Expression) -> str:
-    cte = node.find_ancestor(exp.CTE)
-    return cte.alias if cte else "main"
+    """所属作用域:最近的 CTE 别名或内联子查询别名;顶层为 main。
+    内联子查询必须有独立 scope——否则 left join (select … where …) 的内部条件
+    会被误标 main 并进入行集闭包(实际只影响补列)。"""
+    anc = node.find_ancestor(exp.CTE, exp.Subquery)
+    if anc is None:
+        return "main"
+    if isinstance(anc, exp.CTE):
+        return anc.alias
+    return anc.alias_or_name or "_subq"
 
 
 def from_arg(sel: exp.Select):
@@ -98,21 +105,32 @@ def from_arg(sel: exp.Select):
     return sel.args.get("from") or sel.args.get("from_")
 
 
+def _scope_child(t, cte_names: set) -> str | None:
+    """FROM/JOIN 挂接对象 → 子 scope 名(CTE 名或内联子查询别名);真实表返回 None。"""
+    if isinstance(t, exp.Table) and t.name in cte_names:
+        return t.name
+    if isinstance(t, exp.Subquery):
+        return t.alias_or_name or "_subq"
+    return None
+
+
 def row_scope_closure(raw_ast: exp.Expression) -> set:
-    """main 出发,沿 FROM 与 inner join 可达的 CTE 集合——其条件约束整个行集;
-    left join 挂接的 CTE 不在闭包内:内部条件只影响补列的值。"""
+    """main 出发,沿 FROM 与 inner join 可达的 CTE/内联子查询 scope 集合——
+    其条件约束整个行集;left join 挂接的不在闭包内:内部条件只影响补列的值。"""
     cte_names = {c.alias for c in raw_ast.find_all(exp.CTE)}
     edges = {}
     for sel in raw_ast.find_all(exp.Select):
         sc = scope_name(sel)
         outs = edges.setdefault(sc, [])
         f = from_arg(sel)
-        if f is not None and isinstance(f.this, exp.Table) and f.this.name in cte_names:
-            outs.append((f.this.name, "from"))
+        if f is not None:
+            child = _scope_child(f.this, cte_names)
+            if child:
+                outs.append((child, "from"))
         for j in sel.args.get("joins") or []:
-            jt = j.this
-            if isinstance(jt, exp.Table) and jt.name in cte_names:
-                outs.append((jt.name, (j.side or "inner").lower()))
+            child = _scope_child(j.this, cte_names)
+            if child:
+                outs.append((child, (j.side or "inner").lower()))
     closure, stack = {"main"}, ["main"]
     while stack:
         cur = stack.pop()
@@ -271,6 +289,8 @@ def output_grain(ast: exp.Expression) -> list:
         f = from_arg(sel)
         if f is not None and isinstance(f.this, exp.Table):
             cur = f.this.name              # 继续沿 FROM 进入 CTE;真实表则自然终止
+        elif f is not None and isinstance(f.this, exp.Subquery):
+            cur = f.this.alias_or_name or "_subq"   # 内联聚合子查询同样在主链上
         else:
             break
     return []

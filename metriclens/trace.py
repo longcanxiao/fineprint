@@ -26,8 +26,11 @@ def trace(graph: dict, model: str, column: str) -> dict:
     model_scopes: dict[str, set] = {}
 
     def add_source(rel: str, col: str):
+        # table 保留裸名(展示/LLM 互验/文档匹配用);schema 单独携带,
+        # 供治理指纹与漂移快照区分跨 schema 同名源表(erp.orders vs crm.orders)
         tbl = source_rel.get(rel) or rel.split(".", 1)[-1]
-        key = {"table": tbl, "column": col}
+        sch = rel.split(".", 1)[0] if "." in rel else ""
+        key = {"table": tbl, "schema": sch, "column": col}
         if key not in sources:
             sources.append(key)
 
@@ -96,7 +99,7 @@ def trace(graph: dict, model: str, column: str) -> dict:
         "target": f"{models[model]['layer']}.{model}.{column}",
         "depth": 1 + max((e["depth"] for e in chain), default=0),
         "models_visited": visited_models,
-        "sources": sorted(sources, key=lambda x: (x["table"], x["column"])),
+        "sources": sorted(sources, key=lambda x: (x["table"], x["column"], x.get("schema", ""))),
         "expr_chain": chain,
         "conditions": conds,
         "semantics": sems,

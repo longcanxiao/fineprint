@@ -79,9 +79,14 @@ class DbtProject:
                     f"模型 {n['name']} 缺少编译产物({cp});请先执行 dbt compile")
             fqn = n.get("fqn") or []
             layer = "/".join(fqn[1:-1]) or n.get("schema") or "default"
+            if n["name"] in out:
+                raise ValueError(
+                    f"模型名折叠冲突: {n['name']} 同时定义于包 "
+                    f"{out[n['name']]['package']} 与 {n.get('package_name')}"
+                    f"(dbt 允许跨包同名;MetricLens 暂以模型名为主键,unique_id 支持在路线图)")
             out[n["name"]] = {
                 "layer": layer, "schema": n.get("schema"), "database": n.get("database"),
-                "alias": n.get("alias") or n["name"],
+                "alias": n.get("alias") or n["name"], "package": n.get("package_name"),
                 "sql": f.read_text(),
                 "compiled_path": cp, "src_path": n.get("original_file_path"),
             }
@@ -89,17 +94,20 @@ class DbtProject:
 
     @cached_property
     def sources(self) -> dict:
-        """{source_identifier: {schema, database, name}} — dbt source 表。"""
+        """{'schema.identifier': {schema, database, identifier, name}} — dbt source 表。
+        不同 schema 的同名 identifier 是合法用法(erp.orders / crm.orders),各自独立;
+        只有 schema.identifier 全同而 database 不同才是当前身份体系无法表达的折叠。"""
         out = {}
         for uid, s in self.manifest["sources"].items():
             ident = s.get("identifier") or s["name"]
-            rec = {"schema": s.get("schema"), "database": s.get("database"), "name": s["name"]}
-            if ident in out and (out[ident]["schema"], out[ident]["database"]) != (rec["schema"], rec["database"]):
+            key = f'{s.get("schema")}.{ident}'
+            rec = {"schema": s.get("schema"), "database": s.get("database"),
+                   "identifier": ident, "name": s["name"]}
+            if key in out and out[key]["database"] != rec["database"]:
                 raise ValueError(
-                    f"源表标识折叠冲突: {ident} 同时声明于 "
-                    f"{out[ident]['database']}.{out[ident]['schema']} 与 {rec['database']}.{rec['schema']}"
-                    f"(多 database 同名源表暂不支持)")
-            out[ident] = rec
+                    f"源表标识折叠冲突: {key} 同时声明于 database "
+                    f"{out[key]['database']} 与 {rec['database']}(多 database 同名源表暂不支持)")
+            out[key] = rec
         return out
 
     @staticmethod
@@ -122,9 +130,9 @@ class DbtProject:
 
     @cached_property
     def source_by_relation(self) -> dict:
-        """'schema.identifier' → source_identifier。"""
-        return self._uniq(((f'{s["schema"]}.{ident}', ident)
-                           for ident, s in self.sources.items()), "源表")
+        """'schema.identifier' → source_identifier(裸名,供 trace 展示与 LLM 互验)。"""
+        return self._uniq(((f'{s["schema"]}.{s["identifier"]}', s["identifier"])
+                           for s in self.sources.values()), "源表")
 
     # ---------------- schema(供 sqlglot qualify)----------------
     @cached_property

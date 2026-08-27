@@ -20,13 +20,27 @@ from metriclens.trace import trace
 
 
 def fingerprint_of(t: dict) -> str:
-    src = sorted(f"{s['table']}.{s['column']}" for s in t["sources"])
+    # 源字段用 schema 全名:跨 schema 同名源表(erp.orders vs crm.orders)是不同数据
+    src = sorted(f"{s.get('schema', '')}.{s['table']}.{s['column']}" for s in t["sources"])
     conds = sorted({c["fp"] for c in t["conditions"] if not c.get("is_pure_key")})
     return hashlib.md5(json.dumps([src, conds]).encode()).hexdigest()[:16]
 
 
+def _agg_one(f: exp.AggFunc) -> str:
+    """单个聚合的规范签名;行数等价类归一化:COUNT(*) ≡ COUNT(1) ≡ COUNT(常量) ≡ SUM(1)
+    都是行数语义,不同写法不能据此直判"不同指标"。"""
+    name = type(f).__name__.lower()
+    arg = f.this
+    if isinstance(f, exp.Count) and (arg is None or isinstance(arg, (exp.Star, exp.Literal))):
+        return "rowcount"
+    if isinstance(f, exp.Sum) and isinstance(arg, exp.Literal) and arg.name == "1":
+        return "rowcount"
+    return name + (":distinct" if f.find(exp.Distinct) else "")
+
+
 def agg_signature(t: dict) -> tuple:
-    """表达式链上的聚合语义签名:函数名 + 是否 DISTINCT。签名不同的两列必非重复物化。"""
+    """表达式链上的聚合语义签名:函数名 + 是否 DISTINCT(行数等价类归一化)。
+    签名不同的两列必非重复物化。"""
     sigs = set()
     for e in t["expr_chain"]:
         if not e.get("expr"):
@@ -36,8 +50,7 @@ def agg_signature(t: dict) -> tuple:
         except Exception:
             continue
         for f in node.find_all(exp.AggFunc):
-            name = type(f).__name__.lower()
-            sigs.add(name + (":distinct" if f.find(exp.Distinct) else ""))
+            sigs.add(_agg_one(f))
     return tuple(sorted(sigs))
 
 

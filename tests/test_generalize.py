@@ -92,12 +92,12 @@ class TestCountStarRowset:
         t = trace(g, "metric", "n")
         assert "filtered" in t["models_visited"]
         assert any(c["sql"] == "active = 1" for c in t["conditions"])
-        assert {"table": "raw_events", "column": "*"} in t["sources"]
+        assert {"table": "raw_events", "schema": "main", "column": "*"} in t["sources"]
 
     def test_value_path_unaffected(self, rowset_project):
         g = build_graph(rowset_project)
         t = trace(g, "metric", "amt")
-        assert {"table": "raw_events", "column": "amount"} in t["sources"]
+        assert {"table": "raw_events", "schema": "main", "column": "amount"} in t["sources"]
         assert any(c["sql"] == "active = 1" for c in t["conditions"])
 
     def test_single_model_cte_condition_row_level(self, rowset_project):
