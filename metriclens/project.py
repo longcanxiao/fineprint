@@ -23,7 +23,7 @@ class DbtProject:
 
     def __init__(self, project_dir: str | os.PathLike, target_dir: str | None = None):
         self.project_dir = Path(project_dir).resolve()
-        self.target_dir = Path(target_dir) if target_dir else self.project_dir / "target"
+        self.target_dir = self._resolve_target(target_dir)
         mf = self.target_dir / "manifest.json"
         if not mf.exists():
             raise FileNotFoundError(
@@ -34,6 +34,20 @@ class DbtProject:
             raise FileNotFoundError(
                 f"未找到 {cat}(血缘解析需要列级 schema)\n请执行: dbt docs generate")
         self.catalog = json.loads(cat.read_text())
+
+    def _resolve_target(self, target_dir: str | None) -> Path:
+        """target 目录优先级:显式参数 → DBT_TARGET_PATH → dbt_project.yml 的 target-path → target。"""
+        cand = target_dir or os.environ.get("DBT_TARGET_PATH")
+        if not cand:
+            f = self.project_dir / "dbt_project.yml"
+            if f.exists():
+                try:
+                    import yaml
+                    cand = (yaml.safe_load(f.read_text()) or {}).get("target-path")
+                except Exception:
+                    cand = None
+        p = Path(cand) if cand else Path("target")
+        return p if p.is_absolute() else self.project_dir / p
 
     # ---------------- 基本属性 ----------------
     @cached_property
@@ -79,18 +93,38 @@ class DbtProject:
         out = {}
         for uid, s in self.manifest["sources"].items():
             ident = s.get("identifier") or s["name"]
-            out[ident] = {"schema": s.get("schema"), "database": s.get("database"), "name": s["name"]}
+            rec = {"schema": s.get("schema"), "database": s.get("database"), "name": s["name"]}
+            if ident in out and (out[ident]["schema"], out[ident]["database"]) != (rec["schema"], rec["database"]):
+                raise ValueError(
+                    f"源表标识折叠冲突: {ident} 同时声明于 "
+                    f"{out[ident]['database']}.{out[ident]['schema']} 与 {rec['database']}.{rec['schema']}"
+                    f"(多 database 同名源表暂不支持)")
+            out[ident] = rec
+        return out
+
+    @staticmethod
+    def _uniq(pairs, kind: str) -> dict:
+        """反查表要求 'schema.table' 全局唯一;跨 database 同名折叠会产生错误血缘,显式拒绝。"""
+        out = {}
+        for rel, name in pairs:
+            if rel in out and out[rel] != name:
+                raise ValueError(
+                    f"{kind}关系折叠冲突: {rel} 同时对应 {out[rel]} 与 {name}"
+                    f"(多 database 同 schema.table 项目暂不支持,请重命名或拆分 schema)")
+            out[rel] = name
         return out
 
     @cached_property
     def model_by_relation(self) -> dict:
         """'schema.alias' → model_name(血缘 upstream 表 → 模型的反查)。"""
-        return {f'{m["schema"]}.{m["alias"]}': name for name, m in self.models.items()}
+        return self._uniq(((f'{m["schema"]}.{m["alias"]}', name)
+                           for name, m in self.models.items()), "模型")
 
     @cached_property
     def source_by_relation(self) -> dict:
         """'schema.identifier' → source_identifier。"""
-        return {f'{s["schema"]}.{ident}': ident for ident, s in self.sources.items()}
+        return self._uniq(((f'{s["schema"]}.{ident}', ident)
+                           for ident, s in self.sources.items()), "源表")
 
     # ---------------- schema(供 sqlglot qualify)----------------
     @cached_property

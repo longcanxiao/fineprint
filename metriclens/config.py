@@ -3,10 +3,15 @@
 
 放在 dbt 项目根目录。密钥永不进配置文件——LLM 凭据只走环境变量(见 llm.py)。
 """
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+
+# key 直接用作批次目录内的文件名:限定字符集,杜绝路径分隔符与 ../ 逃逸
+KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+RESERVED_KEYS = {"index", "active_run"}
 
 EXAMPLE = """\
 # MetricLens 配置(放在 dbt 项目根目录)
@@ -57,12 +62,20 @@ class MLConfig:
                 f"未找到 {f}\n请先执行 metriclens init 生成配置,或手工创建(模板见 README)")
         raw = yaml.safe_load(f.read_text()) or {}
         gov = raw.get("governance") or {}
-        metrics = []
+        metrics, seen_keys = [], set()
         for m in raw.get("metrics") or []:
             if not m.get("key") or not m.get("target"):
                 raise ValueError(f"metrics 条目缺少 key/target: {m}")
+            key = str(m["key"])
+            if not KEY_RE.match(key):
+                raise ValueError(f"metric key 非法: {key!r}(须匹配 {KEY_RE.pattern},不得含路径分隔符)")
+            if key.lower() in RESERVED_KEYS:
+                raise ValueError(f"metric key 为保留名: {key!r}(保留: {sorted(RESERVED_KEYS)})")
+            if key in seen_keys:
+                raise ValueError(f"metric key 重复: {key!r}(同批发布会互相覆盖)")
+            seen_keys.add(key)
             metrics.append(MetricDef(
-                key=m["key"], title=m.get("title", m["key"]), target=m["target"],
+                key=key, title=m.get("title", key), target=m["target"],
                 extra_targets=m.get("extra_targets") or [], query_filter=m.get("query_filter")))
         if not metrics:
             raise ValueError(f"{f} 的 metrics 为空:至少配置一个 model.column 目标")

@@ -13,7 +13,8 @@ HOP = {
 硬性要求:
 1. filters 覆盖影响输出行集或列取值的全部条件(含 join on 中的业务限定),quote 必须逐字符摘自给定 SQL——它会被机器校验,不在原文中的引用会被判为幻觉;
 2. source_columns 只写真实物理上游表(给定 SQL 的 FROM/JOIN 里的库表,穿透 CTE),不要写 CTE 名;
-3. 不要臆造给定 SQL 之外的任何信息。""",
+3. COUNT(*) 等不引用具体列的输出列,source_columns 报其行集来源表,column 填 "*";
+4. 不要臆造给定 SQL 之外的任何信息。""",
 "en": """You are a data-warehouse SQL caliber analyzer. Given one dbt model's full SQL and target output columns, extract the caliber facts of THIS single hop, per column.
 Output JSON only, shaped as:
 {"columns": {"<column>": {
@@ -25,7 +26,8 @@ Output JSON only, shaped as:
 Hard rules:
 1. filters must cover every condition affecting the output row set or column values (including business predicates inside JOIN ON). quote must be copied character-for-character from the given SQL — it is machine-verified; anything not found in the source is treated as hallucination;
 2. source_columns must name real physical upstream tables (FROM/JOIN targets, resolved through CTEs), never CTE names;
-3. never invent anything beyond the given SQL.""",
+3. for output columns referencing no specific column (e.g. COUNT(*)), report the row-set source tables with column "*";
+4. never invent anything beyond the given SQL.""",
 }
 
 MERGE = {

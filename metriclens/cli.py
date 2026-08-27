@@ -16,7 +16,7 @@ from pathlib import Path
 
 def _project(args):
     from metriclens.project import DbtProject
-    return DbtProject(args.project)
+    return DbtProject(args.project, target_dir=getattr(args, "target_path", None))
 
 
 def _cfg(args):
@@ -55,6 +55,9 @@ def cmd_graph(args):
           f"{nsem} semantic points → {project.graph_path()}  (dialect={graph['meta']['dialect']})")
     if errs:
         print(f"column lineage errors ({len(errs)}):", errs[:8], file=sys.stderr)
+        if not args.allow_partial:
+            print("图已写出但存在解析失败的列;确认可接受后用 --allow-partial 放行", file=sys.stderr)
+            sys.exit(1)
 
 
 def cmd_trace(args):
@@ -108,12 +111,16 @@ def main(argv=None):
 
     def common(p):
         p.add_argument("--project", default=".", help="dbt 项目根目录(默认当前目录)")
+        p.add_argument("--target-path", dest="target_path",
+                       help="dbt target 目录(默认: DBT_TARGET_PATH → dbt_project.yml 的 target-path → target)")
         return p
 
     p = common(sub.add_parser("init", help="生成 metriclens.yml 模板"))
     p.add_argument("--force", action="store_true")
     p.set_defaults(fn=cmd_init)
-    common(sub.add_parser("graph", help="构建字段级血缘图")).set_defaults(fn=cmd_graph)
+    p = common(sub.add_parser("graph", help="构建字段级血缘图"))
+    p.add_argument("--allow-partial", action="store_true", help="存在解析失败的列时仍以 0 退出")
+    p.set_defaults(fn=cmd_graph)
     p = common(sub.add_parser("trace", help="回溯 S/F/E 三元组"))
     p.add_argument("target", help="model.column")
     p.set_defaults(fn=cmd_trace)

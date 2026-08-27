@@ -21,7 +21,7 @@ from pathlib import Path
 
 import requests
 
-PROMPT_VER = "v2"
+PROMPT_VER = "v3"
 _CACHE_DIR: Path | None = None
 # 同 key 并发去重:首跑全 miss 时,多个指标途经同一模型会同时发起相同请求,
 # 各拿到不同回答导致下游 prompt 分叉、缓存键漂移(温度 0 也不保证逐字节一致)

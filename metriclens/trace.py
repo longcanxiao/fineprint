@@ -25,6 +25,28 @@ def trace(graph: dict, model: str, column: str) -> dict:
     visited_models = []
     model_scopes: dict[str, set] = {}
 
+    def add_source(rel: str, col: str):
+        tbl = source_rel.get(rel) or rel.split(".", 1)[-1]
+        key = {"table": tbl, "column": col}
+        if key not in sources:
+            sources.append(key)
+
+    def rec_rowset(m: str):
+        """表级行集访问(COUNT(*) 类断链兜底):收该模型的行集条件并继续沿行集表回溯,
+        不进表达式链;model_scopes 留空集 → 只有 row_level 条件生效。"""
+        if ("*", m) in visited:
+            return
+        visited.add(("*", m))
+        if m not in visited_models:
+            visited_models.append(m)
+        model_scopes.setdefault(m, set())
+        for rel in models[m].get("row_set_tables") or []:
+            up_model = model_rel.get(rel)
+            if up_model and up_model in models:
+                rec_rowset(up_model)
+            else:
+                add_source(rel, "*")
+
     def rec(m: str, c: str, depth: int):
         if (m, c) in visited:
             return
@@ -40,13 +62,15 @@ def trace(graph: dict, model: str, column: str) -> dict:
         for up in entry.get("upstreams", []):
             rel = up["table"]
             up_model = model_rel.get(rel)
-            if up_model and up_model in models:
+            if up["column"] == "*":
+                if up_model and up_model in models:
+                    rec_rowset(up_model)
+                else:
+                    add_source(rel, "*")
+            elif up_model and up_model in models:
                 rec(up_model, up["column"], depth + 1)
             else:
-                tbl = source_rel.get(rel) or rel.split(".", 1)[-1]
-                key = {"table": tbl, "column": up["column"]}
-                if key not in sources:
-                    sources.append(key)
+                add_source(rel, up["column"])
 
     rec(model, column, 0)
 

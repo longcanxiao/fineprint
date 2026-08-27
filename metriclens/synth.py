@@ -186,7 +186,9 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set) -
     # 通道一溯到的叶子表并入源表集:seed / 未在 dbt sources 声明的表(如 jaffle_shop)
     # 也是合法源,否则 s2 永远对不上;保留传入集合以捕捉 LLM 报链路外真实源表的情况
     source_names = set(source_names) | {s["table"] for s in t["sources"]}
-    s1 = {f"{s['table']}.{s['column']}" for s in t["sources"]}
+    # 表级源(column="*",COUNT(*) 类行集依赖):LLM 指认该表任意列即视为命中
+    star_tables = {s["table"] for s in t["sources"] if s["column"] == "*"}
+    s1 = {f"{s['table']}.{s['column']}" for s in t["sources"] if s["column"] != "*"}
     s2 = set()
     for out in hops_by_model.values():
         for cinfo in out.get("columns", {}).values():
@@ -194,9 +196,12 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set) -
                 tbl = str(sc.get("table", "")).split(".")[-1].strip('"')
                 if tbl in source_names:
                     s2.add(f"{tbl}.{sc.get('column')}")
+    s2_tables = {e.rsplit(".", 1)[0] for e in s2}
     f1_fps, f2_fps = cls["f1_fps"], cls["f2_fps"]
     covered = len(f2_fps) / len(f1_fps) if f1_fps else 1.0
-    missing = sorted(s1 - s2)
+    missing = sorted(s1 - s2) + sorted(f"{tb}.*" for tb in star_tables if tb not in s2_tables)
+    # star 表的具体列通道一无从对证,不参与 extra 判定;s1 已声明的具体列保留
+    s2 = (s1 & s2) | {e for e in s2 if e.rsplit(".", 1)[0] not in star_tables}
     # 条件列豁免:LLM 多报的字段若真实出现在通道一的过滤/语义文本中,属"值链 vs 条件列"定义分歧,不算幻觉
     cond_text = norm_text(" ".join(c["sql"] for c in t["conditions"])
                           + " ".join(x.get("sql", "") for x in t["semantics"]))
@@ -392,6 +397,13 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
         cards[r["metric_key"]] = {"title": r["title"], "confidence": r["confidence"],
                                   "status": r["status"], "generated_at": r["generated_at"],
                                   "run_id": r.get("run_id")}
+    # 发布前完整性断言:批次卡片集合必须与配置指标集合一致(缺失或多余都不发布)
+    want = {m.key for m in cfg.metrics}
+    if set(cards) != want:
+        print(f"批次不完整,不发布: 缺 {sorted(want - set(cards))} 多 {sorted(set(cards) - want)}"
+              + ("(--only 补齐依赖的 active 批次与当前配置不一致,请先跑一次全量)" if only else ""),
+              file=sys.stderr)
+        return 1
     at = datetime.now().isoformat(timespec="seconds")
     idx = {"run_id": run_id, "at": at, "cards": cards,
            "requested": len(todo), "succeeded": len(results),

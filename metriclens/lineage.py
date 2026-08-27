@@ -93,6 +93,11 @@ def scope_name(node: exp.Expression) -> str:
     return cte.alias if cte else "main"
 
 
+def from_arg(sel: exp.Select):
+    """sqlglot 30 起 Select 的 from 参数改名 from_;两代 key 兼容读取。"""
+    return sel.args.get("from") or sel.args.get("from_")
+
+
 def row_scope_closure(raw_ast: exp.Expression) -> set:
     """main 出发,沿 FROM 与 inner join 可达的 CTE 集合——其条件约束整个行集;
     left join 挂接的 CTE 不在闭包内:内部条件只影响补列的值。"""
@@ -101,7 +106,7 @@ def row_scope_closure(raw_ast: exp.Expression) -> set:
     for sel in raw_ast.find_all(exp.Select):
         sc = scope_name(sel)
         outs = edges.setdefault(sc, [])
-        f = sel.args.get("from")
+        f = from_arg(sel)
         if f is not None and isinstance(f.this, exp.Table) and f.this.name in cte_names:
             outs.append((f.this.name, "from"))
         for j in sel.args.get("joins") or []:
@@ -116,6 +121,31 @@ def row_scope_closure(raw_ast: exp.Expression) -> set:
                 closure.add(child)
                 stack.append(child)
     return closure
+
+
+def row_set_tables(ast: exp.Expression) -> list:
+    """行集闭包内引用的真实表(排除 CTE 名):COUNT(*) 等无列引用的输出列
+    没有列级血缘可走,其行数仍由这些表(经行集条件过滤)决定,以表级上游兜底。"""
+    cte_names = {c.alias for c in ast.find_all(exp.CTE)}
+    closure = row_scope_closure(ast)
+    tables = []
+
+    def add(t):
+        if isinstance(t, exp.Table) and t.name not in cte_names:
+            tk = table_key(t)
+            if tk not in tables:
+                tables.append(tk)
+
+    for sel in ast.find_all(exp.Select):
+        if scope_name(sel) not in closure:
+            continue
+        f = from_arg(sel)
+        if f is not None:
+            add(f.this)
+        for j in sel.args.get("joins") or []:
+            if (j.side or "inner").lower() == "inner":
+                add(j.this)
+    return tables
 
 
 def extract_conditions(raw_ast: exp.Expression, file_text: str, model: str):
@@ -234,6 +264,7 @@ def build_graph(project: DbtProject) -> dict:
         raw = parse_one(m["sql"], read=_DIALECT)
         qast = qualify(raw.copy(), schema=project.schema, dialect=_DIALECT)
         conds, semantics = extract_conditions(raw, m["sql"], name)
+        rowset = row_set_tables(qast)      # qualified 表名带 schema,可反查模型/源表
         out_cols = [p.alias_or_name for p in qast.expressions]
         col_edges = {}
         for col in out_cols:
@@ -262,10 +293,14 @@ def build_graph(project: DbtProject) -> dict:
                     ups.append({"table": key[0], "column": key[1]})
             proj_e = next((p for p in qast.expressions if p.alias_or_name == col), None)
             expr_sql = (proj_e.this if isinstance(proj_e, exp.Alias) else proj_e).sql(dialect=_DIALECT) if proj_e is not None else None
+            # COUNT(*) 等无列引用的投影:列级血缘为空,但行数由行集表决定 → 表级上游兜底
+            if not ups and proj_e is not None and proj_e.find(exp.Column) is None:
+                ups = [{"table": tk, "column": "*"} for tk in rowset]
             col_edges[col] = {"upstreams": ups, "expr": expr_sql, "scopes": sorted(scopes)}
         graph["models"][name] = {
             "layer": m["layer"], "table": f'{m["schema"]}.{m["alias"]}',
             "compiled_path": m["compiled_path"], "src_path": m["src_path"],
+            "row_set_tables": rowset,
             "columns": col_edges, "conditions": conds, "semantics": semantics,
         }
     return graph
