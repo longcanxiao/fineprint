@@ -7,6 +7,7 @@ const KIND_LABEL: Record<string, string> = {
   semantic_added: '新增语义点', semantic_removed: '移除语义点',
   expr_changed: '表达式变更', expr_added: '新增链路列', expr_removed: '移除链路列',
   metric_added: '指标上线', metric_removed: '指标下线',
+  target_changed: '目标列改指向', query_filter_changed: '取数过滤变更',
 }
 
 const evBrief = (e: DriftEvent) =>
@@ -76,6 +77,23 @@ export default function GovernancePanel({ onClose }: { onClose: () => void }) {
                 ))}
               </ul>
             </section>
+            {(report.families ?? []).length > 0 && (
+              <section>
+                <h3>同指标家族·不同粒度 <span className="m-target">{report.families!.length} 对 · 非重复,建议统一命名口径</span></h3>
+                <ul className="refs">
+                  {report.families!.map((p, i) => (
+                    <li key={i}>
+                      <span>
+                        <span className="tier tier-b">家族</span>
+                        <code>{p.a} ~ {p.b}</code>
+                        <div className="gov-reason">粒度 [{p.grain_a.join(', ') || '明细'}] vs [{p.grain_b.join(', ') || '明细'}]</div>
+                      </span>
+                      <span className="ref-loc">指纹 {p.fingerprint.slice(0, 8)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             <section>
               <h3>口径漂移事件 <span className="m-target">{drift?.length ?? 0} 条 · 每次重建后快照对比自动检测</span></h3>
               {(drift ?? []).length === 0
