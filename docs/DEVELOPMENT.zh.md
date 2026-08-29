@@ -67,7 +67,8 @@ bash jobs/caliber_refresh.sh        # 全量刷新 15 张口径卡(LLM 调用,�
 发布原子性:整批卡写入 `.metriclens/store/runs/<run_id>/`,全部成功后才切换 `active_run` 指针,
 API 只读 active 批次——线上不存在半新半旧的中间态(--only 单卡重跑会从 active 批次补齐其余卡再整批发布)。
 指纹重复扫描(A 档)结果注入卡片 `governance` 字段,看板口径弹层展示"同源同构"治理提示。
-模型:deepseek-v4-flash(逐跳)+ v4-pro(归并/业务)。
+模型由环境变量决定:`METRICLENS_LLM_FAST_MODEL`(逐跳抽取)+ `METRICLENS_LLM_QUALITY_MODEL`
+(归并/业务口径),配任意 OpenAI 兼容端点(`METRICLENS_LLM_BASE_URL`)。
 
 ## 治理与漂移(M5)
 

@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased
+
+Sixth external review: identity end-to-end in the trust chain, cardinality as
+first-class lineage, product-to-graph binding.
+
+- **Cross-validation uses physical three-part identities**: segment-wise
+  alignment where a segment unknown on either side is lenient but two declared
+  segments must agree — a wrong database or a fabricated schema is kept
+  verbatim as a fake identity (extra + missing, capping confidence) instead of
+  being tail-folded onto a real source; in-graph model tables remain legal
+  per-hop references (filtered, not punished).
+- **Formulas must bind to the metric's own value chain**: the formula field is
+  screened against a chain-only lexicon (no graph-wide objects), so summing a
+  real-but-unrelated column no longer publishes as high; summaries/caveats
+  keep the graph-wide vocabulary for comparisons.
+- **Row-cardinality is now first-class lineage evidence**: every model records
+  its join partners and partner-side equi-keys (`row_risk_joins`); a join is
+  provably N:1 — and exempt — when its keys cover the partner's group-by grain
+  or window-dedup keys (`unique_on`, both derived deterministically from SQL).
+  Fingerprint-equal pairs whose unproven-join leaf row sets differ go to a new
+  `row_mismatch` governance tier ("suspected duplicate, cardinality unproven")
+  instead of a deterministic duplicate verdict; SUM-over-fanning-LEFT-JOIN vs
+  the plain SUM no longer judges as duplicate. `sum(case when … then 1 else
+  0 end)` now normalizes into the conditional-count equivalence class.
+- **Products bind to their graph**: caliber cards, governance reports and
+  drift snapshots stamp `graph_md5`; benchmark acceptance hard-fails on
+  stale products, so a rebuilt graph invalidates old green lights.
+- **Drift compares logical target identity** (`target_uid`): qualifying a
+  target as `package.model.column` for disambiguation is no longer a
+  `target_changed`; raw-text comparison remains for legacy baselines.
+- **Duplicate-alias scopes are no longer re-merged in traces**: conditions
+  and semantics in reused-alias scopes (`s@2`) can't be attributed to a
+  specific value path by bare name — they surface in a `scope_ambiguous`
+  section (render + card, capping high) instead of silently joining the
+  caliber.
+- **Docs and canvas stop folding same-name objects**: `column_docs` adds
+  `package:model` and `db.schema.identifier` keys (fuller keys queried
+  first); the lineage canvas disambiguates source node ids per collision
+  (bare → schema.table → three-part).
+- Docs corrected: README multi-database support and LLM egress list,
+  DEVELOPMENT model names, design-doc as-built deltas.
+
 ## 0.7.0 — 2026-08-29
 
 Identity refactor: logical primary keys, physical three-part lookup.

@@ -80,8 +80,10 @@ def build_vocab(t: dict, title: str, query_filter, lexicon: dict, graph: dict | 
     复合标识符(snake_case/带点引用)与口径数字必须能在这里找到出处。
     词表不含任何 LLM 产物,也不含 schema 文档——第三方 dbt 包的注释属不可信输入,
     不得为卡片表述背书;lexicon 是用户在 metriclens.yml 亲手维护的一方配置,保留。
-    标识符集含全图模型/列/源表名:引用真实存在的对象(如维表 dim_user、对比指标列)
-    不是词法幻觉,不拦;口径数字仍限本指标链路——窗口/状态码不得跨指标借用。"""
+    graph=None 时是"链内词表"(只含本指标值链对象),供公式校验——公式写了项目里
+    真实存在但不在本链的列就是错误公式,必须拦;传 graph 时并入全图模型/列/源表名,
+    供摘要/告诫校验——对比说明引用真实对象不是词法幻觉,不拦。口径数字始终限
+    本指标链路——窗口/状态码不得跨指标借用。"""
     parts = [title or "", query_filter or ""]
     parts += [f"{e['model']} {e['column']} {e.get('expr') or ''}" for e in t["expr_chain"]]
     parts += [f"{s.get('schema', '')} {s['table']} {s['column']}" for s in t["sources"]]
@@ -267,44 +269,68 @@ def classify_filters(t: dict, hops_by_model: dict, graph: dict) -> dict:
 
 
 def _src_ident(s: dict) -> str:
-    """源表身份:schema.table(schema 缺失时裸名)。跨 schema 同名表必须区分。"""
+    """源表文档键:schema.table(schema 缺失时裸名)。供 column_docs 查询。"""
     sch = s.get("schema") or ""
     return f"{sch}.{s['table']}" if sch else s["table"]
 
 
-def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set) -> dict:
+def _src_ident3(s: dict) -> str:
+    """源表互验身份:物理三段 db.schema.table(缺段留空位)。
+    跨 schema、跨 database 的同名表都是不同数据,互验不得降级比对。"""
+    return f"{s.get('database') or ''}.{s.get('schema') or ''}.{s['table']}"
+
+
+def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set,
+                   model_tables: set | None = None) -> dict:
     # 通道一溯到的叶子表并入源表集:seed / 未在 dbt sources 声明的表(如 jaffle_shop)
     # 也是合法源,否则 s2 永远对不上;保留传入集合以捕捉 LLM 报链路外真实源表的情况
-    idents = {_src_ident(s) for s in t["sources"]}
+    idents3 = {_src_ident3(s) for s in t["sources"]}
+    by2: dict = {}     # 'schema.table' → {三段身份}:两段指认按此对齐
     bare_index: dict = {}
     for s in t["sources"]:
-        bare_index.setdefault(s["table"], set()).add(_src_ident(s))
-    legal = set(source_names) | idents | set(bare_index)
+        i3 = _src_ident3(s)
+        sch = s.get("schema") or ""
+        by2.setdefault(f"{sch}.{s['table']}" if sch else s["table"], set()).add(i3)
+        bare_index.setdefault(s["table"], set()).add(i3)
+    legal = set(source_names) | idents3 | set(by2) | set(bare_index)
     # 表级源(column="*",COUNT(*) 类行集依赖):LLM 指认该表任意列即视为命中
-    star_tables = {_src_ident(s) for s in t["sources"] if s["column"] == "*"}
-    s1 = {f"{_src_ident(s)}.{s['column']}" for s in t["sources"] if s["column"] != "*"}
+    star_tables = {_src_ident3(s) for s in t["sources"] if s["column"] == "*"}
+    s1 = {f"{_src_ident3(s)}.{s['column']}" for s in t["sources"] if s["column"] != "*"}
+
+    mtabs = model_tables or set()
 
     def resolve(raw: str) -> str | None:
-        """LLM 报的表名 → 通道一源表身份。带 schema 时精确比对(明确的 schema 不得
-        被裸名回退改写);裸名仅在无歧义时补全——跨 schema 同名表的裸名指认无法
-        对齐,不补全,诚实进 missing。链路外真实源表保留身份,交给 extra 惩罚。"""
+        """LLM 报的表名 → 通道一源表三段身份。对齐规则:逐段比对,某一侧未知
+        (空段/未写)则该段宽容,两侧都声明则必须一致——显式的 schema/database
+        指认不得被回退改写:database 错配、伪造 schema 都保留原样进 extra
+        (真身份同时落 missing,双向惩罚);多候选歧义不猜(进 missing)。
+        图内模型表是通道二逐跳的合法指认对象(上游模型),非源级,静默滤除。"""
         tb = raw.replace('"', "").strip()
         if not tb:
             return None
-        if "." in tb:
-            two = ".".join(tb.split(".")[-2:])
-            if two in idents:
-                return two
-            if tb in idents:
-                return tb
-            if two in legal or tb in legal:
-                return two   # 已知的链路外表身份:保留,交给 extra 惩罚(不掰正明确指认)
-            tb = tb.split(".")[-1]   # 非已知身份的多段名视为物理修饰(db.schema.tbl),取尾段
-        opts = bare_index.get(tb, set())
-        if len(opts) == 1:
-            return next(iter(opts))
-        if len(opts) > 1:
-            return None
+        parts = tb.split(".")
+        d = parts[-3] if len(parts) >= 3 else None       # None = LLM 未声明该段
+        sch = parts[-2] if len(parts) >= 2 else None
+        tail = parts[-1]
+
+        def compat(cand: str) -> bool:
+            cdb, csch, _ = cand.split(".", 2)
+            return ((d is None or cdb in ("", d))
+                    and (sch is None or csch in ("", sch)))
+
+        if len(parts) >= 3 and f"{d}.{sch}.{tail}" in idents3:
+            return f"{d}.{sch}.{tail}"
+        hits = [c for c in sorted(bare_index.get(tail, ())) if compat(c)]
+        if len(hits) == 1:
+            return hits[0]
+        if len(hits) > 1:
+            return None          # 多候选按声明段仍无法定位 → 诚实进 missing
+        if tb in mtabs or tail in mtabs or (sch is not None and f"{sch}.{tail}" in mtabs):
+            return None          # 中间模型指认:合法但非源,不入 s2 不惩罚
+        if d is not None:
+            return f"{d}.{sch}.{tail}"   # 显式三段但链上无兼容源:伪身份,extra+missing
+        if sch is not None:
+            return tb            # 显式两段(含伪造/链路外 schema):不尾段回退,进 extra
         return tb if tb in legal else None
 
     s2 = set()
@@ -356,6 +382,8 @@ def merged_trace(graph: dict, m: MetricDef) -> dict:
         t["semantics"] += [s for s in t2["semantics"] if s not in t["semantics"]]
         t["expr_chain"] += [e for e in t2["expr_chain"] if e not in t["expr_chain"]]
         t["sources"] += [s for s in t2["sources"] if s not in t["sources"]]
+        t["scope_ambiguous"] += [x for x in t2.get("scope_ambiguous", [])
+                                 if x not in t["scope_ambiguous"]]
         for vm in t2["models_visited"]:
             if vm not in t["models_visited"]:
                 t["models_visited"].append(vm)
@@ -388,7 +416,17 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
     # 合法源身份三种粒度:裸名 + schema.table 两段(LLM 常用)+ 物理三段键
     source_names = set(rel_sources.values()) | set(rel_sources.keys())
     source_names |= {k.split(".", 1)[1] for k in rel_sources if k.count(".") >= 2}
-    val = cross_validate(t, hops_by_model, cls, source_names)
+    # 图内模型表名(三段/两段/裸名/短名):通道二逐跳的合法上游指认,非源级
+    model_tables = set()
+    for k in graph.get("relations", {}).get("models", {}):
+        model_tables.add(k)
+        ps = k.split(".")
+        model_tables.add(".".join(ps[1:]))
+        model_tables.add(ps[-1])
+    for mm in graph["models"].values():
+        if mm.get("name"):
+            model_tables.add(mm["name"])
+    val = cross_validate(t, hops_by_model, cls, source_names, model_tables)
 
     order = {mm: i for i, mm in enumerate(t["models_visited"])}
     hops_seq = [{"model": disp_of.get(mo, mo), "layer": graph["models"][mo]["layer"],
@@ -406,7 +444,9 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
     docs = project.column_docs
     docs_ctx = {}
     for s in t["sources"]:
-        d = (docs.get(_src_ident(s)) or docs.get(s["table"]) or {}).get(s["column"])
+        # 全名 → schema 名 → 裸名逐级回退:同名源表的注释不得互相串
+        d = (docs.get(_src_ident3(s)) or docs.get(_src_ident(s))
+             or docs.get(s["table"]) or {}).get(s["column"])
         if d:
             docs_ctx[f"{s['table']}.{s['column']}"] = d
     for e in t["expr_chain"]:
@@ -450,8 +490,12 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
         val["confidence"] = "medium"
 
     # 自由文本词表校验:公式/摘要/定义/告诫/关键过滤是展示层最显眼的字段,
-    # 其中的字段引用与口径数字必须可溯源到通道一词表;失配 → 该卡不得 high
+    # 其中的字段引用与口径数字必须可溯源到通道一词表;失配 → 该卡不得 high。
+    # 词表分两档:公式必须绑定本指标值链(链内词表,不含全图对象——项目里真实存在
+    # 但不在本链的列写进公式就是错误公式);摘要/定义/告诫允许引用全图真实对象
+    # (对比说明、关联指标是合法表述)。
     v_idents, v_nums = build_vocab(t, m.title, m.query_filter, cfg.lexicon, graph)
+    c_idents, c_nums = build_vocab(t, m.title, m.query_filter, cfg.lexicon, None)
     freetext_bad = {}
     # 聚合锚点比较集 = 值链聚合 + 途经模型内全部列的聚合(LLM 公式重构常内联
     # 途经模型的中间取数逻辑,如 sign_time = min(case …);凭空聚合仍在集外被拦)
@@ -461,18 +505,26 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
     agg_bad = formula_agg_check(technical.get("formula"), link_aggs)
     if agg_bad:
         freetext_bad["formula_aggs"] = agg_bad
-    checks = [("formula", technical.get("formula")), ("summary", technical.get("summary")),
-              ("definition", business.get("definition"))]
-    checks += [(f"key_filters[{i}]", kf.get("text"))
+    checks = [("formula", technical.get("formula"), True), ("summary", technical.get("summary"), False),
+              ("definition", business.get("definition"), False)]
+    checks += [(f"key_filters[{i}]", kf.get("text"), False)
                for i, kf in enumerate(technical.get("key_filters") or [])]
-    checks += [(f"caveats[{i}]", cv) for i, cv in enumerate(business.get("caveats") or [])]
-    for field, txt in checks:
-        b = verify_freetext(txt, v_idents, v_nums)
+    checks += [(f"caveats[{i}]", cv, False) for i, cv in enumerate(business.get("caveats") or [])]
+    for field, txt, chain_only in checks:
+        b = (verify_freetext(txt, c_idents, c_nums) if chain_only
+             else verify_freetext(txt, v_idents, v_nums))
         if b:
             freetext_bad[field] = b[:6]
     val["freetext_unverified"] = freetext_bad
     if freetext_bad and val["confidence"] == "high":
         val["confidence"] = "medium"
+
+    # 归因不明条件(别名复用 scope):口径事实不完整,不得 high,须人工确认
+    amb = t.get("scope_ambiguous") or []
+    if amb:
+        val["scope_ambiguous"] = [str(c.get("sql", ""))[:80] for c in amb][:6]
+        if val["confidence"] == "high":
+            val["confidence"] = "medium"
 
     # 治理提示:指纹重复对命中本卡链路(同模型 + 同基名)时挂告示。
     # 治理报告两侧是展示名,配置 target 也归一到展示名再比对
@@ -498,12 +550,16 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
         "extra_targets": m.extra_targets, "query_filter": m.query_filter,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "llm_model": f"{fast_model()}+{quality_model()}",
+        # 卡片绑定生成它的图:验收/审计据此判断产物是否落后于图(混版本产物不可信)
+        "graph_md5": graph.get("meta", {}).get("graph_md5"),
+        "graph_generated_at": graph.get("meta", {}).get("generated_at"),
         "confidence": val["confidence"],
         "status": "published" if val["confidence"] in ("high", "medium") else "review",
         "validation": val, "technical": technical, "business": business,
         "evidence": evidence,
         "governance": {"duplicates": gov_dups[:4]},
-        "trace": {k: t[k] for k in ("depth", "models_visited", "sources", "conditions", "semantics")},
+        "trace": {k: t[k] for k in ("depth", "models_visited", "sources", "conditions",
+                                    "semantics", "scope_ambiguous")},
         "per_hop": hops_seq,
     }
 
@@ -514,7 +570,10 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
     set_cache_dir(project.workspace / "cache")
     store = CaliberStore(project.workspace / "store")
     run_id = uuid.uuid4().hex[:8]
-    dup_pairs = governance_scan(graph, cfg)["duplicates"]
+    scan_r = governance_scan(graph, cfg)
+    # 卡片治理提示 = 确定重复 + 疑似重复(行结构不同,基数未证):后者带 kind 标记
+    dup_pairs = scan_r["duplicates"] + [{**p, "kind": "row_mismatch"}
+                                        for p in scan_r.get("row_mismatch", [])]
     todo = [m for m in cfg.metrics if not only or m.key == only]
     if only and not todo:
         print(f"未知指标 key: {only}(配置里有: {[m.key for m in cfg.metrics]})", file=sys.stderr)

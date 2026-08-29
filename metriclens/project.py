@@ -243,22 +243,34 @@ class DbtProject:
     @cached_property
     def column_docs(self) -> dict:
         """{table_or_model_name: {column: description}},来自 manifest 的 schema.yml 文档。
-        源表同时登记 'schema.identifier' 全名键——跨 schema 同名源表的裸名键会互相
-        覆盖,消费方应优先用全名查询。只收一方包的注释:第三方包的 description
-        是包作者的文本,不得进入口径合成的 LLM 上下文。"""
+        裸名键会被同名对象互相覆盖,只作最后回退;每个对象同时登记不折叠的全名键:
+        模型 'package:name'(与展示名规则一致),源表 'schema.identifier' 与
+        'db.schema.identifier'——消费方按全名 → 裸名的顺序查询。
+        只收一方包的注释:第三方包的 description 是包作者文本,不得进 LLM 上下文。"""
         docs: dict = {}
-        for coll in (self.manifest.get("nodes", {}), self.manifest.get("sources", {})):
-            for n in coll.values():
-                if not self._is_internal(n.get("package_name")):
-                    continue
-                tbl = n.get("identifier") or n.get("name")
-                keys = [tbl]
-                if n.get("resource_type") == "source" and n.get("schema"):
-                    keys.append(f'{n["schema"]}.{tbl}')
-                for col, meta in (n.get("columns") or {}).items():
-                    if meta.get("description"):
-                        for k in keys:
-                            docs.setdefault(k, {})[col] = meta["description"]
+
+        def put(keys, cols):
+            for col, meta in (cols or {}).items():
+                if meta.get("description"):
+                    for k in keys:
+                        docs.setdefault(k, {})[col] = meta["description"]
+
+        for n in self.manifest.get("nodes", {}).values():
+            if not self._is_internal(n.get("package_name")):
+                continue
+            keys = [n.get("name")]
+            if n.get("resource_type") == "model" and n.get("package_name"):
+                keys.append(f'{n["package_name"]}:{n["name"]}')
+            put(keys, n.get("columns"))
+        for n in self.manifest.get("sources", {}).values():
+            if not self._is_internal(n.get("package_name")):
+                continue
+            tbl = n.get("identifier") or n.get("name")
+            keys = [tbl]
+            if n.get("schema"):
+                keys.append(f'{n["schema"]}.{tbl}')
+                keys.append(rel3(n.get("database"), n["schema"], tbl))
+            put(keys, n.get("columns"))
         return docs
 
     # ---------------- 工作目录 ----------------

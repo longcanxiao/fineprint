@@ -218,13 +218,25 @@ def lineage_graph_api(model: str, column: str):
         t = lineage_trace(g, model, column)
     except KeyError as e:
         raise HTTPException(404, str(e))
-    # models_visited 是 unique_id;画布节点用展示名,边经物理关系反查回 uid
+    # models_visited 是 unique_id;画布节点用展示名,边经物理关系反查回 uid。
+    # 源节点 id 按需消歧:裸名唯一用裸名,同名跨 schema 用 schema.table,再撞用三段
     visited = set(t["models_visited"])
     disp = {m: display_name(g, m) for m in visited}
     rel_models = g.get("relations", {}).get("models", {})
-    ods_tables = sorted({s["table"] for s in t["sources"]})
+    by_bare, by_two = {}, {}
+    for s in t["sources"]:
+        rel = f"{s.get('database', '')}.{s.get('schema', '')}.{s['table']}"
+        by_bare.setdefault(s["table"], set()).add(rel)
+        by_two.setdefault(f"{s.get('schema', '')}.{s['table']}", set()).add(rel)
+    sid_of = {}
+    for s in t["sources"]:
+        rel = f"{s.get('database', '')}.{s.get('schema', '')}.{s['table']}"
+        two = f"{s.get('schema', '')}.{s['table']}"
+        sid_of[rel] = (s["table"] if len(by_bare[s["table"]]) == 1
+                       else two if len(by_two[two]) == 1 else rel)
+    ods_ids = sorted(set(sid_of.values()))
     nodes = [{"id": disp[m], "layer": g["models"][m]["layer"]} for m in t["models_visited"]]
-    nodes += [{"id": tb, "layer": "ods"} for tb in ods_tables]
+    nodes += [{"id": sid, "layer": "ods"} for sid in ods_ids]
     edges = set()
     for m in visited:
         for cinfo in g["models"][m]["columns"].values():
@@ -232,10 +244,8 @@ def lineage_graph_api(model: str, column: str):
                 up_uid = rel_models.get(up["table"])
                 if up_uid in visited:
                     edges.add((disp[up_uid], disp[m]))
-                    continue
-                tb = up["table"].split(".")[-1].strip('"')
-                if tb in ods_tables:
-                    edges.add((tb, disp[m]))
+                elif up["table"] in sid_of:
+                    edges.add((sid_of[up["table"]], disp[m]))
     return {"target": f"{model}.{column}", "nodes": nodes,
             "edges": [{"source": a, "target": b} for a, b in sorted(edges)],
             "sources": [f"{s['table']}.{s['column']}" for s in t["sources"]]}

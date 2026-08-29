@@ -38,7 +38,8 @@ dbt 已保证,我们仍在装载期复查——manifest 是外部输入。
 
 ## 2. 数据结构变更
 
-- `project.models`:键 unique_id;新增 `project.resolve_model(ref) -> uid`——
+- `project.models`:键 unique_id;新增 `resolve_model(ref) -> uid`(as-built:
+  落在 trace.py,按图工作而非按 project 工作——消费方大多只有图)——
   输入短名(唯一才自动解析)、`pkg.name` 二段、或完整 unique_id;歧义/未知时
   报错列出全部候选写法。`external_models` 键升三段。
 - `graph.models`:键 unique_id;条目内保留 `name`(短名)与 `table`(三段物理名)。
@@ -61,10 +62,13 @@ dbt 已保证,我们仍在装载期复查——manifest 是外部输入。
 
 - **图**:v3 读取器遇 v2 图直接报错"请重建图"。图是派生物、重建零成本,
   不做双读——真正需要兼容的是有基线语义的持久物。
-- **漂移快照**:新快照 `sources_full` 升三段(`db.schema.table.column`),
-  新增 `model_uids`;diff 沿用 sources_full→sources 的既有回退模式——
-  双方都有新键才用新键比,否则退旧键。老基线不误报;跨 database 改指向
-  自新基线起可检出。
+- **漂移快照**(as-built):`sources_full` 保持两段格式不变(改格式会让新旧
+  基线同键异构而误报),另立新键 `sources_full3`(`db.schema.table.column`)
+  与 `target_uid`(目标的逻辑身份,配置写法归一不算改指向);diff 取双方共有
+  的最全键(full3 → full → sources / uid → raw target)。老基线不误报;
+  跨 database 改指向、target 写法消歧均自新基线起正确处理。
+  设计期设想的 `model_uids` 未实现——链路变化已由 exprs/conditions/semantics
+  捕捉,单列模型清单是冗余键。
 - **口径卡**:新卡 additive 加 uid 字段,老卡不动。
 - **治理指纹**:源字段串升三段。governance_report 每次重算、无基线,无迁移问题。
 

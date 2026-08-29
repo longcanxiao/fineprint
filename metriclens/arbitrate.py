@@ -72,6 +72,9 @@ def build_report(project: DbtProject, cfg: MLConfig, graph: dict) -> dict:
         (duplicates if arb["verdict"] == "duplicate" else distinct).append(item)
     report = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
+        # 报告绑定生成它的图:验收据此检出"图已重建、报告仍是旧图产物"的混版本状态
+        "graph_md5": graph.get("meta", {}).get("graph_md5"),
+        "graph_generated_at": graph.get("meta", {}).get("generated_at"),
         # 零 B 档候选时报告纯确定性,不要求 LLM 凭据(质量立项/家族分档照常产出)
         "llm_model": fast_model() if cand[:cfg.max_llm_pairs] else None,
         # A 档直判 = 基名重复 + 聚合语义不同义两类;都是零 LLM 的确定性结论
@@ -80,7 +83,8 @@ def build_report(project: DbtProject, cfg: MLConfig, graph: dict) -> dict:
         "b_tier_pairs": len(cand) - skipped, "b_tier_skipped": skipped,
         "pairs_truncated": r.get("pairs_truncated", 0),
         "duplicates": duplicates, "distinct": distinct,
-        "families": r["families"], "sql_quality": r.get("sql_quality", []),
+        "families": r["families"], "row_mismatch": r.get("row_mismatch", []),
+        "sql_quality": r.get("sql_quality", []),
     }
     f = report_path(project)
     tmp = f.with_suffix(".tmp")
@@ -107,6 +111,12 @@ def print_report(report: dict):
         print(f"\n同指标家族·不同粒度 {len(fams)} 对(非重复,建议统一命名口径):")
         for p in fams:
             print(f"  ◇ {p['a']}({','.join(p['grain_a']) or '明细'})  ~  {p['b']}({','.join(p['grain_b']) or '明细'})")
+    rms = report.get("row_mismatch") or []
+    if rms:
+        print(f"\n同源同条件·行集结构不同 {len(rms)} 对(join 基数未证,须人工确认唯一性):")
+        for p in rms:
+            only = (p.get("rowset_only_a") or []) + (p.get("rowset_only_b") or [])
+            print(f"  ⋈ {p['a']}  ?  {p['b']}   差异表: {', '.join(only[:4])}")
     sq = report.get("sql_quality") or []
     if sq:
         print(f"\nSQL 质量立项 {len(sq)} 项(口径含义未自证,须人工明确计数对象):")

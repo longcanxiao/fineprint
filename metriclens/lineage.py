@@ -199,6 +199,120 @@ def row_set_tables(ast: exp.Expression) -> list:
     return tables
 
 
+def _partner_keys(j) -> list:
+    """join 伙伴侧的等值键列名(lower):ON 等值两侧取属伙伴别名的列 + USING 列。"""
+    alias = j.this.alias_or_name if isinstance(j.this, (exp.Table, exp.Subquery)) else None
+    keys = set()
+    on = j.args.get("on")
+    for c in split_and(on) if on is not None else ():
+        if isinstance(c, exp.EQ) and isinstance(c.this, exp.Column) \
+                and isinstance(c.expression, exp.Column):
+            for col in (c.this, c.expression):
+                if col.table == alias:
+                    keys.add(col.name.lower())
+    for u in j.args.get("using") or []:
+        keys.add(str(u.name).lower())
+    return sorted(keys)
+
+
+def _node_unique_keys(node) -> list:
+    """CTE/子查询的输出唯一键:分组键或窗口去重键,二者皆为确定性基数证据。"""
+    sel = node.this.find(exp.Select) if isinstance(node, (exp.CTE, exp.Subquery)) else None
+    if sel is None:
+        return []
+    return _select_grain(sel) or _select_dedup_keys(sel)
+
+
+def output_unique_on(ast: exp.Expression) -> list:
+    """输出唯一键(窗口去重证据):沿 main → FROM 主链找去重 SELECT 的 partition 键,
+    供治理把"join 到本模型且键覆盖 unique_on"判为 N:1 安全。
+    先遇 group-by 由 grain 承担唯一性(返回 []);途中任一 join 若不能就地证明
+    N:1(伙伴唯一键被 join 键覆盖),行可能被复制,唯一性主张作废。"""
+    ids = scope_ids(ast)
+    cte_def = {c.alias: c for c in ast.find_all(exp.CTE)}
+    sel_by_scope: dict = {}
+    for sel in ast.find_all(exp.Select):
+        sel_by_scope.setdefault(scope_name(sel, ids), sel)
+    cur, seen = "main", set()
+    while cur in sel_by_scope and cur not in seen:
+        seen.add(cur)
+        sel = sel_by_scope[cur]
+        if sel.args.get("group"):
+            return []
+        for j in sel.args.get("joins") or []:
+            t = j.this
+            node = cte_def.get(t.name) if isinstance(t, exp.Table) and t.name in cte_def \
+                else (t if isinstance(t, exp.Subquery) else None)
+            u = _node_unique_keys(node) if node is not None else []
+            if not (u and set(u) <= set(_partner_keys(j))):
+                return []
+        keys = _select_dedup_keys(sel)
+        if keys:
+            return keys
+        f = from_arg(sel)
+        if f is not None and isinstance(f.this, exp.Table):
+            cur = f.this.name
+        elif f is not None and isinstance(f.this, exp.Subquery):
+            cur = ids.get(id(f.this)) or _scope_base(f.this)
+        else:
+            break
+    return []
+
+
+def row_risk_joins(ast: exp.Expression) -> list:
+    """行基数风险 join 清单:全 join 方向闭包内的 join 伙伴 + 伙伴侧等值键。
+
+    值来源与行集依赖是两类血缘:SUM(a.amount) 在 a LEFT JOIN b 上会被 b 的一对多
+    放大,值链却只见 a.amount。治理判重必须比较行结构——但"join 即风险"过宽:
+    join 键覆盖伙伴的分组键(grain)时,伙伴对键唯一,N:1 可证安全。
+    本函数在模型内就地消化 CTE/子查询伙伴(局部 grain 可判);真实表伙伴的
+    grain 归上游模型,键随条目带出,由治理 scan 结合图上 grain 终判。
+    返回 [{rel, keys}]:keys 为伙伴侧等值列名(lower);无键(非等值/USING 之外)= []。"""
+    ids = scope_ids(ast)
+    cte_names = {c.alias for c in ast.find_all(exp.CTE)}
+    cte_def = {c.alias: c for c in ast.find_all(exp.CTE)}
+    edges = _scope_edges(ast, ids)
+    closure = _closure(edges, None)
+    out = []
+
+    def branch_tables(scope: str) -> list:
+        """风险 CTE/子查询伙伴的内部真实表(该分支闭包内)。"""
+        tabs = []
+        reach = _closure(edges, None, root=scope)
+        for sel in ast.find_all(exp.Select):
+            if scope_name(sel, ids) not in reach:
+                continue
+            for t in [f.this for f in [from_arg(sel)] if f is not None] \
+                    + [j.this for j in sel.args.get("joins") or []]:
+                if isinstance(t, exp.Table) and t.name not in cte_names:
+                    tk = table_key(t)
+                    if tk not in tabs:
+                        tabs.append(tk)
+        return tabs
+
+    for sel in ast.find_all(exp.Select):
+        if scope_name(sel, ids) not in closure:
+            continue
+        for j in sel.args.get("joins") or []:
+            keys = _partner_keys(j)
+            t = j.this
+            if isinstance(t, exp.Table) and t.name not in cte_names:
+                out.append({"rel": table_key(t), "keys": keys})
+                continue
+            # CTE / 内联子查询伙伴:局部唯一键可判——join 键覆盖即 N:1 安全
+            node = cte_def.get(t.name) if isinstance(t, exp.Table) else (
+                t if isinstance(t, exp.Subquery) else None)
+            if node is None:
+                continue
+            u = _node_unique_keys(node)
+            if u and set(u) <= set(keys):
+                continue
+            child = t.name if isinstance(t, exp.Table) else (ids.get(id(t)) or _scope_base(t))
+            for tk in branch_tables(child):
+                out.append({"rel": tk, "keys": []})   # 分支内部表:键不可传导,保守视为风险
+    return out
+
+
 def extract_conditions(raw_ast: exp.Expression, file_text: str, model: str):
     """七类口径藏身结构的语义化抽取(基于未 qualify 的原始 AST,便于行号锚定)。"""
     conds, semantics = [], []
@@ -337,7 +451,57 @@ def extract_conditions(raw_ast: exp.Expression, file_text: str, model: str):
                 "column": proj.alias_or_name, "tables": tabs, "join_keys": keys[:6],
                 "sql": psql[:120], "line": anchor_line(psql, file_text),
             })
+    # 别名合法复用(同名 scope 现于多处,ids 里带 @n 消歧)时,列级血缘的 scope 名是
+    # 裸别名,无法区分条件到底属于哪个同名 scope——这类条件/语义点打上 scope_dup,
+    # trace 不做值路径归因,单独暴露为"归因不明"(见 trace.scope_ambiguous)
+    dup_bases = {v.split("@")[0] for v in ids.values() if "@" in v}
+    if dup_bases:
+        for c in conds:
+            if c["scope"].split("@")[0] in dup_bases:
+                c["scope_dup"] = True
+        for s in semantics:
+            if str(s.get("scope", "")).split("@")[0] in dup_bases:
+                s["scope_dup"] = True
     return conds, semantics
+
+
+def _select_grain(sel: exp.Select) -> list:
+    """单个 SELECT 的分组键(序号/源表达式归位到投影别名);无 group-by 返回 []。
+    group-by 的输出对分组键唯一——这是 SQL 自带的确定性基数证据。"""
+    g = sel.args.get("group")
+    if not g:
+        return []
+    proj_by_pos = {str(i + 1): p for i, p in enumerate(sel.expressions)}
+    proj_by_name = {p.alias_or_name: p for p in sel.expressions}
+    # qualify 会把 group by 1 归一成源列/表达式:按投影内层表达式再对一轮
+    proj_by_expr = {(p.this if isinstance(p, exp.Alias) else p).sql(dialect=_DIALECT): p
+                    for p in sel.expressions}
+    keys = set()
+    for k in g.expressions:
+        ks = k.name if isinstance(k, exp.Column) else k.sql(dialect=_DIALECT)
+        p = (proj_by_pos.get(ks) or proj_by_name.get(ks)
+             or proj_by_expr.get(k.sql(dialect=_DIALECT)))
+        name = p.alias_or_name if p is not None else ks
+        keys.add(str(name).strip('"').lower())
+    return sorted(keys)
+
+
+def _select_dedup_keys(sel: exp.Select) -> list:
+    """单个 SELECT 的窗口去重键:qualify row_number() over (partition by K …) = 1
+    → 输出对 K 唯一。与 group-by 同级的确定性基数证据(T9 类去重惯用法)。"""
+    ql = sel.args.get("qualify")
+    if not ql or "= 1" not in re.sub(r"\s+", " ", ql.sql(dialect=_DIALECT)):
+        return []
+    for w in sel.find_all(exp.Window):
+        if w.find_ancestor(exp.Select) is not sel:
+            continue
+        if not w.this.sql(dialect=_DIALECT).lower().startswith("row_number"):
+            continue
+        keys = {(p.name if isinstance(p, exp.Column) else p.sql(dialect=_DIALECT)).lower()
+                for p in (w.args.get("partition_by") or [])}
+        if keys:
+            return sorted(k.strip('"') for k in keys)
+    return []
 
 
 def output_grain(ast: exp.Expression) -> list:
@@ -352,17 +516,9 @@ def output_grain(ast: exp.Expression) -> list:
     while cur in sel_by_scope and cur not in seen:
         seen.add(cur)
         sel = sel_by_scope[cur]
-        g = sel.args.get("group")
-        if g:
-            proj_by_pos = {str(i + 1): p for i, p in enumerate(sel.expressions)}
-            proj_by_name = {p.alias_or_name: p for p in sel.expressions}
-            keys = set()
-            for k in g.expressions:
-                ks = k.name if isinstance(k, exp.Column) else k.sql(dialect=_DIALECT)
-                p = proj_by_pos.get(ks) or proj_by_name.get(ks)
-                name = p.alias_or_name if p is not None else ks
-                keys.add(str(name).strip('"').lower())
-            return sorted(keys)
+        keys = _select_grain(sel)
+        if keys:
+            return keys
         f = from_arg(sel)
         if f is not None and isinstance(f.this, exp.Table):
             cur = f.this.name              # 继续沿 FROM 进入 CTE;真实表则自然终止
@@ -374,12 +530,24 @@ def output_grain(ast: exp.Expression) -> list:
 
 
 def agg_one(f: exp.AggFunc) -> str:
-    """单个聚合的规范签名;行数等价类归一化:COUNT(*) ≡ COUNT(1) ≡ COUNT(常量) ≡ SUM(1)。"""
+    """单个聚合的规范签名;等价类归一化:
+    行数类   COUNT(*) ≡ COUNT(1) ≡ COUNT(常量) ≡ SUM(1);
+    条件计数 SUM(CASE WHEN P THEN 1 ELSE 0/NULL END) ≡ COUNT(CASE WHEN P THEN 1 END)
+             ≡ COUNT(x)(x 非空计数即 P = x IS NOT NULL 的条件计数)→ 归为 count。
+    等价写法无法穷举——签名不同的判定只用于确定性"不同义"直判,新等价形按发现补录,
+    误判方向是"该判等价的被判不同义"(保守,不会误判重复)。"""
     arg = f.this
     if isinstance(f, exp.Count) and (arg is None or isinstance(arg, (exp.Star, exp.Literal))):
         return "rowcount"
     if isinstance(f, exp.Sum) and isinstance(arg, exp.Literal) and arg.name == "1":
         return "rowcount"
+    if isinstance(f, exp.Sum) and isinstance(arg, exp.Case):
+        def _01(x):
+            return (x is None or isinstance(x, exp.Null)
+                    or (isinstance(x, exp.Literal) and x.name in ("0", "1")))
+        ifs = arg.args.get("ifs") or []
+        if ifs and all(_01(i.args.get("true")) for i in ifs) and _01(arg.args.get("default")):
+            return "count"
     return type(f).__name__.lower() + (":distinct" if f.find(exp.Distinct) else "")
 
 
@@ -420,6 +588,8 @@ def build_graph(project: DbtProject) -> dict:
         conds, semantics = extract_conditions(raw, m["sql"], disp)
         # qualified 表名至少带 schema;统一补全为三段物理键,可反查模型/源表
         rowset = [project.complete_rel(tk) for tk in row_set_tables(qast)]
+        risk_joins = [{"rel": project.complete_rel(e["rel"]), "keys": e["keys"]}
+                      for e in row_risk_joins(qast)]
         agg_fns = model_agg_fns(raw)
         out_cols = [p.alias_or_name for p in qast.expressions]
         col_edges = {}
@@ -457,7 +627,9 @@ def build_graph(project: DbtProject) -> dict:
             "name": m["name"], "package": m["package"],
             "layer": m["layer"], "table": rel3(m["database"], m["schema"], m["alias"]),
             "compiled_path": m["compiled_path"], "src_path": m["src_path"],
-            "row_set_tables": rowset, "agg_fns": agg_fns, "grain": output_grain(raw),
+            "row_set_tables": rowset, "row_risk_joins": risk_joins,
+            "agg_fns": agg_fns, "grain": output_grain(raw),
+            "unique_on": output_unique_on(raw),
             "columns": col_edges, "conditions": conds, "semantics": semantics,
         }
     return graph

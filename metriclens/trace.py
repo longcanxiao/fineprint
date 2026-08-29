@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """反向遍历:从任一模型列出发回溯至源表,收敛 S(源字段)/F(过滤条件)/E(表达式链) 三元组。"""
+import hashlib
 import json
 from pathlib import Path
 
@@ -7,12 +8,15 @@ from metriclens.lineage import set_dialect
 
 
 def load_graph(path: Path) -> dict:
-    g = json.loads(Path(path).read_text())
+    raw = Path(path).read_bytes()
+    g = json.loads(raw)
     ver = g.get("meta", {}).get("metriclens_graph_version", 0)
     if ver < 3:
         raise ValueError(
             f"血缘图版本过旧(v{ver}):0.7 起身份体系升级为 unique_id 主键 + 物理三段反查键;"
             f"请重新执行 metriclens graph(图是派生物,重建零成本)")
+    # 图文件指纹:卡片/治理报告/漂移快照据此绑定生成时的图,验收可检出混版本产物
+    g.setdefault("meta", {})["graph_md5"] = hashlib.md5(raw).hexdigest()[:16]
     set_dialect(g.get("meta", {}).get("dialect", "duckdb"))
     return g
 
@@ -140,14 +144,21 @@ def trace(graph: dict, model: str, column: str) -> dict:
 
     rec(model, column, 0)
 
-    conds, sems, seen_fp = [], [], set()
+    conds, sems, ambiguous, seen_fp = [], [], [], set()
     for m in visited_models:
         scopes = model_scopes.get(m, {"main"})
         for c in models[m]["conditions"]:
-            # 行集条件(main/FROM/inner join 闭包内)对全列生效;其余按值路径 scope 过滤
-            # (scope 唯一名可能带 @n 消歧后缀,列级 scopes 是裸别名,按 base 比对)
-            if not c.get("row_level") and c["scope"].split("@")[0] not in scopes:
-                continue
+            # 行集条件(main/FROM/inner join 闭包内)对全列生效——行集闭包在建图期用
+            # 唯一 scope 名计算,归因可信;其余按值路径 scope 过滤(scope 唯一名可能带
+            # @n 消歧后缀,列级 scopes 是裸别名,按 base 比对)
+            if not c.get("row_level"):
+                if c["scope"].split("@")[0] not in scopes:
+                    continue
+                if c.get("scope_dup"):
+                    # 别名复用:裸别名命中无法证明列路径经过的是"这一个"同名 scope,
+                    # 不归因进口径,单独暴露供人工确认(归因错误比缺失更危险)
+                    ambiguous.append({**c, "src_path": models[m]["src_path"]})
+                    continue
             if c["fp"] in seen_fp:
                 continue
             seen_fp.add(c["fp"])
@@ -156,6 +167,9 @@ def trace(graph: dict, model: str, column: str) -> dict:
             if s.get("scope", "main").split("@")[0] not in scopes:
                 continue
             if s.get("column") and (m, s["column"]) not in visited and s["type"] != "stat_date_key":
+                continue
+            if s.get("scope_dup"):
+                ambiguous.append({**s, "src_path": models[m]["src_path"]})
                 continue
             sems.append({**s, "src_path": models[m]["src_path"]})
 
@@ -168,6 +182,7 @@ def trace(graph: dict, model: str, column: str) -> dict:
         "expr_chain": chain,
         "conditions": conds,
         "semantics": sems,
+        "scope_ambiguous": ambiguous,
     }
 
 
@@ -192,6 +207,12 @@ def render(t: dict) -> str:
         jt = f" join({c.get('join_table')})" if c["kind"] == "join_on" else ""
         L.append(f"  [{c['kind']}{jt}] {c['sql'].replace(chr(34), '')}"
                  f"\n      ↳ {c['src_path']} · {c['model']}({c['scope']}) · 编译行 L{c['line']}")
+    amb = t.get("scope_ambiguous") or []
+    if amb:
+        L.append(f"\n── 归因不明 ({len(amb)},别名复用 scope,须人工确认) ──")
+        for c in amb:
+            L.append(f"  ? {str(c.get('sql', '')).replace(chr(34), '')[:80]}"
+                     f"   ↳ {c.get('model')}({c.get('scope')}) L{c.get('line')}")
     L.append(f"\n── 结构语义点 ({len(t['semantics'])}) ──")
     for s in t["semantics"]:
         desc = {

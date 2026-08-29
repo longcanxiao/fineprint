@@ -22,6 +22,9 @@ def main():
     report = json.loads(rf.read_text()) if rf.exists() else None
     checks.append(("治理报告已生成", report is not None))
     if report:
+        # 产物必须绑定当前图:图重建后旧报告的"绿灯"不作数(混版本验收无效)
+        checks.append(("治理报告与当前血缘图同版本(graph_md5 一致)",
+                       report.get("graph_md5") == graph["meta"].get("graph_md5")))
         checks.append(("T8 靶向对判为重复建设",
                        any({p["a"], p["b"]} == T8_PAIR for p in report["duplicates"])))
         b_items = [p for p in report["duplicates"] + report["distinct"] if p["tier"] == "B"]
@@ -43,6 +46,8 @@ def main():
     prev = latest_snapshot(project)
     live = diff_snapshots(prev, take_snapshot(graph, cfg)) if prev else None
     checks.append(("最新快照与当前图一致(无未记录漂移)", live == []))
+    checks.append(("最新快照与当前血缘图同版本(graph_md5 一致)",
+                   bool(prev) and prev.get("graph_md5") == graph["meta"].get("graph_md5")))
 
     print("=== 治理与漂移评测 ===\n")
     for name, ok in checks:

@@ -24,9 +24,18 @@ def _norm(s) -> str:
 
 
 def metric_snapshot(graph: dict, m) -> dict:
+    from metriclens.trace import resolve_model
     t = merged_trace(graph, m)
+    # 目标的逻辑身份(uid.column):配置写法变化(补包名消歧/短名↔限定名)不是口径变化,
+    # 漂移比较优先用它;raw target 仅作展示与老基线兼容
+    try:
+        _mref, _col = m.target.rsplit(".", 1)
+        target_uid = f"{resolve_model(graph, _mref)}.{_col}"
+    except KeyError:
+        target_uid = None
     return {
         "target": m.target,
+        "target_uid": target_uid,
         "query_filter": m.query_filter,
         "sources": sorted(f"{s['table']}.{s['column']}" for s in t["sources"]),
         # schema 全名版:捕捉"跨 schema 改指向"(erp.orders → crm.orders 裸名不变)
@@ -50,6 +59,8 @@ def take_snapshot(graph: dict, cfg: MLConfig) -> dict:
     return {
         # 微秒精度定宽 6 位:近邻两次运行不得互相覆盖快照文件,文件名保持字典序=时间序
         "taken_at": datetime.now().isoformat(timespec="microseconds"),
+        "graph_md5": graph.get("meta", {}).get("graph_md5"),
+        "graph_generated_at": graph.get("meta", {}).get("generated_at"),
         "metrics": {m.key: metric_snapshot(graph, m) for m in cfg.metrics},
     }
 
@@ -86,8 +97,14 @@ def diff_metric(key: str, old: dict, new: dict) -> list:
     def add(kind, severity, detail):
         ev.append({"metric_key": key, "kind": kind, "severity": severity, "detail": detail})
 
-    # 配置层口径:目标改指向 / 取数过滤变化同为口径实质变化;老快照缺键(旧版本产物)跳过
-    if old.get("target") and old["target"] != new["target"]:
+    # 配置层口径:目标改指向 / 取数过滤变化同为口径实质变化;老快照缺键(旧版本产物)跳过。
+    # 双方都有逻辑身份(target_uid)时按它比较——写法归一(短名↔package.model 限定)
+    # 不算改指向;一侧是旧快照才回退比 raw target 文本
+    if old.get("target_uid") and new.get("target_uid"):
+        if old["target_uid"] != new["target_uid"]:
+            add("target_changed", "high", {"old": old["target"], "new": new["target"],
+                                           "old_uid": old["target_uid"], "new_uid": new["target_uid"]})
+    elif old.get("target") and old["target"] != new["target"]:
         add("target_changed", "high", {"old": old["target"], "new": new["target"]})
     if "query_filter" in old and old.get("query_filter") != new.get("query_filter"):
         add("query_filter_changed", "high",
