@@ -57,6 +57,8 @@ metriclens govern           # duplicate-metric governance report
 
 Configuration lives in `metriclens.yml` (metrics list, language `zh|en`, lexicon, governance tuning). LLM credentials are env-vars only (`.env` in the project root is honored): `METRICLENS_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`.
 
+**Third-party dbt packages** (Fivetran connectors, shared vendor models, …) are treated as **data-source boundaries**, the same convention as ODS tables: their SQL, docs and internal calibers are not parsed — lineage stops at their materialized tables, which appear on cards tagged with the owning package. You govern *your* code; theirs is upstream infrastructure. To see through an internal shared package you do own, list it under a top-level `internal_packages: [shared_models]` in `metriclens.yml` and rebuild the graph.
+
 Everything MetricLens produces lives under `your-dbt-project/.metriclens/` — graph, caliber card batches (with an atomic `active_run` pointer), snapshots, drift log, governance report, LLM cache.
 
 ## The 14-trap benchmark
@@ -79,7 +81,7 @@ Not yet: multi-database projects where two relations share the same `schema.tabl
 
 ### Data egress & privacy
 
-Channel 2 sends **compiled model SQL, column descriptions from your schema.yml, and your `metriclens.yml` lexicon** to the LLM endpoint you configure (`METRICLENS_LLM_BASE_URL`) — nothing else, and never warehouse data. If your SQL is sensitive, point it at a self-hosted or VPC endpoint; Channel 1 (lineage, drift, fingerprint scan) runs fully offline. LLM responses are cached content-addressed under `.metriclens/cache/` in your project — treat that directory as containing your SQL. Note that SQL comments and third-party dbt package SQL are untrusted input to the LLM. Machine checks bound what a prompt-injected model can smuggle into a published card — verbatim quotes, evidence-bound clauses, and a channel-1 lexicon/aggregation screen over free-text fields all cap confidence on mismatch — but the prose wording itself is still LLM output and is not proven correct, so review cards from untrusted model code before publishing them to consumers.
+Channel 2 sends **compiled model SQL, column descriptions from your schema.yml, and your `metriclens.yml` lexicon** to the LLM endpoint you configure (`METRICLENS_LLM_BASE_URL`) — nothing else, and never warehouse data. If your SQL is sensitive, point it at a self-hosted or VPC endpoint; Channel 1 (lineage, drift, fingerprint scan) runs fully offline. LLM responses are cached content-addressed under `.metriclens/cache/` in your project — treat that directory as containing your SQL. Third-party dbt package SQL and docs never reach the LLM at all (data-source boundary, see above); SQL comments in your own models remain untrusted input to the LLM. Machine checks bound what a prompt-injected model can smuggle into a published card — verbatim quotes, evidence-bound clauses, and a channel-1 lexicon/aggregation screen over free-text fields all cap confidence on mismatch — but the prose wording itself is still LLM output and is not proven correct, so review cards from untrusted model code before publishing them to consumers.
 
 A demo dashboard (FastAPI + React) that renders caliber cards, drift badges, a governance console and a lineage canvas against the benchmark warehouse lives in `server/` + `dashboard/`.
 

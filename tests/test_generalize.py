@@ -29,18 +29,22 @@ def _cat(schema, name, cols):
             "columns": {c: {"name": c, "type": t} for c, t in cols.items()}}
 
 
-def make_project(tmp_path, nodes, catalog_nodes, sqls, sources=None):
+def make_project(tmp_path, nodes, catalog_nodes, sqls, sources=None,
+                 project_name=None, internal_packages=None):
     proj = tmp_path / "proj"
     (proj / "target").mkdir(parents=True)
     for rel, text in sqls.items():
         f = proj / rel
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(text)
+    meta = {"adapter_type": "duckdb"}
+    if project_name:
+        meta["project_name"] = project_name   # 缺省不写:root 未知 → 全部按一方包
     (proj / "target" / "manifest.json").write_text(json.dumps({
-        "metadata": {"adapter_type": "duckdb"}, "nodes": nodes, "sources": sources or {}}))
+        "metadata": meta, "nodes": nodes, "sources": sources or {}}))
     (proj / "target" / "catalog.json").write_text(json.dumps(
         {"nodes": catalog_nodes, "sources": {}}))
-    return DbtProject(proj)
+    return DbtProject(proj, internal_packages=internal_packages)
 
 
 @pytest.fixture()

@@ -15,6 +15,27 @@ KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 TARGET_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$")
 RESERVED_KEYS = {"index", "active_run"}
 
+
+def _internal_packages_of(raw: dict) -> tuple:
+    v = raw.get("internal_packages")
+    if v is None:
+        return ()
+    if not isinstance(v, list) or not all(isinstance(x, str) and x for x in v):
+        raise ValueError(f"internal_packages 须为字符串列表(dbt 包名),实得 {v!r}")
+    return tuple(v)
+
+
+def read_internal_packages(project_dir) -> tuple:
+    """metriclens.yml 顶层 internal_packages:按一方代码解析的额外 dbt 包名单。
+
+    独立于 MLConfig.load 的轻量读取器——`metriclens graph` 不要求完整配置
+    (可以没有 metrics),但第三方包的数据源边界判定必须在建图时就生效。"""
+    f = Path(project_dir) / "metriclens.yml"
+    if not f.exists():
+        return ()
+    raw = yaml.safe_load(f.read_text()) or {}
+    return _internal_packages_of(raw) if isinstance(raw, dict) else ()
+
 EXAMPLE = """\
 # MetricLens 配置(放在 dbt 项目根目录)
 language: zh            # 口径卡语言: zh | en
@@ -28,6 +49,9 @@ metrics:                # 要合成口径卡的看板指标(model.column)
   #   extra_targets: [mart_refunds.channel]   # 可选:合并回溯的关联列
   #   query_filter: "channel = 'live'"        # 可选:取数时的查询层过滤说明
 lexicon: {}             # 可选:业务词典(术语 → 解释),供业务口径生成引用
+# internal_packages: [shared_models]  # 可选:按一方代码解析的 dbt 包;
+#                     其余第三方包(Fivetran/dbt_utils 等)的模型一律按数据源边界
+#                     处理——不解析其 SQL 与口径,血缘在其物化表处截止
 governance:
   scan_layers: []       # 指纹重复扫描的分层白名单;空 = 全部模型
   base_suffixes: [_total, _14d, _1d, _7d, _30d]   # 判定"同基名"时剥离的后缀
@@ -51,6 +75,7 @@ class MLConfig:
     language: str = "zh"
     metrics: list = field(default_factory=list)
     lexicon: dict = field(default_factory=dict)
+    internal_packages: tuple = ()
     scan_layers: list = field(default_factory=list)
     base_suffixes: list = field(default_factory=lambda: ["_total", "_14d", "_1d", "_7d", "_30d"])
     skip_columns: list = field(default_factory=list)
@@ -114,6 +139,7 @@ class MLConfig:
         cfg = cls(
             language=raw.get("language", "zh"), metrics=metrics,
             lexicon=lex,
+            internal_packages=_internal_packages_of(raw),
             scan_layers=_strlist("scan_layers", gov.get("scan_layers"), []),
             base_suffixes=_strlist("base_suffixes", gov.get("base_suffixes"), cls().base_suffixes),
             skip_columns=_strlist("skip_columns", gov.get("skip_columns"), []),

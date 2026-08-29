@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Third-party dbt packages become data-source boundaries**: models from
+  packages other than the root project are no longer parsed — their SQL,
+  schema docs and internal calibers stay outside the trust boundary entirely
+  (never sent to the LLM, never in the lexicon, never governance-scanned),
+  and lineage stops at their materialized tables exactly like ODS sources.
+  Cards tag such sources with the owning package; targeting one of their
+  models errors with a pointer to the new top-level `internal_packages`
+  list in `metriclens.yml`, which declares owned shared packages that should
+  be parsed as first-party code. This also dissolves the cross-package
+  model-name collision for genuinely external packages (two internal
+  packages sharing a name still fail loudly until the unique_id refactor).
+  Projects whose metrics cross package models change caliber shape —
+  re-baseline drift snapshots after upgrading. Manifests without
+  `metadata.project_name` fall back to `dbt_project.yml`; if neither names
+  the root, nothing is folded.
 - **SQL quality tier in governance**: row-count aggregations over joins
   (`count(*)`/`sum(1)` with any join in the row set, CTE-transitive) are
   deterministically flagged as a `join_count` semantic point — what such a

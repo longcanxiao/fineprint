@@ -15,7 +15,13 @@ for unpatched vulnerabilities.
   you configure. Treat `.metriclens/cache/` as containing your SQL.
 - LLM credentials are read from environment variables / a project `.env` only;
   they never enter configuration files or generated artifacts.
-- SQL comments and third-party dbt package SQL are untrusted LLM input.
+- Third-party dbt package models are treated as data-source boundaries:
+  their SQL and schema descriptions are never parsed, never sent to the
+  LLM, and never enter the trusted lexicon — lineage stops at their
+  materialized tables, the same convention as ODS source tables. Only the
+  root project and packages explicitly listed under `internal_packages`
+  in `metriclens.yml` are parsed as first-party code.
+- SQL comments in first-party models are untrusted LLM input.
   Machine checks constrain a prompt-injected response in layers: verbatim
   quotes are verified against the SQL, only cross-matched conditions enter
   the merge, business clauses must cite deterministic evidence ids, and

@@ -16,8 +16,13 @@ def trace(graph: dict, model: str, column: str) -> dict:
     models = graph["models"]
     model_rel = graph.get("relations", {}).get("models", {})
     source_rel = graph.get("relations", {}).get("sources", {})
+    external = graph.get("relations", {}).get("external", {})
     if model not in models:
-        raise KeyError(f"unknown model: {model}")
+        pkgs = sorted({e["package"] for e in external.values() if e.get("name") == model})
+        hint = (f"(属第三方包 {'/'.join(pkgs)},按数据源边界处理,不解析其内部口径;"
+                f"如需为其出卡,把包名加入 metriclens.yml 顶层 internal_packages 并重建图)"
+                if pkgs else "")
+        raise KeyError(f"unknown model: {model}{hint}")
     if column not in models[model]["columns"]:
         raise KeyError(f"unknown column: {model}.{column} (有效列: {list(models[model]['columns'])[:8]}...)")
 
@@ -31,6 +36,9 @@ def trace(graph: dict, model: str, column: str) -> dict:
         tbl = source_rel.get(rel) or rel.split(".", 1)[-1]
         sch = rel.split(".", 1)[0] if "." in rel else ""
         key = {"table": tbl, "schema": sch, "column": col}
+        pkg = (external.get(rel) or {}).get("package")
+        if pkg:
+            key["package"] = pkg   # 第三方包物化表:标注归属,卡片上可见边界性质
         if key not in sources:
             sources.append(key)
 
@@ -119,7 +127,8 @@ def render(t: dict) -> str:
         L.append(f"{pad}[{e['layer']}] {e['model']}.{e['column']} = {expr}")
     L.append(f"\n── 源字段 S ({len(t['sources'])} 个) ──")
     for s in t["sources"]:
-        L.append(f"  {s['table']}.{s['column']}")
+        tag = f"   ⟵ 第三方包 {s['package']}(数据源边界,内部口径不解析)" if s.get("package") else ""
+        L.append(f"  {s['table']}.{s['column']}{tag}")
     key_conds = [c for c in t["conditions"] if not c.get("is_pure_key")]
     pure = [c for c in t["conditions"] if c.get("is_pure_key")]
     L.append(f"\n── 过滤条件 F ({len(key_conds)} 条业务条件 + {len(pure)} 条纯关联键) ──")

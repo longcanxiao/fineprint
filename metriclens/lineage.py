@@ -397,7 +397,10 @@ def build_graph(project: DbtProject) -> dict:
             "metriclens_graph_version": 2,
         },
         "relations": {"models": dict(project.model_by_relation),
-                      "sources": dict(project.source_by_relation)},
+                      "sources": dict(project.source_by_relation),
+                      # 第三方包模型 = 数据源边界:血缘在此截止,只记名字与归属包
+                      "external": {rel: {"name": e["name"], "package": e["package"]}
+                                   for rel, e in project.external_models.items()}},
         "models": {},
     }
     for name, m in project.models.items():

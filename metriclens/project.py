@@ -10,6 +10,8 @@ import os
 from functools import cached_property
 from pathlib import Path
 
+from metriclens.config import read_internal_packages
+
 ADAPTER_DIALECT = {
     "duckdb": "duckdb", "snowflake": "snowflake", "bigquery": "bigquery",
     "postgres": "postgres", "redshift": "redshift", "databricks": "databricks",
@@ -21,8 +23,13 @@ ADAPTER_DIALECT = {
 class DbtProject:
     """已编译 dbt 项目的只读视图:模型、源表、schema、注释、方言。"""
 
-    def __init__(self, project_dir: str | os.PathLike, target_dir: str | None = None):
+    def __init__(self, project_dir: str | os.PathLike, target_dir: str | None = None,
+                 internal_packages: tuple | None = None):
         self.project_dir = Path(project_dir).resolve()
+        # 一方包名单:主项目自身 + 显式声明的内部共享包;其余包按数据源边界处理
+        self.internal_packages = frozenset(
+            internal_packages if internal_packages is not None
+            else read_internal_packages(self.project_dir))
         self.target_dir = self._resolve_target(target_dir)
         mf = self.target_dir / "manifest.json"
         if not mf.exists():
@@ -55,6 +62,30 @@ class DbtProject:
         return self.manifest["metadata"]["adapter_type"]
 
     @cached_property
+    def root_package(self) -> str | None:
+        """主项目包名:manifest 元数据优先(dbt ≥1.6),否则读 dbt_project.yml。
+        两者都拿不到时返回 None → 无法定界,所有包按一方代码处理(绝不误折用户模型)。"""
+        name = self.manifest.get("metadata", {}).get("project_name")
+        if name:
+            return name
+        f = self.project_dir / "dbt_project.yml"
+        if f.exists():
+            try:
+                import yaml
+                return (yaml.safe_load(f.read_text()) or {}).get("name")
+            except Exception:
+                return None
+        return None
+
+    def _is_internal(self, pkg: str | None) -> bool:
+        """一方代码判定:主项目、显式 internal_packages、以及缺 package_name 的节点
+        (老 manifest)都算一方;其余第三方包按数据源边界处理,不解析其口径。"""
+        root = self.root_package
+        if root is None or pkg is None:
+            return True
+        return pkg == root or pkg in self.internal_packages
+
+    @cached_property
     def dialect(self) -> str:
         d = ADAPTER_DIALECT.get(self.adapter_type)
         if d is None:
@@ -65,13 +96,16 @@ class DbtProject:
     # ---------------- 模型与源表 ----------------
     @cached_property
     def models(self) -> dict:
-        """{model_name: {layer, schema, alias, sql, compiled_path, src_path}} — 仅物化模型。"""
+        """{model_name: {layer, schema, alias, sql, compiled_path, src_path}} —
+        仅一方包的物化模型;第三方包模型见 external_models(按数据源边界处理)。"""
         out = {}
         for uid, n in self.manifest["nodes"].items():
             if n.get("resource_type") != "model":
                 continue
             if (n.get("config") or {}).get("materialized") == "ephemeral":
                 continue
+            if not self._is_internal(n.get("package_name")):
+                continue          # 第三方包:不读取、不解析其 SQL
             cp = n.get("compiled_path")
             f = self.project_dir / cp if cp else None
             if f is None or not f.exists():
@@ -83,13 +117,34 @@ class DbtProject:
                 raise ValueError(
                     f"模型名折叠冲突: {n['name']} 同时定义于包 "
                     f"{out[n['name']]['package']} 与 {n.get('package_name')}"
-                    f"(dbt 允许跨包同名;MetricLens 暂以模型名为主键,unique_id 支持在路线图)")
+                    f"(两包均按一方代码解析;MetricLens 暂以模型名为主键,unique_id 支持在路线图)")
             out[n["name"]] = {
                 "layer": layer, "schema": n.get("schema"), "database": n.get("database"),
                 "alias": n.get("alias") or n["name"], "package": n.get("package_name"),
                 "sql": f.read_text(),
                 "compiled_path": cp, "src_path": n.get("original_file_path"),
             }
+        return out
+
+    @cached_property
+    def external_models(self) -> dict:
+        """{'schema.alias': {name, alias, schema, database, package}} — 第三方包模型。
+
+        与 ODS 同一约定:它们是别人维护的数据源,MetricLens 不解析其 SQL、注释与
+        内部口径,血缘在其物化表处截止,治理扫描与卡片合成均不覆盖。需要看穿的
+        内部共享包在 metriclens.yml 顶层 internal_packages 显式声明。"""
+        out = {}
+        for uid, n in self.manifest["nodes"].items():
+            if n.get("resource_type") != "model":
+                continue
+            if (n.get("config") or {}).get("materialized") == "ephemeral":
+                continue
+            if self._is_internal(n.get("package_name")):
+                continue
+            alias = n.get("alias") or n["name"]
+            out[f'{n.get("schema")}.{alias}'] = {
+                "name": n["name"], "alias": alias, "schema": n.get("schema"),
+                "database": n.get("database"), "package": n.get("package_name")}
         return out
 
     @cached_property
@@ -130,9 +185,12 @@ class DbtProject:
 
     @cached_property
     def source_by_relation(self) -> dict:
-        """'schema.identifier' → source_identifier(裸名,供 trace 展示与 LLM 互验)。"""
-        return self._uniq(((f'{s["schema"]}.{s["identifier"]}', s["identifier"])
-                           for s in self.sources.values()), "源表")
+        """'schema.identifier' → source_identifier(裸名,供 trace 展示与 LLM 互验)。
+        第三方包模型的物化表并入此表——对血缘而言它们就是数据源。"""
+        pairs = [(f'{s["schema"]}.{s["identifier"]}', s["identifier"])
+                 for s in self.sources.values()]
+        pairs += [(rel, e["alias"]) for rel, e in self.external_models.items()]
+        return self._uniq(pairs, "源表")
 
     # ---------------- schema(供 sqlglot qualify)----------------
     @cached_property
@@ -154,10 +212,13 @@ class DbtProject:
     def column_docs(self) -> dict:
         """{table_or_model_name: {column: description}},来自 manifest 的 schema.yml 文档。
         源表同时登记 'schema.identifier' 全名键——跨 schema 同名源表的裸名键会互相
-        覆盖,消费方应优先用全名查询。"""
+        覆盖,消费方应优先用全名查询。只收一方包的注释:第三方包的 description
+        是包作者的文本,不得进入口径合成的 LLM 上下文。"""
         docs: dict = {}
         for coll in (self.manifest.get("nodes", {}), self.manifest.get("sources", {})):
             for n in coll.values():
+                if not self._is_internal(n.get("package_name")):
+                    continue
                 tbl = n.get("identifier") or n.get("name")
                 keys = [tbl]
                 if n.get("resource_type") == "source" and n.get("schema"):
