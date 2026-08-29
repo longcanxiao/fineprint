@@ -32,6 +32,11 @@ def metric_snapshot(graph: dict, m) -> dict:
         # schema 全名版:捕捉"跨 schema 改指向"(erp.orders → crm.orders 裸名不变)
         "sources_full": sorted(f"{s.get('schema', '')}.{s['table']}.{s['column']}"
                                for s in t["sources"]),
+        # 物理三段版(0.7 起):再捕捉"跨 database 改指向";格式独立成键,
+        # 老基线缺此键时按既有回退链比较,不因升级误报
+        "sources_full3": sorted(
+            f"{s.get('database', '')}.{s.get('schema', '')}.{s['table']}.{s['column']}"
+            for s in t["sources"]),
         "conditions": {c["fp"]: {"sql": c["sql"], "kind": c["kind"], "model": c["model"]}
                        for c in t["conditions"] if not c.get("is_pure_key")},
         "semantics": sorted({(s.get("type", ""), s.get("model", ""), _norm(s.get("sql")))
@@ -87,9 +92,10 @@ def diff_metric(key: str, old: dict, new: dict) -> list:
     if "query_filter" in old and old.get("query_filter") != new.get("query_filter"):
         add("query_filter_changed", "high",
             {"old": old.get("query_filter"), "new": new.get("query_filter")})
-    # 双方都有 schema 全名版(sources_full)时用它比较——能捕捉跨 schema 改指向;
-    # 一侧是旧版本快照则回退裸名,不因格式升级误报
-    skey = "sources_full" if ("sources_full" in old and "sources_full" in new) else "sources"
+    # 源身份比较取双方共有的最全键形:物理三段(跨库改指向)→ schema 全名
+    # (跨 schema 改指向)→ 裸名;一侧是旧版本快照即回退,不因格式升级误报
+    skey = next((k for k in ("sources_full3", "sources_full")
+                 if k in old and k in new), "sources")
     for s in sorted(set(old[skey]) - set(new[skey])):
         add("source_removed", "high", {"source": s})
     for s in sorted(set(new[skey]) - set(old[skey])):

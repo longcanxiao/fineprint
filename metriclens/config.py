@@ -12,7 +12,8 @@ import yaml
 
 # key 直接用作批次目录内的文件名:限定字符集,杜绝路径分隔符与 ../ 逃逸
 KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
-TARGET_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$")
+# target 两段 model.column;短名跨包歧义时用三段 package.model.column 消歧
+TARGET_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
 RESERVED_KEYS = {"index", "active_run"}
 
 
@@ -114,7 +115,7 @@ class MLConfig:
             for tgt in targets:
                 if not isinstance(tgt, str) or not TARGET_RE.match(tgt):
                     raise ValueError(f"metric {key!r} 的 target/extra_targets 须为 'model.column'"
-                                     f"(两段,各为合法标识符),实得 {tgt!r}")
+                                     f"(或跨包重名时 'package.model.column'),实得 {tgt!r}")
             qf = m.get("query_filter")
             if qf is not None and not isinstance(qf, str):
                 raise ValueError(f"metric {key!r} 的 query_filter 须为字符串,实得 {type(qf).__name__}")

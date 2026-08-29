@@ -1,6 +1,10 @@
 # v0.7 设计:relation identity 切换到 unique_id 三段式
 
-状态:设计定稿,未实施。前置讨论见 CHANGELOG 0.6.x 各身份修复项。
+状态:**已实施(0.7.0)**。实现与本设计一致,仅两处细化:①探针证实 sqlglot
+qualify 不注入 database 段(两库同名两段引用会在 qualify 期报 Ambiguous
+mapping),故三段补全由建图期 `project.complete_rel`(catalog 反查)完成;
+②消歧展示形定为 `pkg:name`,target 消歧写法为 `package.model.column`。
+前置讨论见 CHANGELOG 0.6.x 各身份修复项。
 
 ## 1. 问题与身份模型
 

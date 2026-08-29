@@ -17,12 +17,13 @@ from sqlglot import exp
 from metriclens.config import MLConfig
 from metriclens.lineage import agg_one as _agg_one
 from metriclens.lineage import dialect
-from metriclens.trace import trace
+from metriclens.trace import display_name, trace
 
 
 def fingerprint_of(t: dict) -> str:
-    # 源字段用 schema 全名:跨 schema 同名源表(erp.orders vs crm.orders)是不同数据
-    src = sorted(f"{s.get('schema', '')}.{s['table']}.{s['column']}" for s in t["sources"])
+    # 源字段用物理全名(db.schema.table):跨 schema/跨库同名源表是不同数据
+    src = sorted(f"{s.get('database', '')}.{s.get('schema', '')}.{s['table']}.{s['column']}"
+                 for s in t["sources"])
     conds = sorted({c["fp"] for c in t["conditions"] if not c.get("is_pure_key")})
     return hashlib.md5(json.dumps([src, conds]).encode()).hexdigest()[:16]
 
@@ -62,24 +63,26 @@ def scan(graph: dict, cfg: MLConfig) -> dict:
     layers = set(cfg.scan_layers)
     skip_cols = set(cfg.skip_columns)
     skip_suf = tuple(cfg.skip_suffixes)
-    groups, chains, aggs, grains = {}, {}, {}, {}
-    for name, m in graph["models"].items():
+    groups, chains, aggs, grains, disp = {}, {}, {}, {}, {}
+    for uid, m in graph["models"].items():
         if layers and m["layer"] not in layers:
             continue
+        disp[uid] = display_name(graph, uid)
         for col in m["columns"]:
             if col in skip_cols or col.endswith(skip_suf):
                 continue
-            t = trace(graph, name, col)
+            t = trace(graph, uid, col)
             if not t["sources"]:
                 continue
             fp = fingerprint_of(t)
-            groups.setdefault(fp, []).append((name, col))
-            chains[(name, col)] = {(e["model"], e["column"]) for e in t["expr_chain"]}
-            aggs[(name, col)] = agg_signature(t)
+            groups.setdefault(fp, []).append((uid, col))
+            # 血缘直系判定用 uid(机器键);报告两侧输出展示名
+            chains[(uid, col)] = {(e["model_uid"], e["column"]) for e in t["expr_chain"]}
+            aggs[(uid, col)] = agg_signature(t)
             # 无 group-by 的直通模型(join 取数)自身 grain 为空:沿值链继承最近聚合层的粒度
-            grains[(name, col)] = next(
-                (tuple(graph["models"][e["model"]].get("grain") or [])
-                 for e in t["expr_chain"] if graph["models"][e["model"]].get("grain")), ())
+            grains[(uid, col)] = next(
+                (tuple(graph["models"][e["model_uid"]].get("grain") or [])
+                 for e in t["expr_chain"] if graph["models"][e["model_uid"]].get("grain")), ())
     # 每类结对上限:同指纹组 O(n²) 在大项目可能爆炸,封顶防内存;截断量入报告。
     # 成员与指纹都排序——结果确定,不随 manifest 顺序漂移
     PAIR_CAP = max(2000, 50 * (cfg.max_llm_pairs or 40))
@@ -100,7 +103,7 @@ def scan(graph: dict, cfg: MLConfig) -> dict:
                     continue
                 if b in chains[a] or a in chains[b]:
                     continue          # 血缘直系是引用,不是重复
-                pair = {"fingerprint": fp, "a": f"{a[0]}.{a[1]}", "b": f"{b[0]}.{b[1]}"}
+                pair = {"fingerprint": fp, "a": f"{disp[a[0]]}.{a[1]}", "b": f"{disp[b[0]]}.{b[1]}"}
                 # 签名为空 = 证据不可见(聚合藏在模型内 CTE / 全链无分组),不可比:
                 # 只在两侧证据都在场时下确定性结论,缺证一侧一律落到下一级判据;
                 # 已知等价展开形(avg ↔ sum/count)不直判,降入 B 档仲裁
@@ -118,13 +121,14 @@ def scan(graph: dict, cfg: MLConfig) -> dict:
     # SQL 质量立项:join 上的行数型聚合(血缘阶段已确定性检出),口径含义寄生在
     # join 键唯一性与数据覆盖性上——底层数据变化口径即静默漂移,须人工明确计数对象
     sql_quality = []
-    for name, m in graph["models"].items():
+    for uid, m in graph["models"].items():
         if layers and m["layer"] not in layers:
             continue
         for s in m.get("semantics", []):
             if s.get("type") == "join_count":
                 sql_quality.append({
-                    "model": name, "column": s.get("column"), "line": s.get("line"),
+                    "model": disp.get(uid) or display_name(graph, uid),
+                    "column": s.get("column"), "line": s.get("line"),
                     "tables": s.get("tables") or [], "join_keys": s.get("join_keys") or [],
                     "kind": "join_count",
                     "reason": "行数型聚合(count(*)/sum(1))跨 join:计数对象依赖 join 基数与数据覆盖性,SQL 未自证",

@@ -1,6 +1,38 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 — 2026-08-29
+
+Identity refactor: logical primary keys, physical three-part lookup.
+
+- **unique_id becomes the primary key**: the graph's model dictionary is now
+  keyed by dbt `unique_id` (`model.<package>.<name>`) — the logical identity
+  that survives environment switches and alias/schema config changes — and
+  relation reverse-lookups use full physical three-part names
+  (`database.schema.table`, completed from the catalog when SQL writes two
+  segments). Short names remain the UI everywhere (config targets, CLI, API,
+  cards, reports): unambiguous short names resolve automatically, and a name
+  shared by two packages must be qualified as `package.model.column` in
+  targets (`pkg:name` in display) — ambiguity errors list the candidates,
+  never silently picking one.
+- **Unlocked by the new identity model**: multi-database projects (rejected
+  since 0.6.0) now load — same `schema.table` in two databases are simply two
+  relations; two internal packages defining the same model name (rejected
+  since 0.6.1) now coexist. The physical-collision check remains as a defense
+  against malformed artifacts (dbt's AmbiguousAlias should make it
+  unreachable).
+- **Drift**: snapshots add `sources_full3` (`db.schema.table.column`), so
+  cross-database repoints are detectable; comparison picks the fullest key
+  both sides share (`sources_full3` → `sources_full` → `sources`), and
+  display-name fields in snapshots are unchanged — legacy baselines diff
+  cleanly with zero upgrade false positives (verified against the demo
+  baseline).
+- **Governance** fingerprints include the database segment; report pairs and
+  sql_quality items print display names; lineage-kinship checks use uids.
+- **Graph v3**: readers reject older graphs with a clear "rebuild the graph"
+  message — the graph is derived and rebuilds in seconds; caliber cards and
+  drift baselines are unaffected.
+
+Also shipped in this release (previously unreleased):
 
 - **Third-party dbt packages become data-source boundaries**: models from
   packages other than the root project are no longer parsed — their SQL,

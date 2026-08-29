@@ -19,6 +19,15 @@ ADAPTER_DIALECT = {
     "sqlserver": "tsql", "mysql": "mysql",
 }
 
+_AMBIG = object()   # _db_of 冲突哨兵:同 schema.table 出现在多个 database
+
+
+def rel3(db, schema, table) -> str:
+    """物理三段键 'database.schema.table':图内一切表反查的统一键形。
+    缺段留空位(如 duckdb 无 database 的 '.main.orders')——manifest 侧与 SQL
+    补全侧必须走同一构造,键才能互查。"""
+    return f"{db or ''}.{schema or ''}.{table}"
+
 
 class DbtProject:
     """已编译 dbt 项目的只读视图:模型、源表、schema、注释、方言。"""
@@ -96,8 +105,11 @@ class DbtProject:
     # ---------------- 模型与源表 ----------------
     @cached_property
     def models(self) -> dict:
-        """{model_name: {layer, schema, alias, sql, compiled_path, src_path}} —
-        仅一方包的物化模型;第三方包模型见 external_models(按数据源边界处理)。"""
+        """{unique_id: {name, layer, schema, database, alias, package, sql, …}} —
+        一方包的物化模型。主键 = dbt unique_id(逻辑身份,跨环境/跨配置稳定);
+        物理落点(database.schema.alias)是属性,唯一性由 model_by_relation 防御复查。
+        同名模型跨包合法共存,短名歧义在引用解析层显式报错。
+        第三方包模型见 external_models(按数据源边界处理)。"""
         out = {}
         for uid, n in self.manifest["nodes"].items():
             if n.get("resource_type") != "model":
@@ -113,12 +125,8 @@ class DbtProject:
                     f"模型 {n['name']} 缺少编译产物({cp});请先执行 dbt compile")
             fqn = n.get("fqn") or []
             layer = "/".join(fqn[1:-1]) or n.get("schema") or "default"
-            if n["name"] in out:
-                raise ValueError(
-                    f"模型名折叠冲突: {n['name']} 同时定义于包 "
-                    f"{out[n['name']]['package']} 与 {n.get('package_name')}"
-                    f"(两包均按一方代码解析;MetricLens 暂以模型名为主键,unique_id 支持在路线图)")
-            out[n["name"]] = {
+            out[uid] = {
+                "name": n["name"],
                 "layer": layer, "schema": n.get("schema"), "database": n.get("database"),
                 "alias": n.get("alias") or n["name"], "package": n.get("package_name"),
                 "sql": f.read_text(),
@@ -128,7 +136,7 @@ class DbtProject:
 
     @cached_property
     def external_models(self) -> dict:
-        """{'schema.alias': {name, alias, schema, database, package}} — 第三方包模型。
+        """{'db.schema.alias': {name, alias, schema, database, package}} — 第三方包模型。
 
         与 ODS 同一约定:它们是别人维护的数据源,MetricLens 不解析其 SQL、注释与
         内部口径,血缘在其物化表处截止,治理扫描与卡片合成均不覆盖。需要看穿的
@@ -142,55 +150,79 @@ class DbtProject:
             if self._is_internal(n.get("package_name")):
                 continue
             alias = n.get("alias") or n["name"]
-            out[f'{n.get("schema")}.{alias}'] = {
+            out[rel3(n.get("database"), n.get("schema"), alias)] = {
                 "name": n["name"], "alias": alias, "schema": n.get("schema"),
                 "database": n.get("database"), "package": n.get("package_name")}
         return out
 
     @cached_property
     def sources(self) -> dict:
-        """{'schema.identifier': {schema, database, identifier, name}} — dbt source 表。
-        不同 schema 的同名 identifier 是合法用法(erp.orders / crm.orders),各自独立;
-        只有 schema.identifier 全同而 database 不同才是当前身份体系无法表达的折叠。"""
+        """{'db.schema.identifier': {schema, database, identifier, name}} — dbt source 表。
+        物理三段键下,跨 schema、跨 database 的同名 identifier 都是不同数据,天然区分。"""
         out = {}
         for uid, s in self.manifest["sources"].items():
             ident = s.get("identifier") or s["name"]
-            key = f'{s.get("schema")}.{ident}'
-            rec = {"schema": s.get("schema"), "database": s.get("database"),
-                   "identifier": ident, "name": s["name"]}
-            if key in out and out[key]["database"] != rec["database"]:
-                raise ValueError(
-                    f"源表标识折叠冲突: {key} 同时声明于 database "
-                    f"{out[key]['database']} 与 {rec['database']}(多 database 同名源表暂不支持)")
-            out[key] = rec
+            out[rel3(s.get("database"), s.get("schema"), ident)] = {
+                "schema": s.get("schema"), "database": s.get("database"),
+                "identifier": ident, "name": s["name"]}
         return out
 
     @staticmethod
     def _uniq(pairs, kind: str) -> dict:
-        """反查表要求 'schema.table' 全局唯一;跨 database 同名折叠会产生错误血缘,显式拒绝。"""
+        """物理三段名 → 逻辑身份的反查表必须单射:同一物理表由两个身份物化,
+        dbt 解析期本应拒绝(AmbiguousAlias);artifacts 是外部输入,此处防御复查。"""
         out = {}
         for rel, name in pairs:
             if rel in out and out[rel] != name:
                 raise ValueError(
-                    f"{kind}关系折叠冲突: {rel} 同时对应 {out[rel]} 与 {name}"
-                    f"(多 database 同 schema.table 项目暂不支持,请重命名或拆分 schema)")
+                    f"{kind}物理落点冲突: {rel} 同时由 {out[rel]} 与 {name} 物化"
+                    f"(dbt 正常编译不会产生;manifest/catalog 可能异常,请重新 dbt compile)")
             out[rel] = name
         return out
 
     @cached_property
     def model_by_relation(self) -> dict:
-        """'schema.alias' → model_name(血缘 upstream 表 → 模型的反查)。"""
-        return self._uniq(((f'{m["schema"]}.{m["alias"]}', name)
-                           for name, m in self.models.items()), "模型")
+        """'db.schema.alias' → unique_id(血缘 upstream 表 → 模型的反查)。"""
+        return self._uniq(((rel3(m["database"], m["schema"], m["alias"]), uid)
+                           for uid, m in self.models.items()), "模型")
 
     @cached_property
     def source_by_relation(self) -> dict:
-        """'schema.identifier' → source_identifier(裸名,供 trace 展示与 LLM 互验)。
+        """'db.schema.identifier' → source_identifier(裸名,供 trace 展示与 LLM 互验)。
         第三方包模型的物化表并入此表——对血缘而言它们就是数据源。"""
-        pairs = [(f'{s["schema"]}.{s["identifier"]}', s["identifier"])
-                 for s in self.sources.values()]
+        pairs = [(rel, s["identifier"]) for rel, s in self.sources.items()]
         pairs += [(rel, e["alias"]) for rel, e in self.external_models.items()]
         return self._uniq(pairs, "源表")
+
+    # ---------------- 物理键补全 ----------------
+    @cached_property
+    def _db_of(self) -> dict:
+        """'schema.table' → database(catalog 全体物理表):SQL 里常写两段名,
+        图键统一三段,建图期据此补全;同 schema.table 现于多个 database 时登记
+        冲突哨兵,补全时显式报错(与 sqlglot qualify 的 Ambiguous mapping 同界)。"""
+        m: dict = {}
+        for coll in (self.catalog.get("nodes", {}), self.catalog.get("sources", {})):
+            for entry in coll.values():
+                md = entry["metadata"]
+                key = f'{md["schema"]}.{md["name"]}'
+                db = md.get("database") or ""
+                if key in m and m[key] != db:
+                    m[key] = _AMBIG
+                else:
+                    m.setdefault(key, db)
+        return m
+
+    def complete_rel(self, rel: str) -> str:
+        """表引用 → 三段物理键。三段原样;两段查 catalog 补 database;
+        裸名无 schema 无从补全,原样返回(反查不中即按未知外部源处理)。"""
+        parts = rel.split(".")
+        if len(parts) >= 3 or len(parts) == 1:
+            return rel
+        db = self._db_of.get(rel)
+        if db is _AMBIG:
+            raise ValueError(
+                f"表引用 {rel} 在多个 database 中同名,两段名无法定位;请在 SQL 中写全三段名")
+        return f"{db}.{rel}" if db is not None else f".{rel}"
 
     # ---------------- schema(供 sqlglot qualify)----------------
     @cached_property

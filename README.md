@@ -41,7 +41,8 @@ pip install -e ".[demo,dev]"   # + benchmark warehouse / dashboard / test deps
 cd your-dbt-project
 dbt compile && dbt docs generate    # MetricLens reads artifacts only — no DB connection
 
-metriclens init             # writes metriclens.yml — list your dashboard metrics (model.column)
+metriclens init             # writes metriclens.yml — list your dashboard metrics (model.column;
+                            # package.model.column when two packages share a model name)
 metriclens graph            # build the column-level lineage graph
 metriclens trace mart_orders.refund_rate_14d    # inspect one metric's S/F/E triple
 

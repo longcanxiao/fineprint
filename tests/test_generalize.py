@@ -87,45 +87,47 @@ class TestCountStarRowset:
 
     def test_graph_falls_back_to_rowset_tables(self, rowset_project):
         g = build_graph(rowset_project)
-        ups = g["models"]["metric"]["columns"]["n"]["upstreams"]
-        assert ups == [{"table": "main.filtered", "column": "*"}]
-        assert g["models"]["filtered"]["row_set_tables"] == ["main.raw_events"]
+        ups = g["models"]["model.p.metric"]["columns"]["n"]["upstreams"]
+        assert ups == [{"table": ".main.filtered", "column": "*"}]     # 物理三段键,db 缺位留空
+        assert g["models"]["model.p.filtered"]["row_set_tables"] == [".main.raw_events"]
 
     def test_trace_keeps_upstream_filter(self, rowset_project):
         g = build_graph(rowset_project)
-        t = trace(g, "metric", "n")
-        assert "filtered" in t["models_visited"]
+        t = trace(g, "metric", "n")                                    # 短名经 resolve 归位 uid
+        assert "model.p.filtered" in t["models_visited"]
         assert any(c["sql"] == "active = 1" for c in t["conditions"])
-        assert {"table": "raw_events", "schema": "main", "column": "*"} in t["sources"]
+        assert {"table": "raw_events", "schema": "main", "database": "", "column": "*"} in t["sources"]
 
     def test_value_path_unaffected(self, rowset_project):
         g = build_graph(rowset_project)
         t = trace(g, "metric", "amt")
-        assert {"table": "raw_events", "schema": "main", "column": "amount"} in t["sources"]
+        assert {"table": "raw_events", "schema": "main", "database": "",
+                "column": "amount"} in t["sources"]
         assert any(c["sql"] == "active = 1" for c in t["conditions"])
 
     def test_single_model_cte_condition_row_level(self, rowset_project):
         g = build_graph(rowset_project)
-        conds = {c["sql"]: c for c in g["models"]["filtered"]["conditions"]}
+        conds = {c["sql"]: c for c in g["models"]["model.p.filtered"]["conditions"]}
         assert conds["active = 1"]["row_level"] is True
 
 
 class TestRelationCollision:
-    """schema.table 反查键折叠冲突必须显式报错,不得静默覆盖(多 database 项目)。"""
+    """同一物理落点由两个身份物化 = artifacts 异常,防御性拒绝;
+    跨 database 同 schema.table 在物理三段键下是不同表,0.7 起合法。"""
 
     def test_model_alias_collision_raises(self, tmp_path):
         n1 = _node("m1", "compiled/m1.sql")
         n2 = _node("m2", "compiled/m2.sql")
-        n2["alias"] = "m1"                      # 两个模型物化到同一 schema.alias
+        n2["alias"] = "m1"                      # 两个模型物化到同一 db.schema.alias
         p = make_project(tmp_path,
                          nodes={"model.p.m1": n1, "model.p.m2": n2},
                          catalog_nodes={"model.p.m1": _cat("main", "m1", {"x": "INT"})},
                          sqls={"compiled/m1.sql": "select 1 as x",
                                "compiled/m2.sql": "select 2 as x"})
-        with pytest.raises(ValueError, match="折叠冲突"):
+        with pytest.raises(ValueError, match="物理落点冲突"):
             _ = p.model_by_relation
 
-    def test_source_identifier_collision_raises(self, tmp_path):
+    def test_cross_database_same_identifier_now_legal(self, tmp_path):
         p = make_project(
             tmp_path,
             nodes={"model.p.m1": _node("m1", "compiled/m1.sql")},
@@ -135,8 +137,9 @@ class TestRelationCollision:
                                            "schema": "shared", "database": "db1"},
                      "source.p.b.orders": {"identifier": "orders", "name": "orders",
                                            "schema": "shared", "database": "db2"}})
-        with pytest.raises(ValueError, match="折叠冲突"):
-            _ = p.sources
+        assert set(p.sources) == {"db1.shared.orders", "db2.shared.orders"}
+        assert p.source_by_relation == {"db1.shared.orders": "orders",
+                                        "db2.shared.orders": "orders"}
 
 
 class TestMetricKeyValidation:
@@ -193,7 +196,7 @@ class TestDriftGate:
         run_check(rowset_project, cfg, g)        # 建基线
         import copy
         g2 = copy.deepcopy(g)
-        c = g2["models"]["filtered"]["conditions"][0]
+        c = g2["models"]["model.p.filtered"]["conditions"][0]
         c.update(sql="active = 2", norm="active = 2", fp="fp_changed_xx")
         return cfg, g2, run_check
 

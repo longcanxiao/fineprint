@@ -14,7 +14,7 @@ from metriclens.config import MLConfig
 from metriclens.governance import scan
 from metriclens.llm import chat_json, fast_model, set_cache_dir
 from metriclens.project import DbtProject
-from metriclens.trace import trace
+from metriclens.trace import resolve_model, trace
 
 
 def validate_arb(obj: dict):
@@ -26,11 +26,12 @@ def validate_arb(obj: dict):
 
 def _expr_brief(graph: dict, ref: str, docs: dict) -> dict:
     model, col = ref.rsplit(".", 1)
-    t = trace(graph, model, col)
+    uid = resolve_model(graph, model)   # 报告两侧是展示名(短名或 pkg:name),归位到 uid
+    t = trace(graph, uid, col)
     return {
         "column": ref,
-        "layer": graph["models"][model]["layer"],
-        "doc": docs.get(model, {}).get(col, ""),
+        "layer": graph["models"][uid]["layer"],
+        "doc": docs.get(graph["models"][uid].get("name") or model, {}).get(col, ""),
         "expr_chain": [{"col": f"{e['model']}.{e['column']}", "expr": e.get("expr", "")}
                        for e in t["expr_chain"]],
     }

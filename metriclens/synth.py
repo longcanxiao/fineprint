@@ -24,7 +24,7 @@ from metriclens.lineage import dialect, fingerprint, normalize_condition
 from metriclens.llm import chat_json, fast_model, quality_model, set_cache_dir
 from metriclens.project import DbtProject
 from metriclens.store import CaliberStore
-from metriclens.trace import trace
+from metriclens.trace import display_name, resolve_model, trace
 
 
 def norm_text(s: str) -> str:
@@ -95,10 +95,15 @@ def build_vocab(t: dict, title: str, query_filter, lexicon: dict, graph: dict | 
         idents.add(tk)
         idents.update(tk.split("."))   # 别名点引用(o.is_test_account)按段入表:卡片常写裸列名
     nums = set(re.findall(r"\b\d+(?:\.\d+)?\b", text)) | _NUM_WHITELIST   # 词表侧宽收,含一位数
-    for name, m in (graph or {}).get("models", {}).items():
-        idents.add(name)
+    for uid, m in (graph or {}).get("models", {}).items():
+        idents.add(uid)
+        idents.update(uid.lower().split("."))       # unique_id 各段(含短名)均可溯
+        if m.get("name"):
+            idents.add(str(m["name"]).lower())
         idents.update(c.lower() for c in m.get("columns", {}))
-        idents.update(str(tb).lower() for tb in m.get("row_set_tables") or [])
+        for tb in m.get("row_set_tables") or []:
+            idents.add(str(tb).lower())
+            idents.update(str(tb).lower().split("."))   # 三段物理键按段入表,卡片写裸名可溯
     for rel, ident in (graph or {}).get("relations", {}).get("sources", {}).items():
         idents.update((str(rel).lower(), str(ident).lower()))
         idents.update(str(rel).lower().split("."))
@@ -363,26 +368,31 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
     t = merged_trace(graph, m)
 
     # 通道二:逐跳(同模型合并一次调用;输入只有该模型 SQL,与通道一独立)
-    cols_by_model = {}
+    # hops 以 model_uid 为键(graph 主键);LLM 提示词与产出用展示名
+    cols_by_model, disp_of = {}, {}
     for e in t["expr_chain"]:
-        cols_by_model.setdefault(e["model"], set()).add(e["column"])
+        cols_by_model.setdefault(e["model_uid"], set()).add(e["column"])
+        disp_of[e["model_uid"]] = e["model"]
     hops_by_model = {}
     with ThreadPoolExecutor(max_workers=4) as hex_:
         futs = {}
         for mo, cols in cols_by_model.items():
             info = graph["models"][mo]
             sql = (project.project_dir / info["compiled_path"]).read_text()
-            futs[hex_.submit(extract_hop, lang, mo, sql, sorted(cols), info["layer"])] = mo
+            futs[hex_.submit(extract_hop, lang, disp_of[mo], sql, sorted(cols), info["layer"])] = mo
         for fut, mo in futs.items():
             hops_by_model[mo] = fut.result()
 
     cls = classify_filters(t, hops_by_model, graph)
     rel_sources = graph.get("relations", {}).get("sources", {})
-    source_names = set(rel_sources.values()) | set(rel_sources.keys())   # 裸名 + schema 全名
+    # 合法源身份三种粒度:裸名 + schema.table 两段(LLM 常用)+ 物理三段键
+    source_names = set(rel_sources.values()) | set(rel_sources.keys())
+    source_names |= {k.split(".", 1)[1] for k in rel_sources if k.count(".") >= 2}
     val = cross_validate(t, hops_by_model, cls, source_names)
 
     order = {mm: i for i, mm in enumerate(t["models_visited"])}
-    hops_seq = [{"model": mo, "layer": graph["models"][mo]["layer"], **hops_by_model[mo]}
+    hops_seq = [{"model": disp_of.get(mo, mo), "layer": graph["models"][mo]["layer"],
+                 **hops_by_model[mo]}
                 for mo in sorted(hops_by_model, key=lambda x: order.get(x, 99))]
     # 归并输入只保留与本指标相关且通过机器校验的条件
     merge_input = [{"model": h["model"], "layer": h["layer"], "columns": h.get("columns", {}),
@@ -464,10 +474,15 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
     if freetext_bad and val["confidence"] == "high":
         val["confidence"] = "medium"
 
-    # 治理提示:指纹重复对命中本卡链路(同模型 + 同基名)时挂告示
+    # 治理提示:指纹重复对命中本卡链路(同模型 + 同基名)时挂告示。
+    # 治理报告两侧是展示名,配置 target 也归一到展示名再比对
     chain_pairs = set()
     for tc in (m.target, *m.extra_targets):
         cm, cc = tc.rsplit(".", 1)
+        try:
+            cm = display_name(graph, resolve_model(graph, cm))
+        except KeyError:
+            pass
         chain_pairs.add((cm, colbase(cc, cfg.base_suffixes)))
     chain_pairs |= {(e["model"], colbase(e["column"], cfg.base_suffixes)) for e in t["expr_chain"]}
 

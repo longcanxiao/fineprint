@@ -44,31 +44,51 @@ class TestSubqueryScope:
 
 
 class TestModelIdentity:
+    """0.7:主键 = unique_id,跨包同名模型合法共存;短名只是 UI,歧义显式报错。"""
+
     def _pkg_node(self, name, sql_rel, pkg, schema="main"):
         n = _node(name, sql_rel, schema=schema)
         n["package_name"] = pkg
         return n
 
-    def test_unknown_root_all_internal_still_raises(self, tmp_path):
-        """root 不可知(老 manifest 且无 dbt_project.yml)→ 不折叠,同名冲突照旧显式报错。"""
-        p = make_project(tmp_path,
-                         nodes={"model.pkg_a.orders": self._pkg_node("orders", "compiled/a.sql", "pkg_a"),
-                                "model.pkg_b.orders": self._pkg_node("orders", "compiled/b.sql", "pkg_b")},
-                         catalog_nodes={"model.pkg_a.orders": _cat("main", "orders", {"x": "INT"})},
-                         sqls={"compiled/a.sql": "select 1 as x", "compiled/b.sql": "select 2 as x"})
-        with pytest.raises(ValueError, match="折叠冲突"):
-            _ = p.models
+    def _two_pkg_project(self, tmp_path, **kw):
+        return make_project(
+            tmp_path,
+            nodes={"model.pkg_a.orders": self._pkg_node("orders", "compiled/a.sql", "pkg_a"),
+                   "model.pkg_b.orders": self._pkg_node("orders", "compiled/b.sql", "pkg_b",
+                                                        schema="b")},
+            catalog_nodes={"model.pkg_a.orders": _cat("main", "orders", {"x": "INT"}),
+                           "model.pkg_b.orders": _cat("b", "orders", {"x": "INT"})},
+            sqls={"compiled/a.sql": "select 1 as x", "compiled/b.sql": "select 2 as x"}, **kw)
 
-    def test_two_internal_packages_same_name_raises(self, tmp_path):
-        """显式声明为一方的两个包同名:仍是折叠冲突(unique_id 重构前不折叠)。"""
-        p = make_project(tmp_path,
-                         nodes={"model.pkg_a.orders": self._pkg_node("orders", "compiled/a.sql", "pkg_a"),
-                                "model.pkg_b.orders": self._pkg_node("orders", "compiled/b.sql", "pkg_b")},
-                         catalog_nodes={"model.pkg_a.orders": _cat("main", "orders", {"x": "INT"})},
-                         sqls={"compiled/a.sql": "select 1 as x", "compiled/b.sql": "select 2 as x"},
-                         project_name="p", internal_packages=("pkg_a", "pkg_b"))
-        with pytest.raises(ValueError, match="折叠冲突"):
-            _ = p.models
+    def test_same_name_coexists_and_bare_ref_is_ambiguous(self, tmp_path):
+        from metriclens.trace import resolve_model
+        p = self._two_pkg_project(tmp_path)   # root 未知 → 全按一方:两模型以 uid 共存
+        assert set(p.models) == {"model.pkg_a.orders", "model.pkg_b.orders"}
+        g = build_graph(p)
+        with pytest.raises(KeyError, match="歧义"):
+            resolve_model(g, "orders")
+
+    def test_qualified_forms_resolve(self, tmp_path):
+        from metriclens.trace import display_name, resolve_model
+        g = build_graph(self._two_pkg_project(tmp_path))
+        assert resolve_model(g, "pkg_a.orders") == "model.pkg_a.orders"
+        assert resolve_model(g, "pkg_b:orders") == "model.pkg_b.orders"
+        assert resolve_model(g, "model.pkg_a.orders") == "model.pkg_a.orders"
+        assert display_name(g, "model.pkg_a.orders") == "pkg_a:orders"   # 重名 → 带包展示
+        t = trace(g, "pkg_a.orders", "x")
+        assert t["expr_chain"][0]["model"] == "pkg_a:orders"
+        assert t["expr_chain"][0]["model_uid"] == "model.pkg_a.orders"
+
+    def test_unique_short_name_still_plain(self, tmp_path):
+        from metriclens.trace import display_name
+        n = _node("m1", "compiled/m1.sql")
+        p = make_project(tmp_path, nodes={"model.p.m1": n},
+                         catalog_nodes={"model.p.m1": _cat("main", "m1", {"x": "INT"})},
+                         sqls={"compiled/m1.sql": "select 1 as x"})
+        g = build_graph(p)
+        assert display_name(g, "model.p.m1") == "m1"
+        assert trace(g, "m1", "x")["target"].endswith(".m1.x")
 
 
 class TestExternalPackages:
@@ -90,15 +110,16 @@ class TestExternalPackages:
 
     def test_external_model_folds_to_source(self, tmp_path):
         p = self._proj(tmp_path)
-        assert "ext_orders" not in p.models and "m1" in p.models   # SQL 缺失也不报错:根本不读
-        assert p.external_models["vendor.ext_orders"]["package"] == "pkg_x"
-        assert p.source_by_relation["vendor.ext_orders"] == "ext_orders"
+        assert "model.pkg_x.ext_orders" not in p.models             # SQL 缺失也不报错:根本不读
+        assert "model.p.m1" in p.models
+        assert p.external_models[".vendor.ext_orders"]["package"] == "pkg_x"
+        assert p.source_by_relation[".vendor.ext_orders"] == "ext_orders"
         g = build_graph(p)
-        assert "ext_orders" not in g["models"]
-        assert g["relations"]["external"]["vendor.ext_orders"] == {"name": "ext_orders",
-                                                                   "package": "pkg_x"}
+        assert "model.pkg_x.ext_orders" not in g["models"]
+        assert g["relations"]["external"][".vendor.ext_orders"] == {"name": "ext_orders",
+                                                                    "package": "pkg_x"}
         t = trace(g, "m1", "x")
-        assert t["sources"] == [{"table": "ext_orders", "schema": "vendor",
+        assert t["sources"] == [{"table": "ext_orders", "schema": "vendor", "database": "",
                                  "column": "amt", "package": "pkg_x"}]
 
     def test_external_docs_excluded_from_llm_context(self, tmp_path):
@@ -124,7 +145,7 @@ class TestExternalPackages:
                          sqls={"compiled/m1.sql": "select amt as x from vendor.ext_orders",
                                "compiled/ext.sql": "select 1 as amt"},
                          project_name="p")
-        assert "ext_orders" in p.models and p.external_models == {}
+        assert "model.pkg_x.ext_orders" in p.models and p.external_models == {}
 
 
 class TestSourceIdentity:
@@ -140,8 +161,8 @@ class TestSourceIdentity:
                          catalog_nodes={"model.p.m1": _cat("main", "m1", {"x": "INT"})},
                          sqls={"compiled/m1.sql": "select 1 as x"},
                          sources=self._two_schema_sources())
-        assert set(p.sources) == {"erp.orders", "crm.orders"}
-        assert p.source_by_relation == {"erp.orders": "orders", "crm.orders": "orders"}
+        assert set(p.sources) == {"db.erp.orders", "db.crm.orders"}     # 物理三段键
+        assert p.source_by_relation == {"db.erp.orders": "orders", "db.crm.orders": "orders"}
 
     def test_fingerprint_distinguishes_schema(self):
         from metriclens.governance import fingerprint_of
@@ -294,7 +315,8 @@ class TestConfigContract:
             self._load(tmp_path, "- a\n- b\n")
 
     def test_malformed_target_rejected(self, tmp_path):
-        for bad in ("a.b.c", "m.", ".", "m c.x"):
+        # a.b.c 是合法三段(package.model.column);四段起才是格式错误
+        for bad in ("a.b.c.d", "m.", ".", "m c.x"):
             with pytest.raises(ValueError, match="model.column"):
                 self._load(tmp_path, f"language: zh\nmetrics:\n  - key: a\n    target: {json.dumps(bad)}\n")
 
@@ -319,3 +341,14 @@ class TestDriftSourcesFull:
         new = {**self._old, "sources_full": ["crm.orders.amount"]}
         kinds = {(e["kind"], e["severity"]) for e in diff_metric("k", old, new)}
         assert ("source_removed", "high") in kinds and ("source_added", "high") in kinds
+
+    def test_cross_database_repoint_detected_with_full3(self):
+        """0.7 物理三段版:跨 database 改指向(schema.table 不变)也可检出。"""
+        from metriclens.drift import diff_metric
+        base = {**self._old, "sources_full": ["erp.orders.amount"]}
+        old = {**base, "sources_full3": ["db1.erp.orders.amount"]}
+        new = {**base, "sources_full3": ["db2.erp.orders.amount"]}
+        kinds = {(e["kind"], e["severity"]) for e in diff_metric("k", old, new)}
+        assert ("source_removed", "high") in kinds and ("source_added", "high") in kinds
+        # 老基线缺 full3 → 回退 sources_full,不误报
+        assert diff_metric("k", dict(base), dict(new)) == []

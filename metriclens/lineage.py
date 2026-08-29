@@ -31,7 +31,10 @@ def dialect() -> str:
 
 
 def table_key(e: exp.Table) -> str:
-    """qualified Table 节点 → 'schema.table'(去 database 层)。"""
+    """Table 节点 → 表引用串:SQL 写了几段就出几段('db.schema.table' /
+    'schema.table' / 裸名)。图键统一三段,两段引用由建图期 complete_rel 补全。"""
+    if e.catalog:
+        return f"{e.catalog}.{e.db}.{e.name}"
     return f"{e.db}.{e.name}" if e.db else e.name
 
 
@@ -388,13 +391,15 @@ def model_agg_fns(raw_ast: exp.Expression) -> list:
 
 # ---------------- 图构建 ----------------
 def build_graph(project: DbtProject) -> dict:
+    from metriclens.project import rel3
     set_dialect(project.dialect)
     graph = {
         "meta": {
             "dialect": project.dialect, "adapter_type": project.adapter_type,
             "project_dir": str(project.project_dir),
             "generated_at": datetime.now().isoformat(timespec="seconds"),
-            "metriclens_graph_version": 2,
+            # v3:models 主键 = dbt unique_id(逻辑身份),relations 反查键 = 物理三段名
+            "metriclens_graph_version": 3,
         },
         "relations": {"models": dict(project.model_by_relation),
                       "sources": dict(project.source_by_relation),
@@ -403,11 +408,18 @@ def build_graph(project: DbtProject) -> dict:
                                    for rel, e in project.external_models.items()}},
         "models": {},
     }
-    for name, m in project.models.items():
+    # 短名重名计数:conditions/semantics 的 model 字段是展示标签(漂移快照按它比对),
+    # 与 trace.display_name 同规则——唯一用短名,重名用 pkg:name
+    name_count: dict = {}
+    for m in project.models.values():
+        name_count[m["name"]] = name_count.get(m["name"], 0) + 1
+    for uid, m in project.models.items():
+        disp = m["name"] if name_count[m["name"]] == 1 else f'{m["package"]}:{m["name"]}'
         raw = parse_one(m["sql"], read=_DIALECT)
         qast = qualify(raw.copy(), schema=project.schema, dialect=_DIALECT)
-        conds, semantics = extract_conditions(raw, m["sql"], name)
-        rowset = row_set_tables(qast)      # qualified 表名带 schema,可反查模型/源表
+        conds, semantics = extract_conditions(raw, m["sql"], disp)
+        # qualified 表名至少带 schema;统一补全为三段物理键,可反查模型/源表
+        rowset = [project.complete_rel(tk) for tk in row_set_tables(qast)]
         agg_fns = model_agg_fns(raw)
         out_cols = [p.alias_or_name for p in qast.expressions]
         col_edges = {}
@@ -431,7 +443,7 @@ def build_graph(project: DbtProject) -> dict:
                 t = n.expression.find(exp.Table) if not isinstance(n.expression, exp.Table) else n.expression
                 if t is None:
                     continue
-                key = (table_key(t), str(n.name).split(".")[-1].strip('"'))
+                key = (project.complete_rel(table_key(t)), str(n.name).split(".")[-1].strip('"'))
                 if key not in seen:
                     seen.add(key)
                     ups.append({"table": key[0], "column": key[1]})
@@ -441,8 +453,9 @@ def build_graph(project: DbtProject) -> dict:
             if not ups and proj_e is not None and proj_e.find(exp.Column) is None:
                 ups = [{"table": tk, "column": "*"} for tk in rowset]
             col_edges[col] = {"upstreams": ups, "expr": expr_sql, "scopes": sorted(scopes)}
-        graph["models"][name] = {
-            "layer": m["layer"], "table": f'{m["schema"]}.{m["alias"]}',
+        graph["models"][uid] = {
+            "name": m["name"], "package": m["package"],
+            "layer": m["layer"], "table": rel3(m["database"], m["schema"], m["alias"]),
             "compiled_path": m["compiled_path"], "src_path": m["src_path"],
             "row_set_tables": rowset, "agg_fns": agg_fns, "grain": output_grain(raw),
             "columns": col_edges, "conditions": conds, "semantics": semantics,

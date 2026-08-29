@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from benchmark.paths import GRAPH, WORKSPACE
 from metriclens.store import CaliberStore
-from metriclens.trace import load_graph, trace as lineage_trace
+from metriclens.trace import display_name, load_graph, trace as lineage_trace
 
 DB = Path(__file__).resolve().parent.parent / "warehouse" / "metriclens.duckdb"
 _store = CaliberStore(WORKSPACE / "store")
@@ -218,17 +218,24 @@ def lineage_graph_api(model: str, column: str):
         t = lineage_trace(g, model, column)
     except KeyError as e:
         raise HTTPException(404, str(e))
+    # models_visited 是 unique_id;画布节点用展示名,边经物理关系反查回 uid
     visited = set(t["models_visited"])
+    disp = {m: display_name(g, m) for m in visited}
+    rel_models = g.get("relations", {}).get("models", {})
     ods_tables = sorted({s["table"] for s in t["sources"]})
-    nodes = [{"id": m, "layer": g["models"][m]["layer"]} for m in t["models_visited"]]
+    nodes = [{"id": disp[m], "layer": g["models"][m]["layer"]} for m in t["models_visited"]]
     nodes += [{"id": tb, "layer": "ods"} for tb in ods_tables]
     edges = set()
     for m in visited:
         for cinfo in g["models"][m]["columns"].values():
             for up in cinfo.get("upstreams", []):
+                up_uid = rel_models.get(up["table"])
+                if up_uid in visited:
+                    edges.add((disp[up_uid], disp[m]))
+                    continue
                 tb = up["table"].split(".")[-1].strip('"')
-                if tb in visited or tb in ods_tables:
-                    edges.add((tb, m))
+                if tb in ods_tables:
+                    edges.add((tb, disp[m]))
     return {"target": f"{model}.{column}", "nodes": nodes,
             "edges": [{"source": a, "target": b} for a, b in sorted(edges)],
             "sources": [f"{s['table']}.{s['column']}" for s in t["sources"]]}

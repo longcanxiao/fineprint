@@ -8,8 +8,54 @@ from metriclens.lineage import set_dialect
 
 def load_graph(path: Path) -> dict:
     g = json.loads(Path(path).read_text())
+    ver = g.get("meta", {}).get("metriclens_graph_version", 0)
+    if ver < 3:
+        raise ValueError(
+            f"血缘图版本过旧(v{ver}):0.7 起身份体系升级为 unique_id 主键 + 物理三段反查键;"
+            f"请重新执行 metriclens graph(图是派生物,重建零成本)")
     set_dialect(g.get("meta", {}).get("dialect", "duckdb"))
     return g
+
+
+def display_name(graph: dict, uid: str) -> str:
+    """模型展示名:短名唯一用短名,重名用 pkg:name;未知 uid 原样返回。"""
+    m = graph["models"].get(uid)
+    if m is None:
+        return uid
+    name = m.get("name") or uid
+    dup = sum(1 for x in graph["models"].values() if x.get("name") == name)
+    return name if dup <= 1 else f'{m.get("package")}:{name}'
+
+
+def resolve_model(graph: dict, ref: str) -> str:
+    """模型引用 → unique_id。接受:完整 uid / 短名(须唯一)/ pkg:name / pkg.name。
+    歧义与未知都显式报错——短名只是 UI,绝不静默选一个。"""
+    models = graph["models"]
+    if ref in models:
+        return ref
+    pkg, nm = None, None
+    if ":" in ref:
+        pkg, _, nm = ref.partition(":")
+    elif "." in ref:
+        parts = ref.split(".")
+        if len(parts) == 2:
+            pkg, nm = parts
+    else:
+        nm = ref
+    if nm:
+        hits = [u for u, m in models.items()
+                if m.get("name") == nm and (pkg is None or m.get("package") == pkg)]
+        if len(hits) == 1:
+            return hits[0]
+        if len(hits) > 1:
+            cands = ", ".join(f'{models[u].get("package")}.{nm}' for u in sorted(hits))
+            raise KeyError(f"模型名有歧义: {ref}(候选: {cands};请用 package.model 消歧)")
+    external = graph.get("relations", {}).get("external", {})
+    pkgs = sorted({e["package"] for e in external.values() if e.get("name") == (nm or ref)})
+    hint = (f"(属第三方包 {'/'.join(pkgs)},按数据源边界处理,不解析其内部口径;"
+            f"如需为其出卡,把包名加入 metriclens.yml 顶层 internal_packages 并重建图)"
+            if pkgs else "")
+    raise KeyError(f"unknown model: {ref}{hint}")
 
 
 def trace(graph: dict, model: str, column: str) -> dict:
@@ -17,25 +63,33 @@ def trace(graph: dict, model: str, column: str) -> dict:
     model_rel = graph.get("relations", {}).get("models", {})
     source_rel = graph.get("relations", {}).get("sources", {})
     external = graph.get("relations", {}).get("external", {})
-    if model not in models:
-        pkgs = sorted({e["package"] for e in external.values() if e.get("name") == model})
-        hint = (f"(属第三方包 {'/'.join(pkgs)},按数据源边界处理,不解析其内部口径;"
-                f"如需为其出卡,把包名加入 metriclens.yml 顶层 internal_packages 并重建图)"
-                if pkgs else "")
-        raise KeyError(f"unknown model: {model}{hint}")
+    model = resolve_model(graph, model)
+    disp_cache: dict = {}
+
+    def disp(uid: str) -> str:
+        if uid not in disp_cache:
+            disp_cache[uid] = display_name(graph, uid)
+        return disp_cache[uid]
+
     if column not in models[model]["columns"]:
-        raise KeyError(f"unknown column: {model}.{column} (有效列: {list(models[model]['columns'])[:8]}...)")
+        raise KeyError(f"unknown column: {disp(model)}.{column} "
+                       f"(有效列: {list(models[model]['columns'])[:8]}...)")
 
     sources, chain, visited = [], [], set()
     visited_models = []
     model_scopes: dict[str, set] = {}
 
     def add_source(rel: str, col: str):
-        # table 保留裸名(展示/LLM 互验/文档匹配用);schema 单独携带,
-        # 供治理指纹与漂移快照区分跨 schema 同名源表(erp.orders vs crm.orders)
-        tbl = source_rel.get(rel) or rel.split(".", 1)[-1]
-        sch = rel.split(".", 1)[0] if "." in rel else ""
-        key = {"table": tbl, "schema": sch, "column": col}
+        # table 保留裸名(展示/LLM 互验/文档匹配用);schema/database 单独携带,
+        # 供治理指纹与漂移快照区分跨 schema/跨库同名源表(erp.orders vs crm.orders)
+        parts = rel.split(".")
+        if len(parts) >= 3:
+            db, sch, tbl = parts[0], parts[1], ".".join(parts[2:])
+        elif len(parts) == 2:
+            db, sch, tbl = "", parts[0], parts[1]
+        else:
+            db, sch, tbl = "", "", rel
+        key = {"table": source_rel.get(rel) or tbl, "schema": sch, "database": db, "column": col}
         pkg = (external.get(rel) or {}).get("package")
         if pkg:
             key["package"] = pkg   # 第三方包物化表:标注归属,卡片上可见边界性质
@@ -67,8 +121,9 @@ def trace(graph: dict, model: str, column: str) -> dict:
         entry = models[m]["columns"][c]
         model_scopes.setdefault(m, set()).update(entry.get("scopes", ["main"]))
         chain.append({
-            "depth": depth, "layer": models[m]["layer"], "model": m, "column": c,
-            "expr": entry.get("expr"), "src_path": models[m]["src_path"],
+            # model = 展示名(文档/漂移快照/LLM 按它工作),model_uid = 图主键(机器反查)
+            "depth": depth, "layer": models[m]["layer"], "model": disp(m), "model_uid": m,
+            "column": c, "expr": entry.get("expr"), "src_path": models[m]["src_path"],
         })
         for up in entry.get("upstreams", []):
             rel = up["table"]
@@ -105,8 +160,9 @@ def trace(graph: dict, model: str, column: str) -> dict:
             sems.append({**s, "src_path": models[m]["src_path"]})
 
     return {
-        "target": f"{models[model]['layer']}.{model}.{column}",
+        "target": f"{models[model]['layer']}.{disp(model)}.{column}",
         "depth": 1 + max((e["depth"] for e in chain), default=0),
+        # models_visited 存 uid(graph["models"] 的机器可用键);展示走 expr_chain 的 model 字段
         "models_visited": visited_models,
         "sources": sorted(sources, key=lambda x: (x["table"], x["column"], x.get("schema", ""))),
         "expr_chain": chain,

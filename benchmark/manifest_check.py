@@ -25,11 +25,12 @@ def main():
         expected[node["name"]] = {d.split(".")[-1] for d in node["depends_on"]["nodes"]}
 
     ok = True
-    for name, m in graph["models"].items():
+    for uid, m in graph["models"].items():
+        name = m.get("name") or uid
         proj_cols = set()
         for c in m["columns"].values():
             for u in c.get("upstreams", []):
-                proj_cols.add(u["table"].split(".", 1)[-1])
+                proj_cols.add(u["table"].split(".")[-1])   # 物理三段键取裸表名对拍
         ast = sqlglot.parse_one((PROJECT_DIR / m["compiled_path"]).read_text(), read=dialect)
         cte_names = {c.alias for c in ast.find_all(exp.CTE)}
         proj_sql = {t.name for t in ast.find_all(exp.Table) if t.name not in cte_names and t.name != name}
