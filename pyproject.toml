@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "metriclens"
-version = "0.7.0"
+version = "0.7.1"
 description = "Metric caliber synthesis for dbt projects: deterministic column-level lineage x LLM reading, cross-validated, evidence-bound caliber cards"
 readme = "README.md"
 license = "Apache-2.0"

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.1 — 2026-08-29
 
 Sixth external review: identity end-to-end in the trust chain, cardinality as
 first-class lineage, product-to-graph binding.
