@@ -30,11 +30,16 @@ export interface GovSqlQuality {
 }
 
 export interface GovFamily { a: string; b: string; fingerprint: string; grain_a: string[]; grain_b: string[] }
+export interface GovRowMismatch {
+  a: string; b: string; fingerprint: string; same_base?: boolean
+  rowset_only_a: string[]; rowset_only_b: string[]
+}
 export interface GovReport {
   generated_at: string | null; llm_model?: string
   a_tier_pairs?: number; a_tier_dup?: number; a_tier_agg_distinct?: number
   b_tier_pairs?: number; b_tier_skipped?: number
   duplicates: GovPairFull[]; distinct: GovPairFull[]; families?: GovFamily[]
+  row_mismatch?: GovRowMismatch[]
   sql_quality?: GovSqlQuality[]
 }
 export interface LineageGraph {

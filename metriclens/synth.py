@@ -650,7 +650,9 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
         r = json.loads(f.read_text())
         cards[r["metric_key"]] = {"title": r["title"], "confidence": r["confidence"],
                                   "status": r["status"], "generated_at": r["generated_at"],
-                                  "run_id": r.get("run_id")}
+                                  "run_id": r.get("run_id"),
+                                  "publication_status": r.get("publication_status"),
+                                  "race": (r.get("race") or {}).get("verdict")}
         # --only 补齐的旧批次卡可能没有 race 字段(0.8 前),按缺省计入
         rv = (r.get("race") or {}).get("verdict") or "-"
         race_counts[rv] = race_counts.get(rv, 0) + 1

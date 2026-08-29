@@ -97,6 +97,27 @@ export default function GovernancePanel({ onClose }: { onClose: () => void }) {
                 </ul>
               </section>
             )}
+            {(report.row_mismatch ?? []).length > 0 && (
+              <section>
+                <h3>疑似重复 · 基数未证 <span className="m-target">{report.row_mismatch!.length} 对 · 值来源相同但途经 join 拓扑不同,须人工确认行基数</span></h3>
+                <ul className="refs">
+                  {report.row_mismatch!.map((p, i) => (
+                    <li key={i}>
+                      <span>
+                        <span className="tier tier-b">基数未证</span>
+                        <code>{p.a} ≈ {p.b}</code>
+                        {p.same_base && <span className="ev-tag ev-warn" title="列基名一致,疑似度更高">同基名</span>}
+                        <div className="gov-reason">
+                          行集差异:仅 a 途经 [{p.rowset_only_a.join(', ') || '—'}] · 仅 b 途经 [{p.rowset_only_b.join(', ') || '—'}]
+                          ——一对多 join 可放大聚合值,join 键唯一性 SQL 未自证,既不判重复也不判不同义
+                        </div>
+                      </span>
+                      <span className="ref-loc">指纹 {p.fingerprint.slice(0, 8)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             {(report.sql_quality ?? []).length > 0 && (
               <section>
                 <h3>SQL 质量立项 <span className="m-target">{report.sql_quality!.length} 项 · 行数聚合跨 join,计数对象未自证,须人工明确</span></h3>

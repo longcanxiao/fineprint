@@ -22,6 +22,16 @@ Dual-write race: a deterministic formula composer runs alongside the LLM.
   CTE cycles get an explicit scope-level guard, and the depth cap becomes a
   pure backstop (512) after measuring a real 257-level path (codegen'd
   chained CTEs × inline ephemerals × cross-model accumulation).
+- **Dashboard renders the race**: the caliber modal shows the
+  `publication_status` badge, a "machine caliber" section (per-fact status
+  chips, composed top formula, named subexpressions with defining grain /
+  join-context / union branches, output grain) alongside the LLM technical
+  caliber (labeled as the race-period publishing authority), and the race
+  verdict inside the cross-validation section (disagree details inline).
+  The governance console gains the `row_mismatch` tier ("suspected
+  duplicate, cardinality unproven" with per-side row-set diffs). Batch
+  index entries carry `publication_status` and the race verdict per card;
+  `.claude/launch.json` gains a `metriclens-api` entry (port 8612).
 
 - **Deterministic technical-formula composer** (`metriclens/render.py`): starting
   from compiled SQL, the target column's expression is expanded scope-by-scope

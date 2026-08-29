@@ -7,6 +7,21 @@ import type { Tokens } from '../theme'
 interface Clause { text: string; basis?: string; evidence_ids?: string[]; basis_verified?: boolean }
 interface Evidence { id: string; kind: string; model?: string | null; line?: number | null; text: string }
 interface GovPair { a: string; b: string; fingerprint: string }
+interface TfDef {
+  name: string; model?: string | null; column?: string; expr: string
+  grain?: string[]; kind: string; join_context?: boolean
+  branches?: { label: string; expr: string }[]
+}
+interface TfTarget { target?: string; status: string; top?: string | null; defs?: TfDef[]; reasons?: string[] }
+interface TfFormula extends TfTarget { inline?: string | null; rt_failed?: boolean; evidence?: string[]; per_target?: TfTarget[] }
+interface TechnicalFacts {
+  formula: TfFormula
+  key_filters?: { status: string; items?: unknown[]; ambiguous_items?: unknown[] }
+  sources?: { status: string; items?: unknown[] }
+  window?: { status: string; items?: unknown[]; unique_on?: Record<string, string[]> }
+  grain?: { status: string; keys?: string[]; model?: string }
+}
+interface Race { verdict: string; detail?: Record<string, unknown> }
 interface Caliber {
   metric_key: string; title: string; target?: string; query_filter?: string | null
   generated_at: string; llm_model?: string; confidence: string; status: string
@@ -20,6 +35,9 @@ interface Caliber {
   business?: { definition: string; clauses?: Clause[]; caveats?: string[] }
   evidence?: Evidence[]
   governance?: { duplicates?: GovPair[] }
+  technical_facts?: TechnicalFacts
+  race?: Race
+  publication_status?: string
   trace?: {
     depth: number; models_visited: string[]
     sources: { table: string; column: string }[]
@@ -32,6 +50,28 @@ const CONF_LABEL: Record<string, [string, string]> = {
   medium: ['中置信 · 存在表述差异', 'conf-mid'],
   low: ['低置信 · 人工审核中', 'conf-low'],
 }
+
+const PUB_LABEL: Record<string, [string, string]> = {
+  VERIFIED: ['VERIFIED · 机器无矛盾', 'conf-high'],
+  TECHNICAL_ONLY: ['TECHNICAL_ONLY · 机器口径可用,叙述待审', 'conf-mid'],
+  REVIEW_REQUIRED: ['REVIEW_REQUIRED · 须人工复核', 'conf-low'],
+  BLOCKED: ['BLOCKED', 'conf-low'],
+}
+
+const RACE_LABEL: Record<string, string> = {
+  agree: '组合器公式结构一致',
+  consistent: '与组合器无机器矛盾(未达结构一致)',
+  prose: 'LLM 公式非可解析 SQL,仅 token 级校验',
+  disagree: '与组合器公式实锤矛盾',
+  renderer_unsupported: '组合器未覆盖此构造',
+}
+
+const FACT_LABEL: Record<string, string> = {
+  formula: '公式', key_filters: '过滤', sources: '源', window: '窗口', grain: '粒度',
+}
+
+const factCls = (s?: string) =>
+  s === 'proven' ? 'conf-high' : s === 'unsupported' ? 'conf-low' : 'conf-mid'
 
 const LAYER_X: Record<string, number> = { ods: 0, dwd: 1, dwm: 2, dm: 3, app: 4 }
 
@@ -124,6 +164,11 @@ export default function CaliberModal({ metricKey, title, tokens, onClose }: { me
           <div>
             <div className="m-title">{title} {card?.target && <span className="m-target">{card.target}</span>}</div>
             {card && <span className={`conf ${confCls}`}>{confLabel}</span>}
+            {card?.publication_status && PUB_LABEL[card.publication_status] && (
+              <span className={`conf ${PUB_LABEL[card.publication_status][1]}`} style={{ marginLeft: 6 }}>
+                {PUB_LABEL[card.publication_status][0]}
+              </span>
+            )}
           </div>
           <button className="m-close" onClick={onClose} aria-label="关闭">×</button>
         </div>
@@ -153,7 +198,7 @@ export default function CaliberModal({ metricKey, title, tokens, onClose }: { me
               )}
             </section>
             <section>
-              <h3>技术口径</h3>
+              <h3>技术口径 <span className="m-target">LLM 归并 · 发布权威(赛马期)</span></h3>
               <pre className="formula">{card.technical.formula}</pre>
               {card.technical.window && <p className="tech-win">时间窗/统计日: {card.technical.window}</p>}
               {(card.technical.special ?? []).length > 0 && (
@@ -161,6 +206,54 @@ export default function CaliberModal({ metricKey, title, tokens, onClose }: { me
               )}
               {card.query_filter && <p className="tech-win">取数过滤: {card.query_filter}</p>}
             </section>
+            {card.technical_facts && (
+              <section>
+                <h3>机器口径 <span className="m-target">确定性组合器合成 · 与上方 LLM 口径双写赛马</span></h3>
+                <div className="chips">
+                  {Object.entries(FACT_LABEL).map(([k, lb]) => {
+                    const st = (card.technical_facts as unknown as Record<string, { status?: string } | undefined>)[k]?.status
+                    return st ? <span key={k} className={`conf ${factCls(st)}`}>{lb} {st}</span> : null
+                  })}
+                  {card.race && (
+                    <span className={`conf ${card.race.verdict === 'disagree' ? 'conf-low' : card.race.verdict === 'agree' ? 'conf-high' : 'conf-mid'}`}>
+                      赛马 {card.race.verdict}
+                    </span>
+                  )}
+                </div>
+                {(card.technical_facts.formula.per_target ?? [{ ...card.technical_facts.formula, target: undefined }]).map((t, ti) => (
+                  <div key={ti}>
+                    {t.target && <p className="tech-win">目标 {t.target}</p>}
+                    {t.top && <pre className="formula">{t.top}</pre>}
+                    {(t.defs ?? []).length > 0 && (
+                      <ul className="refs">
+                        {(t.defs ?? []).map((d, i) => (
+                          <li key={i}>
+                            <span>
+                              <span className="ev-tag">{d.kind}</span>
+                              <code>{d.name} := {d.branches ? `UNION ${d.branches.length} 分支(值=行所属分支的表达式)` : d.expr.replace(/"/g, '')}</code>
+                              {(d.grain ?? []).length > 0 && <span className="ref-loc"> · per {(d.grain ?? []).join(', ')}</span>}
+                              {d.branches && (
+                                <div className="gov-reason">
+                                  {d.branches.slice(0, 4).map((b, bi) => <div key={bi}><code>{b.label}: {b.expr.replace(/"/g, '')}</code></div>)}
+                                  {d.branches.length > 4 && <div>… 另 {d.branches.length - 4} 个分支</div>}
+                                </div>
+                              )}
+                            </span>
+                            <span className="ref-loc">{d.model ?? ''}{d.join_context ? ' · join 上下文' : ''}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+                {(card.technical_facts.formula.reasons ?? []).length > 0 && (
+                  <p className="src-list">{(card.technical_facts.formula.reasons ?? []).map((r, i) => <span key={i}>◦ {r}<br /></span>)}</p>
+                )}
+                {(card.technical_facts.grain?.keys ?? []).length > 0 && (
+                  <p className="tech-win">输出粒度: {(card.technical_facts.grain?.keys ?? []).join(', ')}(定义于 {card.technical_facts.grain?.model})</p>
+                )}
+              </section>
+            )}
             {govDups.length > 0 && (
               <section>
                 <h3>治理提示</h3>
@@ -184,6 +277,15 @@ export default function CaliberModal({ metricKey, title, tokens, onClose }: { me
                   {card.validation.quote_verify_fail > 0 && `;${card.validation.quote_verify_fail} 条引用未过原文校验`}
                   {(card.validation.unverified_clauses ?? 0) > 0 && `;${card.validation.unverified_clauses} 条业务条款未绑定证据`}
                 </p>
+                {card.race && (
+                  <p className="verify">
+                    公式赛马:<span className={`ev-tag ${card.race.verdict === 'disagree' ? 'ev-warn' : ''}`}>{card.race.verdict}</span>
+                    {' '}{RACE_LABEL[card.race.verdict] ?? ''}
+                    {card.race.verdict === 'disagree' && card.race.detail != null && (
+                      <code className="gov-code">{JSON.stringify(card.race.detail).replace(/"/g, '').slice(0, 160)}</code>
+                    )}
+                  </p>
+                )}
               </section>
             )}
             {lg && lineageOpt && (

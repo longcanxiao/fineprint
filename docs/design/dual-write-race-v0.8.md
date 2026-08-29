@@ -102,12 +102,17 @@ CTE + inline ephemeral + 跨源 UNION rollup)。三轮 probe→fix→re-probe:
 列级血缘错误 0;组合吞吐 ~1200 列/s(建图 sqlglot lineage 83s 为主)。
 报告固化于 benchmark/reports/fivetran_ad_reporting_2026-08-29.json。
 
+**③ 看板渲染(已落地)**:口径卡弹窗新增发布状态徽章 + 「机器口径」区(逐事实
+status 徽章、组合公式、命名子表达式带 grain/join 上下文/union 分支、输出粒度),
+LLM 技术口径明确标注「发布权威(赛马期)」;互验区展示公式赛马判定(disagree 附
+机器矛盾详情);治理台新增「疑似重复·基数未证」(row_mismatch)档;批次索引逐卡
+携带 publication_status 与 race 判定。
+
 ## 切换判据(剩余)
 
 1. 更多真实项目探针(不同方言/写法风格;GitLab 若重新公开仍是首选)。
 2. disagree 逐条人工裁决,记录谁对——赛马战绩公开(demo 当前零 disagree,
    历史两例均为 LLM 错)。
-3. 看板渲染赛马数据(见下),让分歧进入日常视野而非仅批次日志。
 
 ## 已知余量(诚实清单)
 
@@ -116,5 +121,3 @@ CTE + inline ephemeral + 跨源 UNION rollup)。三轮 probe→fix→re-probe:
 - race 只比公式:sources 已有互验、key_filters 已有指纹匹配与词表校验,
   不重复立项。
 - 标量子查询保留原文,其内部口径不做组合声明(ambiguous + 叶子互证部分跳过)。
-- 看板尚未渲染 technical_facts/race/publication_status(与 row_mismatch 档同批
-  待办)。
