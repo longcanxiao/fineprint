@@ -30,14 +30,14 @@ def _cat(schema, name, cols):
 
 
 def make_project(tmp_path, nodes, catalog_nodes, sqls, sources=None,
-                 project_name=None, internal_packages=None):
+                 project_name=None, internal_packages=None, adapter="duckdb"):
     proj = tmp_path / "proj"
     (proj / "target").mkdir(parents=True)
     for rel, text in sqls.items():
         f = proj / rel
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(text)
-    meta = {"adapter_type": "duckdb"}
+    meta = {"adapter_type": adapter}
     if project_name:
         meta["project_name"] = project_name   # 缺省不写:root 未知 → 全部按一方包
     (proj / "target" / "manifest.json").write_text(json.dumps({
@@ -303,3 +303,71 @@ class TestLLMErrorClassification:
         with pytest.raises(RuntimeError, match="重试 8 次"):
             llm._request(cfg, "m", "s", "u", 100, None, None)
         assert seen and all(s == 3.0 for s in seen)
+
+
+class TestParseFailureBoundary:
+    """真实项目探针固化(Snowplow):单模型解析/qualify 失败不得炸整图——
+    该模型降级为边界节点,血缘与组合器都在其物化表处截止(与第三方包同语义)。"""
+
+    def _proj(self, tmp_path):
+        return make_project(
+            tmp_path,
+            nodes={"model.p.broken": _node("broken", "compiled/broken.sql"),
+                   "model.p.consumer": _node("consumer", "compiled/consumer.sql")},
+            catalog_nodes={
+                "model.p.broken": _cat("main", "broken", {"v": "INTEGER"}),
+                "model.p.consumer": _cat("main", "consumer", {"total": "INTEGER"})},
+            sqls={"compiled/broken.sql": "THIS IS ((( not sql AT ALL",
+                  "compiled/consumer.sql": "select sum(v) as total from main.broken"})
+
+    def test_graph_survives_and_marks_boundary(self, tmp_path):
+        g = build_graph(self._proj(tmp_path))
+        assert g["models"]["model.p.broken"]["error"].startswith("parse:")
+        assert g["models"]["model.p.broken"]["columns"] == {}
+        assert "total" in g["models"]["model.p.consumer"]["columns"]
+
+    def test_trace_stops_at_boundary_table(self, tmp_path):
+        g = build_graph(self._proj(tmp_path))
+        t = trace(g, "consumer", "total")
+        assert [(s["table"], s["column"]) for s in t["sources"]] == [("broken", "v")]
+
+    def test_composer_leafs_boundary(self, tmp_path):
+        from metriclens.render import _Composer
+        proj = self._proj(tmp_path)
+        g = build_graph(proj)
+        c = _Composer(proj, g).compose_target("model.p.consumer", "total")
+        assert c["status"] == "proven"
+        assert (".main.broken", "v") in set(map(tuple, c["leaf_pairs"]))
+
+    def test_target_itself_broken_errors_clearly(self, tmp_path):
+        g = build_graph(self._proj(tmp_path))
+        with pytest.raises(KeyError, match="解析失败"):
+            trace(g, "broken", "v")
+
+
+class TestManifestSourceSchemaFallback:
+    """docs 站产物常见:catalog 无 sources。manifest 里一方 yml 声明的源表列
+    回落进 qualify schema(catalog 优先,只补缺席表),多表 join 的裸列得以定位。"""
+
+    def test_declared_columns_enable_qualify(self, tmp_path):
+        proj = make_project(
+            tmp_path,
+            nodes={"model.p.m": _node("m", "compiled/m.sql")},
+            catalog_nodes={"model.p.m": _cat("main", "m", {"app_id": "TEXT", "n": "INTEGER"})},
+            sqls={"compiled/m.sql": (
+                "select app_id, count(*) as n from main.raw_events e "
+                "join main.raw_users u on e.uid = u.uid group by 1")},
+            sources={"source.p.raw.raw_events": {
+                        "resource_type": "source", "name": "raw_events", "schema": "main",
+                        "database": "", "identifier": "raw_events",
+                        "columns": {"app_id": {"name": "app_id"}, "uid": {"name": "uid"}}},
+                     "source.p.raw.raw_users": {
+                        "resource_type": "source", "name": "raw_users", "schema": "main",
+                        "database": "", "identifier": "raw_users",
+                        "columns": {"uid": {"name": "uid"}}}})
+        g = build_graph(proj)
+        m = g["models"]["model.p.m"]
+        assert "error" not in m
+        entry = m["columns"]["app_id"]
+        assert not entry.get("error")
+        assert {(u["table"], u["column"]) for u in entry["upstreams"]} == {(".main.raw_events", "app_id")}

@@ -51,6 +51,7 @@ def cmd_graph(args):
     nconds = sum(len(m["conditions"]) for m in graph["models"].values())
     nsem = sum(len(m["semantics"]) for m in graph["models"].values())
     errs = [(n, c) for n, m in graph["models"].items() for c, d in m["columns"].items() if d.get("error")]
+    errs += [(n, f"<model: {m['error'][:60]}>") for n, m in graph["models"].items() if m.get("error")]
     if errs and not args.allow_partial:
         # 校验不过不落盘:失败运行不得覆盖上一次可用的图(trace/synth 仍读旧图)
         print(f"column lineage errors ({len(errs)}):", errs[:8], file=sys.stderr)

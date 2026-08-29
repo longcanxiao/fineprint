@@ -28,6 +28,7 @@ from metriclens.render import _Composer  # noqa: E402
 
 # unsupported/ambiguous 原因归桶:前缀匹配,可枚举可修的清单
 REASON_BUCKETS = [
+    ("PIVOT", "pivot"),
     ("UNION", "union_divergent"),
     ("标量子查询", "scalar_subquery"),
     ("作用域投影中找不到列", "missing_projection"),
@@ -72,6 +73,7 @@ def main(argv=None):
     ap.add_argument("--all-packages", action="store_true",
                     help="manifest 内所有模型包按一方包解析(包类项目探测)")
     ap.add_argument("--limit", type=int, default=0, help="最多组合多少列(0=全部)")
+    ap.add_argument("--rebuild-graph", action="store_true", help="忽略图缓存强制重建")
     ap.add_argument("--out", default="", help="JSON 报告输出路径")
     args = ap.parse_args(argv)
 
@@ -87,14 +89,27 @@ def main(argv=None):
           f"  internal_packages={'ALL(' + str(len(internal)) + ')' if internal else '默认(root)'}")
 
     t0 = time.time()
-    graph = build_graph(proj)
+    # 图缓存:大项目建图以 sqlglot lineage 为主开销(Cal-ITP 610 模型约 19 分钟),
+    # 组合器迭代无须反复重建——manifest 未变则直接复用上次的图
+    cache = pdir / ".metriclens_probe_graph.json"
+    mani_mtime = (pdir / "target" / "manifest.json").stat().st_mtime
+    if cache.exists() and cache.stat().st_mtime > mani_mtime and not args.rebuild_graph:
+        from metriclens.trace import load_graph
+        graph = load_graph(cache)
+        print(f"(复用缓存图 {cache.name};--rebuild-graph 可强制重建)")
+    else:
+        graph = build_graph(proj)
+        cache.write_text(json.dumps(graph, ensure_ascii=False))
     t_graph = time.time() - t0
     models = graph["models"]
     col_total = sum(len(m["columns"]) for m in models.values())
     col_lineage_err = sum(1 for m in models.values()
                           for c in m["columns"].values() if c.get("error"))
+    model_err = {u: m["error"] for u, m in models.items() if m.get("error")}
     print(f"建图 {t_graph:.1f}s: 模型 {len(models)}  列 {col_total}"
-          f"  列级血缘错误 {col_lineage_err}")
+          f"  列级血缘错误 {col_lineage_err}  模型级降级 {len(model_err)}")
+    for u, e in list(model_err.items())[:5]:
+        print(f"  边界模型: {u}: {e[:110]}")
 
     comp = _Composer(proj, graph)
     status_cnt, reason_cnt, note_cnt = Counter(), Counter(), Counter()
@@ -139,6 +154,7 @@ def main(argv=None):
             "artifacts": str(pdir), "adapter": proj.adapter_type,
             "models": len(models), "columns": col_total,
             "lineage_col_errors": col_lineage_err,
+            "model_errors": model_err,
             "graph_seconds": round(t_graph, 1), "compose_seconds": round(t_comp, 1),
             "composed": done, "status": dict(status_cnt),
             "reasons": dict(reason_cnt), "reason_samples": samples,

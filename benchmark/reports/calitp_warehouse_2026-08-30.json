@@ -1,0 +1,36 @@
+{
+ "artifacts": "/private/tmp/claude-501/-Users-qiyi-projects-index-sys/bd34750a-729e-4e0f-b55b-2585954ca2fb/scratchpad/calitp",
+ "adapter": "bigquery",
+ "models": 604,
+ "columns": 16856,
+ "lineage_col_errors": 0,
+ "model_errors": {},
+ "graph_seconds": 0.0,
+ "compose_seconds": 140.1,
+ "composed": 16856,
+ "status": {
+  "proven": 16706,
+  "unsupported": 146,
+  "ambiguous": 4
+ },
+ "reasons": {
+  "defs_cap": 6,
+  "scalar_subquery": 4,
+  "pivot": 140
+ },
+ "reason_samples": {
+  "defs_cap": "model.calitp_warehouse.fct_daily_organization_combined_guideline_checks.status: 命名子表达式规模超限",
+  "scalar_subquery": "model.calitp_warehouse.fct_daily_rt_feed_validation_notices.gtfs_validator_versions: 标量子查询保留原文未展开(其内部口径不做组合声明)",
+  "pivot": "model.calitp_warehouse.fct_daily_schedule_rt_route_direction_summary.daily_trips_owl: PIVOT 输出列展开未支持(列 _1,已知边界)"
+ },
+ "notes": {
+  "scalar_subquery": 10
+ },
+ "by_package": {
+  "calitp_warehouse": {
+   "proven": 16706,
+   "unsupported": 146,
+   "ambiguous": 4
+  }
+ }
+}

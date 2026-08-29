@@ -76,6 +76,9 @@ def trace(graph: dict, model: str, column: str) -> dict:
         return disp_cache[uid]
 
     if column not in models[model]["columns"]:
+        if models[model].get("error"):
+            raise KeyError(f"模型 {disp(model)} 解析失败,无法回溯其列 {column}"
+                           f"({models[model]['error']})")
         raise KeyError(f"unknown column: {disp(model)}.{column} "
                        f"(有效列: {list(models[model]['columns'])[:8]}...)")
 
@@ -109,6 +112,9 @@ def trace(graph: dict, model: str, column: str) -> dict:
         if m not in visited_models:
             visited_models.append(m)
         model_scopes.setdefault(m, set())
+        if models[m].get("error"):
+            add_source(models[m]["table"], "*")   # 解析失败模型:行集依赖在其物化表截止
+            return
         for rel in models[m].get("row_set_tables") or []:
             up_model = model_rel.get(rel)
             if up_model and up_model in models:
@@ -138,7 +144,11 @@ def trace(graph: dict, model: str, column: str) -> dict:
                 else:
                     add_source(rel, "*")
             elif up_model and up_model in models:
-                rec(up_model, up["column"], depth + 1)
+                if up["column"] in models[up_model].get("columns", {}):
+                    rec(up_model, up["column"], depth + 1)
+                else:
+                    # 上游模型解析失败(或列未知):血缘在其物化表处截止,按边界源记账
+                    add_source(rel, up["column"])
             else:
                 add_source(rel, up["column"])
 

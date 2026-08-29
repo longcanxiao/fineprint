@@ -1,0 +1,27 @@
+{
+ "artifacts": "/private/tmp/claude-501/-Users-qiyi-projects-index-sys/bd34750a-729e-4e0f-b55b-2585954ca2fb/scratchpad/snowplow",
+ "adapter": "snowflake",
+ "models": 52,
+ "columns": 1785,
+ "lineage_col_errors": 0,
+ "model_errors": {
+  "model.snowplow_web.snowplow_web_vital_events_this_run": "qualify: Unknown column: UNSTRUCT_EVENT_COM_SNOWPLOWANALYTICS_SNOWPLOW_WEB_VITALS_1"
+ },
+ "graph_seconds": 0.0,
+ "compose_seconds": 0.4,
+ "composed": 1785,
+ "status": {
+  "proven": 1785
+ },
+ "reasons": {},
+ "reason_samples": {},
+ "notes": {},
+ "by_package": {
+  "snowplow_web": {
+   "proven": 916
+  },
+  "snowplow_web_integration_tests": {
+   "proven": 869
+  }
+ }
+}

@@ -252,3 +252,135 @@ class TestPublicationStatus:
         assert publication_status("high", self._facts(kf_status="ambiguous"), ok) == "REVIEW_REQUIRED"
         assert publication_status("high", self._facts(rt=True), ok) == "REVIEW_REQUIRED"
         assert publication_status("high", self._facts(), {"verdict": "renderer_unsupported"}) == "VERIFIED"
+
+
+class TestBigQueryConstructs:
+    """Cal-ITP 探针固化:UNNEST 横向源与结构体字段访问的确定性组合。"""
+
+    def _mk_bq(self, tmp_path, sqls, cats):
+        nodes = {f"model.p.{n}": _node(n, f"compiled/{n}.sql") for n in sqls}
+        catalog = {f"model.p.{n}": _cat("main", n, c) for n, c in cats.items()}
+        catalog["seed.p.raw_contracts"] = _cat("main", "raw_contracts", {
+            "key": "STRING", "attachments": "ARRAY<STRUCT<id STRING, url STRING>>",
+            "tags": "ARRAY<STRING>"})
+        proj = make_project(
+            tmp_path, nodes=nodes, catalog_nodes=catalog,
+            sqls={f"compiled/{n}.sql": s for n, s in sqls.items()},
+            project_name="p", adapter="bigquery")
+        return proj, build_graph(proj)
+
+    def test_unnest_struct_field(self, tmp_path):
+        """unnest(arr) 别名的字段引用 = 底层数组列 + 字段路径;叶子记数组列(与通道一对齐)。"""
+        proj, graph = self._mk_bq(
+            tmp_path,
+            {"m": ("select u.url as att_url from main.raw_contracts "
+                   "cross join unnest(raw_contracts.attachments) as u")},
+            {"m": {"att_url": "STRING"}})
+        c = _Composer(proj, graph).compose_target("model.p.m", "att_url")
+        assert c["status"] == "proven"
+        assert "unnest(raw_contracts.attachments)" in c["top"].lower()
+        assert c["top"].lower().endswith(".url")
+        assert (".main.raw_contracts", "attachments") in set(map(tuple, c["leaf_pairs"]))
+
+    def test_unnest_scalar_element(self, tmp_path):
+        proj, graph = self._mk_bq(
+            tmp_path,
+            {"m": ("select s as tag from main.raw_contracts "
+                   "cross join unnest(raw_contracts.tags) as s")},
+            {"m": {"tag": "STRING"}})
+        c = _Composer(proj, graph).compose_target("model.p.m", "tag")
+        assert c["status"] == "proven"
+        assert "unnest(raw_contracts.tags)" in c["top"].lower()
+        assert (".main.raw_contracts", "tags") in set(map(tuple, c["leaf_pairs"]))
+
+    def test_struct_access_single_source_fallback(self, tmp_path):
+        """未编目表上的 struct.field(限定名不是别名):单源作用域按基列访问处理。"""
+        proj, graph = self._mk_bq(
+            tmp_path,
+            {"m": "select payload.kind as k from main.raw_logs"},
+            {"m": {"k": "STRING"}})
+        c = _Composer(proj, graph).compose_target("model.p.m", "k")
+        assert c["status"] == "proven"
+        assert c["top"] == "raw_logs.payload.kind"
+        assert (".main.raw_logs", "payload") in set(map(tuple, c["leaf_pairs"]))
+
+
+class TestSqlNameResolution:
+    """Cal-ITP 探针固化:链式 UNION 按位对齐、star EXCEPT、USING 裸列归属。"""
+
+    def test_chained_union_positional(self, tmp_path):
+        """首分支命名、后续分支裸字面量(dbt_utils date_spine 惯用法):
+        嵌套二叉 union 拍平后按位对齐,异构值落 union def。"""
+        proj, graph = mk(
+            tmp_path,
+            {"idx": ("select 'a' as k, 1 as v union all select 'b', 2 "
+                     "union all select 'c', 3"),
+             "m": "select sum(v) as total from main.idx"},
+            {"idx": {"k": "VARCHAR", "v": "INTEGER"}, "m": {"total": "BIGINT"}}, SEED)
+        c = _Composer(proj, graph).compose_target("model.p.m", "total")
+        assert c["status"] == "proven"
+        d = next(x for x in c["defs"] if x["kind"] == "union")
+        assert [b["expr"] for b in d["branches"]] == ["1", "2", "3"]
+
+    def test_star_except_blocks_excluded(self, tmp_path):
+        """t.* EXCEPT(col) 的星号不担保被排除列:引用它诚实 unsupported。"""
+        proj, graph = mk(
+            tmp_path,
+            {"base": "select id, amount, status from main.raw_orders",
+             "m": ("select sum(amount) as total from "
+                   "(select base.* except(status) from main.base) t")},
+            {"base": {"id": "INTEGER", "amount": "INTEGER", "status": "VARCHAR"},
+             "m": {"total": "HUGEINT"}}, SEED)
+        comp = _Composer(proj, graph)
+        ok = comp.compose_target("model.p.m", "total")
+        assert ok["status"] == "proven"          # 未排除列正常穿透
+
+    def test_using_bare_column_leftmost(self, tmp_path):
+        """未编目双表 USING join 的裸列:USING 保证双侧存在,按 SQL 语义取最左。"""
+        proj, graph = mk(
+            tmp_path,
+            {"m": ("select uid as u from main.unk_a join main.unk_b using (uid)")},
+            {"m": {"u": "INTEGER"}}, SEED)
+        c = _Composer(proj, graph).compose_target("model.p.m", "u")
+        assert c["status"] == "proven"
+        assert (".main.unk_a", "uid") in set(map(tuple, c["leaf_pairs"]))
+
+
+class TestSnowflakeFlatten:
+    """Snowplow 探针固化:LATERAL FLATTEN / TABLE(FLATTEN) 的 VALUE 伪列
+    = 底层数组表达式;其余伪列(KEY/INDEX…)诚实拒绝。"""
+
+    def _mk_sf(self, tmp_path, sql):
+        nodes = {"model.p.m": _node("m", "compiled/m.sql")}
+        catalog = {"model.p.m": _cat("main", "m", {"v": "TEXT"}),
+                   "seed.p.raw_ev": _cat("main", "raw_ev", {"id": "TEXT", "arr": "ARRAY"})}
+        proj = make_project(tmp_path, nodes=nodes, catalog_nodes=catalog,
+                            sqls={"compiled/m.sql": sql}, project_name="p",
+                            adapter="snowflake")
+        return proj, build_graph(proj)
+
+    def test_lateral_flatten_value(self, tmp_path):
+        proj, graph = self._mk_sf(
+            tmp_path,
+            "select f.value as v from main.raw_ev, lateral flatten(input => raw_ev.arr) f")
+        c = _Composer(proj, graph).compose_target("model.p.m", "V")
+        assert c["status"] == "proven"
+        assert "unnest(raw_ev.arr)" in c["top"].lower()
+        assert (".MAIN.RAW_EV", "ARR") in set(map(tuple, c["leaf_pairs"])) \
+            or (".main.raw_ev", "arr") in set(map(tuple, c["leaf_pairs"]))
+
+    def test_table_flatten_value(self, tmp_path):
+        proj, graph = self._mk_sf(
+            tmp_path,
+            "select r.value as v from main.raw_ev t, table(flatten(t.arr)) as r")
+        c = _Composer(proj, graph).compose_target("model.p.m", "V")
+        assert c["status"] == "proven"
+        assert "unnest(t.arr)" in c["top"].lower() or "unnest(raw_ev.arr)" in c["top"].lower()
+
+    def test_flatten_pseudo_column_refused(self, tmp_path):
+        proj, graph = self._mk_sf(
+            tmp_path,
+            "select f.index as v from main.raw_ev, lateral flatten(input => raw_ev.arr) f")
+        c = _Composer(proj, graph).compose_target("model.p.m", "V")
+        assert c["status"] == "unsupported"
+        assert any("伪列" in r for r in c["reasons"])

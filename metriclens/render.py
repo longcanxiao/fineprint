@@ -29,7 +29,8 @@ MAX_HOPS = 512      # 纯兜底护栏:环由模型级/作用域级 in_progress �
                     # 真实深度可观(Fivetran ad_reporting 跨源 rollup 实测 257 层,
                     # 代码生成的链式 CTE × inline ephemeral × 跨模型累计)
 INLINE_MAX = 72     # 非聚合定义的内联长度上限,超过则命名保可读
-MAX_DEFS = 48       # 命名子表达式规模护栏
+MAX_DEFS = 200      # 命名子表达式规模护栏(可读性参数,非正确性;date-spine ×
+                    # 多结构体的真实模型可达 50+,展示层自行截断)
 
 _SETOP = getattr(exp, "SetOperation", exp.Union)
 
@@ -43,7 +44,8 @@ class Unsup(Exception):
 
 
 def _display(ast: exp.Expression) -> str:
-    return re.sub(r"\s+", " ", ast.sql(dialect=dialect()).replace('"', "")).strip()
+    # 展示形去引号:双引号(通用)与反引号(bigquery/mysql 系)都属噪声
+    return re.sub(r"\s+", " ", ast.sql(dialect=dialect()).replace('"', "").replace("`", "")).strip()
 
 
 def _norm_cmp(text) -> str | None:
@@ -57,7 +59,8 @@ def _norm_cmp(text) -> str | None:
     if isinstance(ast, exp.Alias):
         ast = ast.this
     ast = ast.transform(lambda n: exp.column(n.name) if isinstance(n, exp.Column) else n)
-    s = re.sub(r"\s+", " ", ast.sql(dialect=dialect()).replace('"', "").lower()).strip()
+    s = re.sub(r"\s+", " ",
+               ast.sql(dialect=dialect()).replace('"', "").replace("`", "").lower()).strip()
     s = re.sub(r"\bcount\s*\(\s*1\s*\)|\bsum\s*\(\s*1\s*\)", "count(*)", s)
     # sqlglot 对散文过于宽容(中文词被当匿名函数/列名):剥掉字符串字面量后
     # 仍含非 ASCII 的不是 SQL 公式(字面量里的中文如 status='已支付' 合法)
@@ -106,13 +109,22 @@ class _Composer:
             info = self.graph["models"][uid]
             sql = (self.project.project_dir / info["compiled_path"]).read_text()
             try:
-                ast = qualify(parse_one(sql, read=dialect()),
-                              schema=self.project.schema, dialect=dialect())
-                self.root_memo[uid] = build_scope(ast)
+                ast = parse_one(sql, read=dialect())
+            except Exception as e:
+                raise Unsup(f"模型 {self._disp(uid)} parse 失败: {str(e)[:80]}")
+            try:
+                qast = qualify(ast.copy(), schema=self.project.schema, dialect=dialect())
             except Unsup:
                 raise
-            except Exception as e:
-                raise Unsup(f"模型 {self._disp(uid)} qualify 失败: {str(e)[:80]}")
+            except Exception:
+                # 与建图同策略:退部分限定,定不了的列留裸名,由展开期
+                # 「缺少限定名」逐列诚实报错——不因一列废整模型
+                try:
+                    qast = qualify(ast.copy(), schema=self.project.schema,
+                                   dialect=dialect(), validate_qualify_columns=False)
+                except Exception as e:
+                    raise Unsup(f"模型 {self._disp(uid)} qualify 失败: {str(e)[:80]}")
+            self.root_memo[uid] = build_scope(qast)
             if self.root_memo[uid] is None:
                 raise Unsup(f"模型 {self._disp(uid)} 非 SELECT 结构,无法建作用域")
         return self.root_memo[uid]
@@ -143,21 +155,89 @@ class _Composer:
     def _expand_scope_col(self, scope, col: str, depth: int) -> tuple:
         """作用域内 col 的投影 → 完全展开的 AST + 定义处 grain。UNION 各分支展开
         一致则取其一;异构分支(跨源 rollup 的常态)逐分支保留为 union def——
-        「值 = 行所来自分支的表达式」本身就是可证事实,不放弃也不挑一支。"""
+        「值 = 行所来自分支的表达式」本身就是可证事实,不放弃也不挑一支。
+        集合操作按 SQL 语义**位置对齐**:列位取自首分支,后续分支可不命名
+        (dbt_utils date_spine 的 `select 0 as n union all select 1` 惯用法)。"""
         e = scope.expression
+        # 派生表/CTE 列别名清单:from (…) as t(c1,c2) / with t(c1,c2) as (…) ——
+        # 外部列名按清单位置映射到内部投影(内部常是字面量自动命名)
+        apos = None
+        acols = self._alias_columns(scope)
+        if acols:
+            low = [c.lower() for c in acols]
+            if col.lower() in low:
+                apos = low.index(col.lower())
         if isinstance(e, _SETOP):
-            branches = [self._expand_scope_col(b, col, depth + 1)
-                        for b in (scope.union_scopes or [])]
-            if not branches:
+            # 链式 union 在 AST 里是嵌套二叉结构:递归拍平成 Select 分支序列,
+            # 位置对齐才有意义(首分支命名,后续分支可裸写字面量)
+            uscopes = self._flat_union_scopes(scope)
+            if not uscopes:
                 raise Unsup(f"集合操作缺少分支作用域(列 {col})")
+            first = uscopes[0].expression.expressions
+            pos = apos if apos is not None else next(
+                (i for i, p in enumerate(first) if p.alias_or_name == col), None)
+            branches = []
+            for b in uscopes:
+                exprs = b.expression.expressions
+                proj = (exprs[pos] if pos is not None and pos < len(exprs)
+                        else next((x for x in exprs if x.alias_or_name == col), None))
+                if proj is None:
+                    branches.append(self._expand_scope_col(b, col, depth + 1))
+                else:
+                    branches.append(self._expand_proj(b, proj, col, depth + 1))
             texts = {_display(a) for a, _ in branches}
             if len(texts) == 1:
                 return branches[0]
-            labels = [self._branch_label(b) for b in (scope.union_scopes or [])]
-            return self._make_union_def(col, branches, labels), []
+            labels = [self._branch_label(b) for b in uscopes]
+            return self._make_union_def(scope, col, branches, labels), []
+        if apos is not None and apos < len(e.expressions):
+            return self._expand_proj(scope, e.expressions[apos], col, depth)
         proj = next((p for p in e.expressions if p.alias_or_name == col), None)
         if proj is None:
+            # 星号直通:qualify 因无 schema 未展开星号(未编目表/表值函数)——
+            # 列按裸引用在本作用域降级解析;星号带唯一限定名则归属该源
+            stars = []          # (限定名或 None, except 排除集)
+            for p in e.expressions:
+                if isinstance(p, exp.Star):
+                    stars.append((None, {c.name.lower() for c in p.args.get("except") or []}))
+                elif isinstance(p, exp.Column) and isinstance(p.this, exp.Star):
+                    stars.append((p.table or None,
+                                  {c.name.lower() for c in p.this.args.get("except") or []}))
+            claiming = [q for q, exc in stars if col.lower() not in exc]
+            if claiming:
+                # t.* EXCEPT(col) 的星号不担保被排除列;唯一担保星号带限定名则归属
+                # 该源,否则按裸列在本作用域解析(单源/担保裁决在 _expand_column)
+                ref = (exp.column(col, table=claiming[0])
+                       if len(claiming) == 1 and claiming[0] else exp.column(col))
+                return self._expand(scope, ref, depth, False), self._scope_grain(scope)
+            parent = scope.expression.parent
+            if (scope.expression.find(exp.Pivot) is not None
+                    or (parent is not None and parent.args.get("pivots"))):
+                # PIVOT 输出列在 sqlglot 侧为匿名投影(Pivot 节点挂在外层
+                # Subquery/Table 上);展开语义(agg(case when field=value))
+                # 是明确定义的改写,列入已知边界待实现
+                raise Unsup(f"PIVOT 输出列展开未支持(列 {col},已知边界)")
             raise Unsup(f"作用域投影中找不到列 {col}(星号未展开或动态列)")
+        return self._expand_proj(scope, proj, col, depth)
+
+    def _flat_union_scopes(self, scope) -> list:
+        out = []
+        for b in scope.union_scopes or []:
+            if isinstance(b.expression, _SETOP):
+                out.extend(self._flat_union_scopes(b))
+            else:
+                out.append(b)
+        return out
+
+    @staticmethod
+    def _alias_columns(scope) -> list:
+        """派生表/CTE 的列别名清单(as t(c1, c2, …));无则空列表。"""
+        p = scope.expression.parent
+        alias = p.args.get("alias") if p is not None else None
+        cols = getattr(alias, "columns", None) if alias is not None else None
+        return [str(c.name) for c in cols or []]
+
+    def _expand_proj(self, scope, proj, col: str, depth: int) -> tuple:
         skey = (id(scope), col)
         if skey in self.scope_stack:
             raise Unsup(f"作用域自引用(递归 CTE?)——列 {col} 的定义回到自身")
@@ -179,6 +259,11 @@ class _Composer:
             return node
         if isinstance(node, exp.Column):
             return self._expand_column(scope, node, depth, in_agg)
+        if isinstance(node, exp.Dot):
+            # 结构体字段访问 base.field(BigQuery 嵌套列):展开基表达式,
+            # 字段路径原样保留——字段语义寄生在基列上,叶子记账记基列(与通道一对齐)
+            base = self._expand(scope, node.this.copy(), depth, in_agg)
+            return exp.Dot(this=base, expression=node.expression.copy())
         aggish = isinstance(node, (exp.AggFunc, exp.Window))
         for name, val in list(node.args.items()):
             if isinstance(val, exp.Expression):
@@ -192,10 +277,27 @@ class _Composer:
         alias = node.table
         if not alias:
             srcs = dict(scope.selected_sources or {}) or dict(scope.sources or {})
-            if len(srcs) != 1:
-                raise Unsup(f"列 {node.name} 缺少限定名且作用域有多个来源,无法归属")
-            alias = next(iter(srcs))
+            if len(srcs) == 1:
+                alias = next(iter(srcs))
+            else:
+                # 多源裸列按 SQL 名解析:唯一担保源归属;USING 列各侧等值,
+                # 取最左携带源;仍无法归属才诚实放弃
+                claimants = [a for a in srcs
+                             if self._claims(scope.sources.get(a), node.name)]
+                if len(claimants) == 1:
+                    alias = claimants[0]
+                elif node.name.lower() in self._using_cols(scope):
+                    # USING 列双侧等值,SQL 语义取最左;两侧 schema 未知时同样成立
+                    alias = claimants[0] if claimants else next(iter(srcs))
+                else:
+                    raise Unsup(f"列 {node.name} 缺少限定名且作用域有多个来源,无法归属")
         src = scope.sources.get(alias)
+        if src is None and node.db and node.db in scope.sources:
+            # 三段 a.b.c 且 a 是作用域源:b 是 a 的(结构体)列,c 是字段
+            # (部分限定下 BigQuery 嵌套列的常见形态)
+            base = exp.column(alias, table=node.db)
+            expanded = self._expand_column(scope, base, depth, in_agg)
+            return exp.Dot(this=expanded, expression=exp.to_identifier(node.name))
         if src is None:
             if node.db or node.catalog:
                 # 直接两段/三段限定引用(未经别名):按物理表处理
@@ -205,15 +307,106 @@ class _Composer:
                 except ValueError as e:
                     raise Unsup(str(e)[:120])
                 return self._resolve_rel(rel, node.name, scope, depth, in_agg)
+            # 限定名不是任何源:单源作用域下按结构体列访问处理(限定名即基列名),
+            # 基列是否真实由唯一源的常规解析裁决;多源无法归属,诚实放弃
+            srcs = dict(scope.selected_sources or {})
+            if len(srcs) == 1:
+                base = exp.column(alias, table=next(iter(srcs)))
+                expanded = self._expand_column(scope, base, depth, in_agg)
+                return exp.Dot(this=expanded, expression=exp.to_identifier(node.name))
             raise Unsup(f"限定名 {alias} 在作用域中无来源(列 {node.name})")
         if isinstance(src, exp.Table):
             return self._resolve_rel(self._rel(src), node.name, scope, depth, in_agg)
+        lat = getattr(src, "expression", None)
+        _tfr = getattr(exp, "TableFromRows", ())
+        flatten_like = isinstance(lat, (exp.Lateral,) + ((_tfr,) if _tfr else ()))
+        if isinstance(lat, exp.Unnest) or flatten_like:
+            # UNNEST / LATERAL FLATTEN / TABLE(FLATTEN(x)) 伪作用域:元素引用 =
+            # 底层数组表达式(通道一血缘同此记账);数组在该伪作用域解析
+            if flatten_like:
+                if node.name.upper() != "VALUE":
+                    raise Unsup(f"FLATTEN 伪列 {node.name} 非值列,不做组合声明")
+                kw = next((k for k in lat.find_all(exp.Kwarg)), None)
+                arr = kw.expression if kw is not None else next(
+                    (c for c in lat.find_all(exp.Column)), None)
+            else:
+                arr = (lat.expressions or [None])[0] or lat.args.get("this")
+            if arr is None:
+                raise Unsup(f"UNNEST/FLATTEN 无数组参数(列 {node.name})")
+            res_scope = src if (src.sources or {}) else scope
+            expanded = self._expand(res_scope, arr.copy(), depth + 1, in_agg)
+            # 匿名函数节点:各方言都渲染成 unnest(x)(exp.Unnest 在 snowflake
+            # 生成器下会展开成 TABLE(FLATTEN(…)) 表构造,不适合公式展示)
+            return exp.Anonymous(this="unnest", expressions=[expanded])
         body, grain = self._expand_scope_col(src, node.name, depth + 1)
         return self._consume(body, None, node.name, scope, in_agg, grain)
+
+    def _claims(self, src, col: str, _seen: set | None = None) -> bool:
+        """来源是否担保列 col:Scope 看投影(星号按 except 递归其来源);模型表看
+        图列;源表查 qualify schema;未知 schema 的物理表不担保(单源规则兜底)。"""
+        low = col.lower()
+        if isinstance(src, exp.Table):
+            try:
+                rel = self._rel(src)
+            except Unsup:
+                return False
+            up = self.rel_models.get(rel)
+            if up and up in self.graph["models"]:
+                return low in {c.lower() for c in self.graph["models"][up].get("columns") or {}}
+            node = self.project.schema
+            for p in rel.split("."):
+                node = node.get(p) if isinstance(node, dict) else None
+            return isinstance(node, dict) and low in {c.lower() for c in node}
+        if src is None or not hasattr(src, "expression"):
+            return False
+        seen = _seen or set()
+        if id(src) in seen:
+            return False
+        seen.add(id(src))
+        e = src.expression
+        if isinstance(e, exp.Unnest):
+            return False
+        if isinstance(e, _SETOP):
+            us = src.union_scopes or []
+            return bool(us) and self._claims(us[0], col, seen)
+        if not isinstance(e, exp.Select):
+            return False
+        if any((p.alias_or_name or "").lower() == low for p in e.expressions):
+            return True
+        for p in e.expressions:
+            if isinstance(p, exp.Star):
+                exc = {c.name.lower() for c in p.args.get("except") or []}
+                quals = list(dict(src.selected_sources or {}))
+            elif isinstance(p, exp.Column) and isinstance(p.this, exp.Star):
+                exc = {c.name.lower() for c in p.this.args.get("except") or []}
+                quals = [p.table] if p.table else list(dict(src.selected_sources or {}))
+            else:
+                continue
+            if low in exc:
+                continue
+            if any(self._claims(src.sources.get(q), col, seen) for q in quals):
+                return True
+        return False
+
+    @staticmethod
+    def _using_cols(scope) -> set:
+        e = scope.expression
+        out = set()
+        if isinstance(e, exp.Select):
+            for j in e.args.get("joins") or []:
+                for c in j.args.get("using") or []:
+                    out.add(str(getattr(c, "name", c)).lower())
+        return out
 
     def _resolve_rel(self, rel: str, col: str, scope, depth: int, in_agg: bool) -> exp.Expression:
         up = self.rel_models.get(rel)
         if up and up in self.graph["models"]:
+            m = self.graph["models"][up]
+            if m.get("error") or col not in (m.get("columns") or {}):
+                # 上游模型解析失败(或列未知):与 trace 同语义,血缘在其物化表
+                # 截止,该引用按边界叶子记账——不展开也不报错
+                self.leaves.add((rel, col))
+                return exp.column(col, table=rel.split(".")[-1])
             body, grain = self._expand_model_col(up, col, depth + 1)
             return self._consume(body, up, col, scope, in_agg, grain)
         self.leaves.add((rel, col))
@@ -291,11 +484,12 @@ class _Composer:
                 names.append(alias)
         return "+".join(names[:3]) or "branch"
 
-    def _make_union_def(self, col: str, branches: list, labels: list) -> exp.Column:
+    def _make_union_def(self, scope, col: str, branches: list, labels: list) -> exp.Column:
         """异构 UNION 的逐分支 def:branches 为 [(ast, grain)],与 labels 对位。
-        单表达式不存在,但逐分支组合是确定性事实——kind=union 入 defs。"""
+        单表达式不存在,但逐分支组合是确定性事实——kind=union 入 defs。
+        键含 scope 身份:同模型内两个 union CTE 的同名列是不同定义,不得合并。"""
         owner = self.model_stack[-1] if self.model_stack else None
-        key = ("union", owner or "", col, "union")
+        key = ("union", id(scope), owner or "", col)
         d = self.def_by_key.get(key)
         if d is None:
             if len(self.defs) >= MAX_DEFS:

@@ -227,7 +227,10 @@ class DbtProject:
     # ---------------- schema(供 sqlglot qualify)----------------
     @cached_property
     def schema(self) -> dict:
-        """{database: {schema: {table: {column: type}}}},来自 catalog.json。"""
+        """{database: {schema: {table: {column: type}}}},来自 catalog.json;
+        catalog 缺席的源表回落到 manifest sources 的 yml 声明列(一方声明,
+        docs 站产物常见 catalog 不含 sources——Snowplow 探针实证),绝不覆盖
+        catalog 已有条目。"""
         schema: dict = {}
         for coll in (self.catalog.get("nodes", {}), self.catalog.get("sources", {})):
             for entry in coll.values():
@@ -237,6 +240,13 @@ class DbtProject:
                 if not cols:
                     continue
                 schema.setdefault(db, {}).setdefault(sch, {})[tbl] = cols
+        for s in self.manifest.get("sources", {}).values():
+            db, sch = s.get("database") or "", s.get("schema")
+            tbl = s.get("identifier") or s.get("name")
+            cols = {c["name"]: (c.get("data_type") or "unknown")
+                    for c in (s.get("columns") or {}).values() if c.get("name")}
+            if cols and tbl and sch:
+                schema.setdefault(db, {}).setdefault(sch, {}).setdefault(tbl, cols)
         return schema
 
     # ---------------- 业务注释(供口径合成)----------------

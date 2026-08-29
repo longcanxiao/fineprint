@@ -583,15 +583,55 @@ def build_graph(project: DbtProject) -> dict:
         name_count[m["name"]] = name_count.get(m["name"], 0) + 1
     for uid, m in project.models.items():
         disp = m["name"] if name_count[m["name"]] == 1 else f'{m["package"]}:{m["name"]}'
-        raw = parse_one(m["sql"], read=_DIALECT)
-        qast = qualify(raw.copy(), schema=project.schema, dialect=_DIALECT)
+        # 单模型解析失败不得炸整图:该模型降级为边界节点(血缘在其物化表截止,
+        # 与第三方包同一语义),error 记录原因供 graph 门禁与探针统计
+        try:
+            raw = parse_one(m["sql"], read=_DIALECT)
+        except Exception as e:
+            graph["models"][uid] = {
+                "name": m["name"], "package": m["package"], "layer": m["layer"],
+                "table": rel3(m["database"], m["schema"], m["alias"]),
+                "compiled_path": m["compiled_path"], "src_path": m["src_path"],
+                "error": f"parse: {str(e)[:160]}",
+                "row_set_tables": [], "row_risk_joins": [], "agg_fns": [],
+                "grain": [], "unique_on": [], "columns": {}, "conditions": [],
+                "semantics": [],
+            }
+            continue
+        try:
+            qast = qualify(raw.copy(), schema=project.schema, dialect=_DIALECT)
+        except Exception:
+            # 列无法定位(catalog/声明缺表列)→ 退部分限定:能定的定,定不了的
+            # 留裸名,由逐列血缘的严格 qualify 决定哪些列诚实报错
+            try:
+                qast = qualify(raw.copy(), schema=project.schema, dialect=_DIALECT,
+                               validate_qualify_columns=False)
+            except Exception as e:
+                graph["models"][uid] = {
+                    "name": m["name"], "package": m["package"], "layer": m["layer"],
+                    "table": rel3(m["database"], m["schema"], m["alias"]),
+                    "compiled_path": m["compiled_path"], "src_path": m["src_path"],
+                    "error": f"qualify: {str(e)[:160]}",
+                    "row_set_tables": [], "row_risk_joins": [], "agg_fns": [],
+                    "grain": [], "unique_on": [], "columns": {}, "conditions": [],
+                    "semantics": [],
+                }
+                continue
         conds, semantics = extract_conditions(raw, m["sql"], disp)
         # qualified 表名至少带 schema;统一补全为三段物理键,可反查模型/源表
         rowset = [project.complete_rel(tk) for tk in row_set_tables(qast)]
         risk_joins = [{"rel": project.complete_rel(e["rel"]), "keys": e["keys"]}
                       for e in row_risk_joins(qast)]
         agg_fns = model_agg_fns(raw)
-        out_cols = [p.alias_or_name for p in qast.expressions]
+        # 裸 UNION 顶层模型:投影在左支,named_selects 给出输出列名
+        if isinstance(qast, exp.SetOperation):
+            out_cols = qast.named_selects
+            proj_root = qast
+            while isinstance(proj_root, exp.SetOperation):
+                proj_root = proj_root.this
+        else:
+            out_cols = [p.alias_or_name for p in qast.expressions]
+            proj_root = qast
         col_edges = {}
         for col in out_cols:
             try:
@@ -617,7 +657,7 @@ def build_graph(project: DbtProject) -> dict:
                 if key not in seen:
                     seen.add(key)
                     ups.append({"table": key[0], "column": key[1]})
-            proj_e = next((p for p in qast.expressions if p.alias_or_name == col), None)
+            proj_e = next((p for p in proj_root.expressions if p.alias_or_name == col), None)
             expr_sql = (proj_e.this if isinstance(proj_e, exp.Alias) else proj_e).sql(dialect=_DIALECT) if proj_e is not None else None
             # COUNT(*) 等无列引用的投影:列级血缘为空,但行数由行集表决定 → 表级上游兜底
             if not ups and proj_e is not None and proj_e.find(exp.Column) is None:

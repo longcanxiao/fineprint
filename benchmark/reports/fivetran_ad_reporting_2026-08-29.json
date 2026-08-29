@@ -4,7 +4,8 @@
  "models": 350,
  "columns": 6771,
  "lineage_col_errors": 0,
- "graph_seconds": 82.7,
+ "model_errors": {},
+ "graph_seconds": 0.0,
  "compose_seconds": 5.8,
  "composed": 6771,
  "status": {

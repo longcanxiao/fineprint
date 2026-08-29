@@ -22,7 +22,32 @@ Dual-write race: a deterministic formula composer runs alongside the LLM.
   CTE cycles get an explicit scope-level guard, and the depth cap becomes a
   pure backstop (512) after measuring a real 257-level path (codegen'd
   chained CTEs × inline ephemerals × cross-model accumulation).
-- **Dashboard renders the race**: the caliber modal shows the
+- **Multi-corpus probes harden channel 1 itself** (Snowplow web, snowflake
+  dialect — sessionization/window style): a single unparseable model no
+  longer kills the whole graph build — it degrades to a boundary node
+  (lineage and the composer both stop at its materialized table, same
+  semantics as third-party packages; `metriclens graph` counts it in the
+  error gate); model-level qualify falls back to partial qualification so
+  one unresolvable column no longer voids a model (per-column strictness
+  still decides); `project.schema` backfills catalog-absent source tables
+  from first-party manifest yml column declarations (docs-site catalogs
+  routinely lack sources; catalog entries always win); bare top-level
+  UNION models get their columns via `named_selects` instead of an empty
+  projection list.
+- **Composer learns standard SQL name-resolution semantics the third
+  corpus demanded** (Cal-ITP warehouse, bigquery, 610 hand-written
+  models): BigQuery UNNEST lateral sources (element refs compose to the
+  underlying array expression — same accounting as sqlglot lineage);
+  STRUCT field access (`payload.kind`, incl. the partial-qualify shape
+  where the struct name parses as a table qualifier); chained UNIONs
+  flattened and aligned **by position** (first branch names, later
+  branches bare literals — the dbt_utils date-spine idiom); derived-table
+  alias column lists (`as t(c1, c2)`); `t.* EXCEPT(col)` stars don't
+  vouch for excluded columns; bare columns in multi-source scopes resolve
+  via source claims and `JOIN … USING` leftmost semantics. PIVOT output
+  columns are now a *named* known boundary (clear unsupported reason)
+  instead of a cryptic `_col` miss. MAX_DEFS is a readability cap, raised
+  48→200 after real date-spine × struct models exceeded it legitimately.
   `publication_status` badge, a "machine caliber" section (per-fact status
   chips, composed top formula, named subexpressions with defining grain /
   join-context / union branches, output grain) alongside the LLM technical

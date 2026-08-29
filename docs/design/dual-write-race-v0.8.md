@@ -102,6 +102,35 @@ CTE + inline ephemeral + 跨源 UNION rollup)。三轮 probe→fix→re-probe:
 列级血缘错误 0;组合吞吐 ~1200 列/s(建图 sqlglot lineage 83s 为主)。
 报告固化于 benchmark/reports/fivetran_ad_reporting_2026-08-29.json。
 
+**②-2 多项目多方言扩展**(报告均固化于 benchmark/reports/):
+
+| 语料 | 方言 | 风格 | 规模 | 建图 | 组合器 |
+|---|---|---|---|---|---|
+| Fivetran ad_reporting | postgres | codegen 链式 CTE + inline ephemeral + 跨源 UNION | 350 模型 / 6771 列 | 0 列错 | **100.0%** |
+| Snowplow web | snowflake | 会话化/窗口/增量/FLATTEN,integration-test 产物 | 52 模型 / 1785 列 | 0 列错 + 1 边界模型(工件自身缺陷,诚实降级) | **100.0%** |
+| Cal-ITP warehouse | bigquery | 真实政府数据平台,610 个手写模型(UNNEST/STRUCT/date-spine/PIVOT) | 604 模型 / 16856 列 | 0 列错 | **99.1%**(残余全部具名:PIVOT 140 已知边界 + defs 规模 6 + 标量子查询 4) |
+
+**通道一被三语料推硬的地方**(全固化回归测试):单模型解析失败降级为边界节点
+(血缘/组合器在其物化表截止,与第三方包同语义,graph 门禁计入);qualify 两级
+退让(先部分限定,定不了的列逐列诚实报错);manifest 一方声明列回落进 qualify
+schema(docs 站 catalog 常缺 sources,catalog 永远优先);裸 UNION 顶层模型经
+named_selects 取列(此修复让 Cal-ITP 多识别 127 列)。
+
+**组合器从三语料学会的标准 SQL 语义**(全固化回归测试):BigQuery UNNEST 横向
+源与 Snowflake LATERAL FLATTEN / TABLE(FLATTEN)(元素引用=底层数组表达式,与
+通道一记账一致;FLATTEN 非 VALUE 伪列诚实拒绝);STRUCT 字段访问(含部分限定下
+结构体名被解析成表限定名的形态);链式 UNION 拍平嵌套二叉后**按位对齐**(首分支
+命名、后续分支裸字面量——dbt_utils date_spine 惯用法);派生表列别名清单
+as t(c1,c2);`t.* EXCEPT(col)` 星号不担保被排除列;多源作用域裸列按担保源 +
+USING 最左语义归属。PIVOT 输出列 = 命名清晰的已知边界(改写语义明确:
+agg(case when field=value),0.8.x 待实现)。MAX_DEFS 48→200(可读性参数,
+真实 date-spine × 结构体模型合法超出)。
+
+demo 语料回归:图语义零漂移(仅已知 sqlglot 栈序波动),门禁 14/14 + 8/8。
+GitLab dbt docs 已上 OAuth 且无 Wayback 快照,Cal-ITP(dbt-docs.dds.dot.ca.gov)
+是同级替身。三语料合计 **25412 列,总 proven 率 99.4%**,且每一例非 proven
+都有机器可读的具名原因——"漏而诚实"的失败模式经真实世界校准成立。
+
 **③ 看板渲染(已落地)**:口径卡弹窗新增发布状态徽章 + 「机器口径」区(逐事实
 status 徽章、组合公式、命名子表达式带 grain/join 上下文/union 分支、输出粒度),
 LLM 技术口径明确标注「发布权威(赛马期)」;互验区展示公式赛马判定(disagree 附
