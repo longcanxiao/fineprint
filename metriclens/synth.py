@@ -23,6 +23,7 @@ from metriclens.governance import scan as governance_scan
 from metriclens.lineage import dialect, fingerprint, normalize_condition
 from metriclens.llm import chat_json, fast_model, quality_model, set_cache_dir
 from metriclens.project import DbtProject
+from metriclens.render import attach_evidence, build_facts, publication_status, race_formula
 from metriclens.store import CaliberStore
 from metriclens.trace import display_name, resolve_model, trace
 
@@ -526,6 +527,35 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
         if val["confidence"] == "high":
             val["confidence"] = "medium"
 
+    # 0.8 双写赛马:确定性组合器并行合成技术公式(逐事实 status+证据),与 LLM
+    # 公式规范化比对。赛马期发布权威不切换(仍是 LLM 口径 + 既有置信分级);
+    # 组合器 unsupported 率与逐卡分歧是裁决权威归属的数据。组合器任何失败都
+    # 不得影响卡片生成(fail-closed 到 unsupported,不抛)。
+    targets = []
+    for tc in (m.target, *m.extra_targets):
+        cm, cc = tc.rsplit(".", 1)
+        targets.append((resolve_model(graph, cm), cc))
+    try:
+        facts = build_facts(project, graph, t, targets, (c_idents, c_nums), link_aggs)
+        attach_evidence(facts, evidence)
+    except Exception as e:
+        facts = {"formula": {"status": "unsupported", "top": None, "defs": [], "inline": None,
+                             "rt_failed": False, "evidence": [],
+                             "reasons": [f"internal:{type(e).__name__}: {str(e)[:100]}"]},
+                 "key_filters": {"status": "ambiguous" if amb else "proven", "items": [],
+                                 "ambiguous_items": [], "reasons": []},
+                 "sources": {"status": "proven", "items": [], "reasons": []},
+                 "window": {"status": "proven", "items": [], "unique_on": {}, "reasons": []},
+                 "grain": {"status": "unknown", "keys": [], "reasons": []}}
+    race = race_formula(facts, technical.get("formula"),
+                        {"formula_aggs": freetext_bad.get("formula_aggs"),
+                         "formula_vocab": freetext_bad.get("formula")})
+    pub_status = publication_status(val["confidence"], facts, race)
+    # 比较用中间形不入卡(inline_cmp 可能含非法嵌套聚合的纯文本形)
+    facts["formula"].pop("inline_cmp", None)
+    for p in facts["formula"].get("per_target") or []:
+        p.pop("inline_cmp", None)
+
     # 治理提示:指纹重复对命中本卡链路(同模型 + 同基名)时挂告示。
     # 治理报告两侧是展示名,配置 target 也归一到展示名再比对
     chain_pairs = set()
@@ -555,7 +585,9 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
         "graph_generated_at": graph.get("meta", {}).get("generated_at"),
         "confidence": val["confidence"],
         "status": "published" if val["confidence"] in ("high", "medium") else "review",
+        "publication_status": pub_status,
         "validation": val, "technical": technical, "business": business,
+        "technical_facts": facts, "race": race,
         "evidence": evidence,
         "governance": {"duplicates": gov_dups[:4]},
         "trace": {k: t[k] for k in ("depth", "models_visited", "sources", "conditions",
@@ -591,7 +623,9 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
                 print(f"  ✓ {m.key:<26} conf={r['confidence']:<6} F覆盖 {v['f1_covered']:.0%}"
                       f"  S漏/多 {len(v['s_missing_by_llm'])}/{len(v['s_extra_by_llm'])}"
                       f"  可疑 {len(v.get('f2_suspect', []))}  未证条款 {v.get('unverified_clauses', 0)}"
-                      f"  词表失配 {len(v.get('freetext_unverified') or {})}")
+                      f"  词表失配 {len(v.get('freetext_unverified') or {})}"
+                      f"  赛马 {r.get('race', {}).get('verdict', '-')}"
+                      f"→{r.get('publication_status', '-')}")
             except Exception as e:
                 failed.append(m.key)
                 print(f"  ✗ {m.key}: {e}")
@@ -608,6 +642,8 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
             if f.name != "index.json" and not (run_dir / f.name).exists():
                 (run_dir / f.name).write_text(f.read_text())
     cards = {}
+    race_counts, pub_counts = {}, {}
+    disagree_keys, unsup_keys = [], []
     for f in sorted(run_dir.glob("*.json")):
         if f.name == "index.json":
             continue
@@ -615,6 +651,15 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
         cards[r["metric_key"]] = {"title": r["title"], "confidence": r["confidence"],
                                   "status": r["status"], "generated_at": r["generated_at"],
                                   "run_id": r.get("run_id")}
+        # --only 补齐的旧批次卡可能没有 race 字段(0.8 前),按缺省计入
+        rv = (r.get("race") or {}).get("verdict") or "-"
+        race_counts[rv] = race_counts.get(rv, 0) + 1
+        pv = r.get("publication_status") or "-"
+        pub_counts[pv] = pub_counts.get(pv, 0) + 1
+        if rv == "disagree":
+            disagree_keys.append(r["metric_key"])
+        if rv == "renderer_unsupported":
+            unsup_keys.append(r["metric_key"])
     # 发布前完整性断言:批次卡片集合必须与配置指标集合一致(缺失或多余都不发布)
     want = {m.key for m in cfg.metrics}
     if set(cards) != want:
@@ -625,9 +670,17 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
     at = datetime.now().isoformat(timespec="seconds")
     idx = {"run_id": run_id, "at": at, "cards": cards,
            "requested": len(todo), "succeeded": len(results),
-           "mode": f"only:{only}" if only else "full"}
+           "mode": f"only:{only}" if only else "full",
+           # 双写赛马数据:组合器 vs LLM 公式逐卡比对的批次汇总(权威裁决依据)
+           "race": {"verdicts": race_counts, "disagree": sorted(disagree_keys),
+                    "renderer_unsupported": sorted(unsup_keys)},
+           "publication": pub_counts}
     (run_dir / "index.json").write_text(json.dumps(idx, ensure_ascii=False, indent=1))
     store.activate(run_id, {"at": at})
     store.prune(keep=3, protect=run_id)
+    print("双写赛马: " + "  ".join(f"{k}={v}" for k, v in sorted(race_counts.items()))
+          + (f"  ← 分歧卡: {sorted(disagree_keys)}" if disagree_keys else "")
+          + (f"  ← 组合器未覆盖: {sorted(unsup_keys)}" if unsup_keys else ""))
+    print("发布状态: " + "  ".join(f"{k}={v}" for k, v in sorted(pub_counts.items())))
     print(f"\nstore: {len(results)}/{len(todo)} 张生成,批次 {run_id} 已发布并激活 → {run_dir}")
     return 0

@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased (0.8)
+
+Dual-write race: a deterministic formula composer runs alongside the LLM.
+
+- **Deterministic technical-formula composer** (`metriclens/render.py`): starting
+  from compiled SQL, the target column's expression is expanded scope-by-scope
+  (CTEs/subqueries resolved, stars already expanded by qualify) and across model
+  boundaries along lineage edges, producing a "top formula + named
+  subexpressions" composition. Aggregations and windows are composition
+  boundaries: an aggregate definition is never inlined into another aggregate
+  (`SUM(SUM(x))`) nor into a join that changes grain — it stays a named
+  subexpression annotated with its defining grain. Constructs the composer
+  cannot express honestly (divergent UNION branches, self-referencing models,
+  scalar subqueries, pathological nesting) degrade to
+  `unsupported`/`ambiguous` with machine reasons — the composer's failure mode
+  is *miss loudly*, never *fabricate fluently*.
+- **Round-trip self-check**: the composed formula must pass the exact same
+  chain-lexicon and aggregate-anchor validators applied to the LLM formula,
+  and its leaf source set must equal channel-1 lineage (two independent
+  implementations cross-proving each other); any failure marks `rt_failed`
+  and blocks `VERIFIED`.
+- **Per-fact technical block** (`technical_facts` on cards): formula /
+  key_filters / sources / window / grain, each with
+  `proven|ambiguous|unsupported|unknown` status, machine reasons, and
+  evidence ids from the deterministic evidence list.
+- **The race** (`race` on cards, aggregated in the batch index): the LLM
+  formula is normalized (bare columns, case, rowcount equivalence) and
+  compared against the composer's expansion forms — verdicts `agree`,
+  `consistent` (no machine contradiction, not structurally matched), `prose`
+  (unparseable as SQL), `disagree` (machine-proven contradiction),
+  `renderer_unsupported` (coverage datum). Authority does **not** switch in
+  0.8: published calibers remain the LLM merge + existing confidence grading;
+  the composer's output, disagreements and unsupported rate are the data that
+  will adjudicate the switch on real projects.
+- **Publication state machine** (`publication_status`): `VERIFIED` (high
+  confidence, no machine contradiction), `TECHNICAL_ONLY` (machine formula
+  proven, LLM narrative failed cross-validation), `REVIEW_REQUIRED` (formula
+  disagreement, ambiguous filter attribution, or round-trip failure).
+  First demo race: 15 cards → 3 agree / 6 consistent / 4 prose /
+  **2 disagree — exactly the two known-bad LLM cards (gmv, atv)**;
+  0 renderer_unsupported; round-trip green 15/15.
+
 ## 0.7.1 — 2026-08-29
 
 Sixth external review: identity end-to-end in the trust chain, cardinality as
