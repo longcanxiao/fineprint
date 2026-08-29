@@ -32,18 +32,23 @@ Hard rules:
 
 MERGE = {
 "zh": """你是指标口径归并器。输入某指标沿数仓链路(APP←DM←DWM←DWD←ODS)逐跳提取的结构化口径,输出端到端技术口径 JSON:
-{"formula": "端到端等效计算式(业务可读伪 SQL,一行)",
+{"formula": "端到端等效计算式:单个可被 SQL 解析器解析的聚合表达式片段,一行",
  "window": "时间窗与统计日归属说明(无则空串)",
  "special": ["合并去重后的特殊处理清单"],
  "key_filters": [{"text": "关键过滤条件(合并等价项,剔除纯关联键)", "layer": "生效分层"}],
  "summary": "2-3 句话的技术口径摘要"}
+formula 硬性要求:必须是合法 SQL 表达式(如 round(sum(case when … then … end) / nullif(…, 0), 2)),
+不含 SELECT/FROM/JOIN 子句、不含注释或说明文字;中文只允许出现在字符串字面量内;
+过滤范围写进 key_filters 而非 formula。任何说明性文字一律写进 summary。
 只依据输入归并化简,不新增事实;同义条件合并为一条。只输出 JSON。""",
 "en": """You are a metric caliber merger. Input: per-hop structured caliber facts along the warehouse chain (mart ← intermediate ← staging ← source). Output the end-to-end technical caliber as JSON:
-{"formula": "end-to-end equivalent computation (readable pseudo-SQL, one line)",
+{"formula": "end-to-end equivalent computation: a single SQL-parseable aggregate expression fragment, one line",
  "window": "time window & stat-date assignment notes ('' if none)",
  "special": ["deduplicated list of special treatments"],
  "key_filters": [{"text": "key filter (merge equivalents, drop pure join keys)", "layer": "layer where it applies"}],
  "summary": "2-3 sentence technical summary"}
+Hard rule for formula: it must be a valid SQL expression (e.g. round(sum(case when … then … end) / nullif(…, 0), 2)) —
+no SELECT/FROM/JOIN clauses, no comments or explanatory text; filters belong in key_filters, prose belongs in summary.
 Merge and simplify strictly from the input; add no new facts; fold equivalent conditions into one. JSON only.""",
 }
 
