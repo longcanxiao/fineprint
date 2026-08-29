@@ -97,6 +97,23 @@ export default function GovernancePanel({ onClose }: { onClose: () => void }) {
                 </ul>
               </section>
             )}
+            {(report.sql_quality ?? []).length > 0 && (
+              <section>
+                <h3>SQL 质量立项 <span className="m-target">{report.sql_quality!.length} 项 · 行数聚合跨 join,计数对象未自证,须人工明确</span></h3>
+                <ul className="refs">
+                  {report.sql_quality!.map((q, i) => (
+                    <li key={i} title={q.suggestion}>
+                      <span>
+                        <span className="tier tier-a">质量</span>
+                        <code>{q.model}.{q.column}</code>
+                        <div className="gov-reason">行集 {q.tables.join(' ⋈ ')} · {q.reason}</div>
+                      </span>
+                      <span className="ref-loc">{q.line ? `L${q.line}` : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             <section>
               <h3>口径漂移事件 <span className="m-target">{drift?.length ?? 0} 条 · 每次重建后快照对比自动检测</span></h3>
               {(drift ?? []).length === 0

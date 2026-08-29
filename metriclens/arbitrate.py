@@ -71,14 +71,15 @@ def build_report(project: DbtProject, cfg: MLConfig, graph: dict) -> dict:
         (duplicates if arb["verdict"] == "duplicate" else distinct).append(item)
     report = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "llm_model": fast_model(),
+        # 零 B 档候选时报告纯确定性,不要求 LLM 凭据(质量立项/家族分档照常产出)
+        "llm_model": fast_model() if cand[:cfg.max_llm_pairs] else None,
         # A 档直判 = 基名重复 + 聚合语义不同义两类;都是零 LLM 的确定性结论
         "a_tier_pairs": len(r["duplicates"]) + len(r["agg_distinct"]),
         "a_tier_dup": len(r["duplicates"]), "a_tier_agg_distinct": len(r["agg_distinct"]),
         "b_tier_pairs": len(cand) - skipped, "b_tier_skipped": skipped,
         "pairs_truncated": r.get("pairs_truncated", 0),
         "duplicates": duplicates, "distinct": distinct,
-        "families": r["families"],
+        "families": r["families"], "sql_quality": r.get("sql_quality", []),
     }
     f = report_path(project)
     tmp = f.with_suffix(".tmp")
@@ -105,5 +106,11 @@ def print_report(report: dict):
         print(f"\n同指标家族·不同粒度 {len(fams)} 对(非重复,建议统一命名口径):")
         for p in fams:
             print(f"  ◇ {p['a']}({','.join(p['grain_a']) or '明细'})  ~  {p['b']}({','.join(p['grain_b']) or '明细'})")
+    sq = report.get("sql_quality") or []
+    if sq:
+        print(f"\nSQL 质量立项 {len(sq)} 项(口径含义未自证,须人工明确计数对象):")
+        for q in sq:
+            print(f"  ✗ {q['model']}.{q['column']} @L{q.get('line')}  行集 {' ⋈ '.join(q['tables'])}")
+            print(f"       {q['reason']}")
     if report.get("b_tier_skipped"):
         print(f"\n(B 档截断 {report['b_tier_skipped']} 对未仲裁,governance.max_llm_pairs 可调)")

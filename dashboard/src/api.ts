@@ -24,12 +24,18 @@ export interface DriftEvent {
   detail: Record<string, string | undefined>
 }
 export interface GovPairFull { a: string; b: string; fingerprint: string; tier: 'A' | 'B'; verdict: string; reason?: string; suggestion?: string }
+export interface GovSqlQuality {
+  model: string; column: string; line?: number | null
+  tables: string[]; join_keys: string[]; kind: string; reason: string; suggestion: string
+}
+
 export interface GovFamily { a: string; b: string; fingerprint: string; grain_a: string[]; grain_b: string[] }
 export interface GovReport {
   generated_at: string | null; llm_model?: string
   a_tier_pairs?: number; a_tier_dup?: number; a_tier_agg_distinct?: number
   b_tier_pairs?: number; b_tier_skipped?: number
   duplicates: GovPairFull[]; distinct: GovPairFull[]; families?: GovFamily[]
+  sql_quality?: GovSqlQuality[]
 }
 export interface LineageGraph {
   target: string

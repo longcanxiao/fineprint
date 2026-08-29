@@ -151,9 +151,9 @@ def _scope_edges(ast: exp.Expression, ids: dict) -> dict:
     return edges
 
 
-def _closure(edges: dict, kinds: tuple | None) -> set:
-    """main 出发沿边可达的 scope 集合;kinds=None 表示全部挂接方式。"""
-    closure, stack = {"main"}, ["main"]
+def _closure(edges: dict, kinds: tuple | None, root: str = "main") -> set:
+    """root 出发沿边可达的 scope 集合;kinds=None 表示全部挂接方式。"""
+    closure, stack = {root}, [root]
     while stack:
         cur = stack.pop()
         for child, kind in edges.get(cur, []):
@@ -296,6 +296,44 @@ def extract_conditions(raw_ast: exp.Expression, file_text: str, model: str):
                     "model": model, "scope": scope_name(g, ids), "type": "stat_date_key",
                     "column": name, "sql": expr_sql[:160], "line": anchor_line(expr_sql, file_text),
                 })
+    # 行数型聚合跨 join = 口径模糊的 SQL 质量问题:count(*) 数的是"匹配对",
+    # 它数的到底是哪张表寄生在 join 键唯一性与数据覆盖性上——SQL 未自证,
+    # 底层数据变化口径即静默漂移。列举行集全部参与表与关联键,供治理报告立项。
+    edges = _scope_edges(raw_ast, ids)
+    cte_names = {c.alias for c in raw_ast.find_all(exp.CTE)}
+    for sel in raw_ast.find_all(exp.Select):
+        for proj in sel.expressions:
+            agg = next((f for f in proj.find_all(exp.AggFunc)
+                        if agg_one(f) == "rowcount" and f.find_ancestor(exp.Window) is None), None)
+            if agg is None:
+                continue
+            reach = _closure(edges, None, root=scope_name(sel, ids))
+            tabs, keys, njoin = [], [], 0
+            for s2 in raw_ast.find_all(exp.Select):
+                if scope_name(s2, ids) not in reach:
+                    continue
+                f2 = from_arg(s2)
+                if f2 is not None and isinstance(f2.this, exp.Table) and f2.this.name not in cte_names:
+                    tk = table_key(f2.this)
+                    if tk not in tabs:
+                        tabs.append(tk)
+                for j in s2.args.get("joins") or []:
+                    njoin += 1
+                    if isinstance(j.this, exp.Table) and j.this.name not in cte_names:
+                        tk = table_key(j.this)
+                        if tk not in tabs:
+                            tabs.append(tk)
+                    on = j.args.get("on")
+                    if on is not None:
+                        keys.append(on.sql(dialect=_DIALECT)[:80])
+            if njoin == 0:
+                continue          # 单表行集的 count(*) 计数对象无歧义,不立项
+            psql = proj.sql(dialect=_DIALECT)
+            semantics.append({
+                "model": model, "scope": scope_name(sel, ids), "type": "join_count",
+                "column": proj.alias_or_name, "tables": tabs, "join_keys": keys[:6],
+                "sql": psql[:120], "line": anchor_line(psql, file_text),
+            })
     return conds, semantics
 
 

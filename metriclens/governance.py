@@ -115,6 +115,21 @@ def scan(graph: dict, cfg: MLConfig) -> dict:
                     continue          # 同指标家族的不同粒度物化,单独分档
                 same_base = base(a[1], cfg.base_suffixes) == base(b[1], cfg.base_suffixes)
                 (dup_pairs if same_base else cand_pairs).append(pair)
+    # SQL 质量立项:join 上的行数型聚合(血缘阶段已确定性检出),口径含义寄生在
+    # join 键唯一性与数据覆盖性上——底层数据变化口径即静默漂移,须人工明确计数对象
+    sql_quality = []
+    for name, m in graph["models"].items():
+        if layers and m["layer"] not in layers:
+            continue
+        for s in m.get("semantics", []):
+            if s.get("type") == "join_count":
+                sql_quality.append({
+                    "model": name, "column": s.get("column"), "line": s.get("line"),
+                    "tables": s.get("tables") or [], "join_keys": s.get("join_keys") or [],
+                    "kind": "join_count",
+                    "reason": "行数型聚合(count(*)/sum(1))跨 join:计数对象依赖 join 基数与数据覆盖性,SQL 未自证",
+                    "suggestion": "改为 count(distinct <主键>) 或 count(<明确列>),使计数对象自证并对 join 结构免疫",
+                })
     return {"duplicates": dup_pairs, "candidates": cand_pairs,
             "families": families, "agg_distinct": agg_distinct,
-            "pairs_truncated": truncated}
+            "pairs_truncated": truncated, "sql_quality": sql_quality}

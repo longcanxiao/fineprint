@@ -135,6 +135,8 @@ def render(t: dict) -> str:
             "case_when": lambda s: f"CASE WHEN → {s.get('column')}: {s['sql'][:80].replace(chr(34), '')}",
             "coalesce": lambda s: f"COALESCE 兜底 → {s.get('column')}: {s['sql'][:80].replace(chr(34), '')}",
             "stat_date_key": lambda s: f"统计日归属 → {s.get('column')} = {s['sql'].replace(chr(34), '')}",
+            "join_count": lambda s: (f"⚠ 行数聚合跨 join → {s.get('column')}: 行集由 "
+                                     f"{' ⋈ '.join(s.get('tables', []))} 匹配结构决定,计数对象未自证(质量治理项)"),
         }[s["type"]](s)
         L.append(f"  [{s['model']}] {desc}  @L{s['line']}")
     return "\n".join(L)

@@ -149,6 +149,49 @@ class TestFreetextLexicon:
         assert formula_agg_check("任意散文", set()) == []                    # 缺证不下结论
 
 
+class TestJoinCountQuality:
+    """join 上的行数型聚合 = 口径含义未自证的 SQL 质量问题,须确定性立项。"""
+
+    def _sems(self, sql):
+        _, sems = extract_conditions(parse_one(sql, read="duckdb"), sql, "m")
+        return [s for s in sems if s["type"] == "join_count"]
+
+    def test_left_join_rowcount_flagged_with_full_info(self):
+        sql = ("select count(*) as n from erp.orders o "
+               "left join erp.order_items i on o.order_id = i.order_id")
+        got = self._sems(sql)
+        assert len(got) == 1
+        assert got[0]["column"] == "n"
+        assert set(got[0]["tables"]) == {"erp.orders", "erp.order_items"}
+        assert any("order_id" in k for k in got[0]["join_keys"])
+
+    def test_join_inside_cte_propagates(self):
+        sql = ("with base as (select o.id from orders o join items i on o.id = i.order_id) "
+               "select count(*) as n from base")
+        assert len(self._sems(sql)) == 1
+
+    def test_no_flag_cases(self):
+        assert self._sems("select count(*) as n from orders") == []                # 单表无歧义
+        assert self._sems("select count(distinct o.id) as n from orders o "
+                          "join items i on o.id = i.order_id") == []               # 计数对象自证
+        assert self._sems("select count(*) over () as n, x from orders o "
+                          "join items i on o.id = i.order_id") == []               # 窗口计数非行数聚合
+        assert self._sems("select sum(o.amt) as s from orders o "
+                          "join items i on o.id = i.order_id") == []               # 非行数型
+
+    def test_scan_reports_sql_quality(self):
+        from metriclens.config import MLConfig
+        from metriclens.governance import scan
+        graph = {"models": {"m": {"layer": "dm", "columns": {}, "conditions": [],
+                                  "semantics": [{"type": "join_count", "column": "n", "line": 3,
+                                                 "tables": ["a", "b"], "join_keys": ["a.k = b.k"]}]}},
+                 "relations": {"models": {}, "sources": {}}}
+        cfg = MLConfig(metrics=[1])
+        r = scan(graph, cfg)
+        assert len(r["sql_quality"]) == 1 and r["sql_quality"][0]["model"] == "m"
+        assert scan(graph, MLConfig(metrics=[1], scan_layers=["app"]))["sql_quality"] == []
+
+
 class TestConfigContract:
     def _load(self, tmp_path, body):
         from metriclens.config import MLConfig

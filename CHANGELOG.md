@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **SQL quality tier in governance**: row-count aggregations over joins
+  (`count(*)`/`sum(1)` with any join in the row set, CTE-transitive) are
+  deterministically flagged as a `join_count` semantic point — what such a
+  count counts depends on join-key uniqueness and data coverage, neither of
+  which the SQL proves, so the metric's meaning silently drifts when data
+  changes. The full participant list (tables, join keys, line anchor) lands
+  on the lineage trace, the caliber card evidence, drift snapshots, and a new
+  `sql_quality` section of the governance report and dashboard console, with
+  the standing recommendation to use `count(distinct <pk>)` / `count(<col>)`.
+  Window counts and self-evident single-table counts are exempt. Governance
+  reports with zero B-tier candidates no longer require LLM credentials.
+
 ## 0.6.2 — 2026-08-27
 
 Fifth external review: trust ceiling, join-cardinality modeling, full-chain identity.
