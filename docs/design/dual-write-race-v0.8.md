@@ -79,13 +79,35 @@ disagree / key_filters 归因不明 / rt_failed   → REVIEW_REQUIRED
 - 组合器确定性端出了当年靠 LLM 才发现的 delivered_rate CTE 内 min(sign_time)
   ——连同 [waybill_id] 粒度标注。
 
-## 切换判据(下一步)
+## 赛马期进展(按裁决路径逐项落地)
 
-1. **真实项目探针**(GitLab dbt 等):量出 renderer_unsupported 率与 disagree
-   分布;unsupported 率决定切换节奏(直接上权威位 vs TECHNICAL_ONLY 混合期)。
-2. disagree 逐条人工裁决,记录谁对——赛马战绩公开。
-3. prose 率(本批 4/15)是 LLM 侧的改进项:提示词要求公式必须为可解析 SQL 片段,
-   可把 prose 压向 agree/consistent/disagree,提高比对覆盖。
+**① 提示词约束(prose 归零)**:MERGE 提示词硬性要求 formula 为可解析 SQL 表达式
+片段(不含 SELECT/FROM/JOIN、说明文字归 summary、中文仅限字符串字面量)。demo
+重跑(批次 b5f22809):prose 4→0,**8 agree + 7 consistent,零 disagree**;
+重掷后的 gmv/atv 公式这次正确(升 high→VERIFIED)——LLM 通道跨运行漂移、组合器
+逐运行恒定,本身就是赛马论据。dm_refund_rate 活演状态机:公式 agree 但 caveat
+蹭写隔壁指标的"14"天数字被词表拦下 → **TECHNICAL_ONLY**(机器事实可用,叙述待审)。
+
+**② 真实项目探针**(benchmark/probe_real_project.py,零 LLM 零 DB):GitLab
+dbt docs 已上 OAuth 且无 Wayback 快照,改用 **Fivetran ad_reporting 公开 docs
+产物**(12 个广告平台真实生产包,350 模型 / 6771 列,postgres,codegen 链式
+CTE + inline ephemeral + 跨源 UNION rollup)。三轮 probe→fix→re-probe:
+
+| 轮次 | proven | 主要缺口 | 修复 |
+|---|---|---|---|
+| 1 | 98.0% | 132× 异构 UNION(12 平台分支合法不同定义) | union def:逐分支保留(label+expr),「值=行所属分支的表达式」即可证事实 |
+| 2 | 99.8% | 13× 深度护栏(实测真实路径 257 层,非环) | 环改由作用域级 in_progress 显式守卫(递归 CTE),MAX_HOPS 512 纯兜底 |
+| 3 | **100.0%**(6771/6771) | 无 | — |
+
+列级血缘错误 0;组合吞吐 ~1200 列/s(建图 sqlglot lineage 83s 为主)。
+报告固化于 benchmark/reports/fivetran_ad_reporting_2026-08-29.json。
+
+## 切换判据(剩余)
+
+1. 更多真实项目探针(不同方言/写法风格;GitLab 若重新公开仍是首选)。
+2. disagree 逐条人工裁决,记录谁对——赛马战绩公开(demo 当前零 disagree,
+   历史两例均为 LLM 错)。
+3. 看板渲染赛马数据(见下),让分歧进入日常视野而非仅批次日志。
 
 ## 已知余量(诚实清单)
 

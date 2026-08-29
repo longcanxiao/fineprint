@@ -126,16 +126,22 @@ class TestUnion:
         c = _Composer(proj, graph).compose_target("model.p.fct", "v")
         assert c["status"] == "proven"
 
-    def test_union_divergent_unsupported(self, tmp_path):
-        """UNION 分支定义不一致:诚实 unsupported,绝不挑一支。"""
+    def test_union_divergent_becomes_union_def(self, tmp_path):
+        """UNION 分支定义不一致(跨源 rollup 常态):逐分支保留为 union def,
+        不放弃也绝不挑一支;分支带标签与各自表达式。"""
         proj, graph = mk(
             tmp_path,
             {"fct": ("select amount as v from main.raw_orders "
                      "union all select id as v from main.raw_orders")},
             {"fct": {"v": "INTEGER"}}, SEED)
         c = _Composer(proj, graph).compose_target("model.p.fct", "v")
-        assert c["status"] == "unsupported"
-        assert any("UNION" in r for r in c["reasons"])
+        assert c["status"] == "proven"
+        assert c["top"] == "v"
+        d = c["defs"][0]
+        assert d["kind"] == "union" and len(d["branches"]) == 2
+        assert {b["expr"] for b in d["branches"]} == {"raw_orders.amount", "raw_orders.id"}
+        assert all(b["label"] == "raw_orders" for b in d["branches"])
+        assert (".main.raw_orders", "id") in set(map(tuple, c["leaf_pairs"]))
 
 
 class TestRoundTrip:

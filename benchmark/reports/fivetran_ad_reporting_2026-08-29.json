@@ -1,0 +1,54 @@
+{
+ "artifacts": "/private/tmp/claude-501/-Users-qiyi-projects-index-sys/bd34750a-729e-4e0f-b55b-2585954ca2fb/scratchpad/adrep",
+ "adapter": "postgres",
+ "models": 350,
+ "columns": 6771,
+ "lineage_col_errors": 0,
+ "graph_seconds": 82.7,
+ "compose_seconds": 5.8,
+ "composed": 6771,
+ "status": {
+  "proven": 6771
+ },
+ "reasons": {},
+ "reason_samples": {},
+ "notes": {},
+ "by_package": {
+  "ad_reporting": {
+   "proven": 138
+  },
+  "amazon_ads": {
+   "proven": 455
+  },
+  "apple_search_ads": {
+   "proven": 426
+  },
+  "facebook_ads": {
+   "proven": 446
+  },
+  "google_ads": {
+   "proven": 637
+  },
+  "linkedin": {
+   "proven": 480
+  },
+  "microsoft_ads": {
+   "proven": 617
+  },
+  "pinterest": {
+   "proven": 475
+  },
+  "reddit_ads": {
+   "proven": 642
+  },
+  "snapchat_ads": {
+   "proven": 461
+  },
+  "tiktok_ads": {
+   "proven": 678
+  },
+  "twitter_ads": {
+   "proven": 1316
+  }
+ }
+}

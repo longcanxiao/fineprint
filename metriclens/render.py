@@ -25,7 +25,9 @@ from sqlglot.optimizer.scope import build_scope
 
 from metriclens.lineage import dialect, table_key
 
-MAX_HOPS = 24       # 作用域/模型递归护栏:超深更可能是环或病理嵌套
+MAX_HOPS = 512      # 纯兜底护栏:环由模型级/作用域级 in_progress 显式防护;
+                    # 真实深度可观(Fivetran ad_reporting 跨源 rollup 实测 257 层,
+                    # 代码生成的链式 CTE × inline ephemeral × 跨模型累计)
 INLINE_MAX = 72     # 非聚合定义的内联长度上限,超过则命名保可读
 MAX_DEFS = 48       # 命名子表达式规模护栏
 
@@ -90,6 +92,7 @@ class _Composer:
         self.notes: list = []
         self.partial = False            # 叶子集不完整(子查询未展开等),互证降为部分
         self.in_progress: set = set()
+        self.scope_stack: set = set()   # (scope id, col) 展开中:递归 CTE 环守卫
         self.model_stack: list = []     # 当前展开所在模型(scope 级 def 的归属标注)
 
     def _disp(self, uid: str) -> str:
@@ -139,7 +142,8 @@ class _Composer:
 
     def _expand_scope_col(self, scope, col: str, depth: int) -> tuple:
         """作用域内 col 的投影 → 完全展开的 AST + 定义处 grain。UNION 各分支展开
-        文本一致才可用,否则诚实放弃(分支多义,单表达式无法代表)。"""
+        一致则取其一;异构分支(跨源 rollup 的常态)逐分支保留为 union def——
+        「值 = 行所来自分支的表达式」本身就是可证事实,不放弃也不挑一支。"""
         e = scope.expression
         if isinstance(e, _SETOP):
             branches = [self._expand_scope_col(b, col, depth + 1)
@@ -147,14 +151,22 @@ class _Composer:
             if not branches:
                 raise Unsup(f"集合操作缺少分支作用域(列 {col})")
             texts = {_display(a) for a, _ in branches}
-            if len(texts) > 1:
-                raise Unsup(f"UNION 各分支对列 {col} 的定义不一致,无法单表达式化")
-            return branches[0]
+            if len(texts) == 1:
+                return branches[0]
+            labels = [self._branch_label(b) for b in (scope.union_scopes or [])]
+            return self._make_union_def(col, branches, labels), []
         proj = next((p for p in e.expressions if p.alias_or_name == col), None)
         if proj is None:
             raise Unsup(f"作用域投影中找不到列 {col}(星号未展开或动态列)")
-        inner = (proj.this if isinstance(proj, exp.Alias) else proj).copy()
-        return self._expand(scope, inner, depth, False), self._scope_grain(scope)
+        skey = (id(scope), col)
+        if skey in self.scope_stack:
+            raise Unsup(f"作用域自引用(递归 CTE?)——列 {col} 的定义回到自身")
+        self.scope_stack.add(skey)
+        try:
+            inner = (proj.this if isinstance(proj, exp.Alias) else proj).copy()
+            return self._expand(scope, inner, depth, False), self._scope_grain(scope)
+        finally:
+            self.scope_stack.discard(skey)
 
     def _expand(self, scope, node: exp.Expression, depth: int, in_agg: bool) -> exp.Expression:
         if depth > MAX_HOPS:
@@ -262,6 +274,48 @@ class _Composer:
             self.def_by_key[key] = d
         return _def_ref(d["name"])
 
+    def _branch_label(self, branch_scope) -> str:
+        """UNION 分支标签:分支 FROM 的来源名(表→展示名,子查询→别名)。"""
+        names = []
+        for alias, pair in (branch_scope.selected_sources or {}).items():
+            src = pair[-1] if isinstance(pair, tuple) else pair
+            if isinstance(src, exp.Table):
+                try:
+                    rel = self._rel(src)
+                except Unsup:
+                    rel = table_key(src)
+                up = self.rel_models.get(rel)
+                names.append(self._disp(up) if up and up in self.graph["models"]
+                             else (self.rel_sources.get(rel) or rel.split(".")[-1]))
+            else:
+                names.append(alias)
+        return "+".join(names[:3]) or "branch"
+
+    def _make_union_def(self, col: str, branches: list, labels: list) -> exp.Column:
+        """异构 UNION 的逐分支 def:branches 为 [(ast, grain)],与 labels 对位。
+        单表达式不存在,但逐分支组合是确定性事实——kind=union 入 defs。"""
+        owner = self.model_stack[-1] if self.model_stack else None
+        key = ("union", owner or "", col, "union")
+        d = self.def_by_key.get(key)
+        if d is None:
+            if len(self.defs) >= MAX_DEFS:
+                raise Unsup("命名子表达式规模超限")
+            disp = self._disp(owner) if owner else None
+            name = col
+            n = 2
+            while any(x["name"] == name for x in self.defs):
+                name = f"{disp}.{col}" if disp and n == 2 else f"{col}_{n}"
+                n += 1
+            br = [{"label": lb, "expr": _display(a)}
+                  for lb, (a, _) in zip(labels, branches)]
+            d = {"name": name, "model": disp, "model_uid": owner, "column": col,
+                 "expr": f"UNION {len(br)} 分支(值=行所属分支的表达式)",
+                 "ast": None, "grain": [], "kind": "union", "join_context": False,
+                 "branches": br}
+            self.defs.append(d)
+            self.def_by_key[key] = d
+        return _def_ref(d["name"])
+
     # ---------------- 目标合成 ----------------
     def compose_target(self, uid: str, col: str) -> dict:
         self._reset()
@@ -276,8 +330,10 @@ class _Composer:
                     "leaves": [], "reasons": [f"internal:{type(e).__name__}: {str(e)[:100]}"],
                     "notes": list(self.notes)}
         inline, inline_valid = self._inline(top)
-        out_defs = [{k: d[k] for k in ("name", "model", "column", "expr", "grain",
-                                       "kind", "join_context")} for d in self.defs]
+        out_defs = [{**{k: d[k] for k in ("name", "model", "column", "expr", "grain",
+                                          "kind", "join_context")},
+                     **({"branches": d["branches"]} if "branches" in d else {})}
+                    for d in self.defs]
         return {
             "status": "ambiguous" if (self.notes or self.partial) else "proven",
             "top": _display(top), "defs": out_defs,
@@ -306,7 +362,7 @@ class _Composer:
                 if isinstance(n, exp.Column):
                     d = (by_ref.get((n.table, n.name)) if n.table
                          else by_ref.get((None, n.name)))
-                    if d is not None:
+                    if d is not None and d.get("ast") is not None:   # union def 无单表达式形
                         hit = True
                         return d["ast"].copy()
                 return n
@@ -362,9 +418,11 @@ def build_facts(project, graph: dict, t: dict, targets: list,
     formula["rt_failed"] = False
     if formula["status"] != "unsupported":
         ok_targets = [p for p in per_target if p["status"] != "unsupported"]
+        # union def 的 expr 是中文摘要,闭包取其分支表达式(真实内容)参检
         closure = " ".join(
             [p["top"] or "" for p in ok_targets]
-            + [d["expr"] for p in ok_targets for d in p["defs"]])
+            + [" ".join(b["expr"] for b in d["branches"]) if d.get("branches") else d["expr"]
+               for p in ok_targets for d in p["defs"]])
         c_idents, c_nums = chain_vocab
         bad = verify_freetext(closure, c_idents, c_nums)
         if bad:

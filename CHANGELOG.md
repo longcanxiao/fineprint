@@ -4,6 +4,25 @@
 
 Dual-write race: a deterministic formula composer runs alongside the LLM.
 
+- **Formula prompt hardened**: the merge prompt now requires `formula` to be a
+  single SQL-parseable aggregate expression (no SELECT/FROM/JOIN, prose goes
+  to summary, CJK only inside string literals). Demo rerun: prose verdicts
+  4→0, race lands 8 agree + 7 consistent + 0 disagree; one card demonstrates
+  `TECHNICAL_ONLY` live (formula machine-agreed, a caveat borrowed the
+  neighboring metric's "14"-day number and was caught by the lexicon).
+- **Real-world coverage probe** (`benchmark/probe_real_project.py`): runs the
+  composer over every model column of any dbt artifacts dir (manifest with
+  `compiled_code` + catalog; zero LLM, zero DB). First corpus: Fivetran
+  ad_reporting public docs artifacts — 12 production packages, 350 models /
+  6771 columns. Probe→fix→re-probe closed at **100.0% proven**
+  (98.0% → 99.8% → 100.0%); report persisted under `benchmark/reports/`.
+- **Composer coverage fixes from the probe**: heterogeneous UNION branches
+  (the cross-platform rollup norm) become a deterministic `union` def
+  carrying per-branch labels + expressions instead of unsupported; recursive
+  CTE cycles get an explicit scope-level guard, and the depth cap becomes a
+  pure backstop (512) after measuring a real 257-level path (codegen'd
+  chained CTEs × inline ephemerals × cross-model accumulation).
+
 - **Deterministic technical-formula composer** (`metriclens/render.py`): starting
   from compiled SQL, the target column's expression is expanded scope-by-scope
   (CTEs/subqueries resolved, stars already expanded by qualify) and across model
