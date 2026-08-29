@@ -210,13 +210,15 @@ class _Composer:
                 ref = (exp.column(col, table=claiming[0])
                        if len(claiming) == 1 and claiming[0] else exp.column(col))
                 return self._expand(scope, ref, depth, False), self._scope_grain(scope)
+            hit = self._pivot_of(scope, None)
+            if hit is not None:
+                # FROM 带 PIVOT 而投影缺列:按透视输出列确定性改写
+                # (agg(case when field=value)),id 列直通输入作用域
+                return self._pivot_resolve(scope, *hit, col, depth, False), []
             parent = scope.expression.parent
             if (scope.expression.find(exp.Pivot) is not None
                     or (parent is not None and parent.args.get("pivots"))):
-                # PIVOT 输出列在 sqlglot 侧为匿名投影(Pivot 节点挂在外层
-                # Subquery/Table 上);展开语义(agg(case when field=value))
-                # 是明确定义的改写,列入已知边界待实现
-                raise Unsup(f"PIVOT 输出列展开未支持(列 {col},已知边界)")
+                raise Unsup(f"PIVOT 输出列展开未支持(列 {col},非常规形态)")
             raise Unsup(f"作用域投影中找不到列 {col}(星号未展开或动态列)")
         return self._expand_proj(scope, proj, col, depth)
 
@@ -292,6 +294,10 @@ class _Composer:
                 else:
                     raise Unsup(f"列 {node.name} 缺少限定名且作用域有多个来源,无法归属")
         src = scope.sources.get(alias)
+        if src is None:
+            hit = self._pivot_of(scope, alias)
+            if hit is not None:
+                return self._pivot_resolve(scope, *hit, node.name, depth, in_agg)
         if src is None and node.db and node.db in scope.sources:
             # 三段 a.b.c 且 a 是作用域源:b 是 a 的(结构体)列,c 是字段
             # (部分限定下 BigQuery 嵌套列的常见形态)
@@ -340,6 +346,69 @@ class _Composer:
             return exp.Anonymous(this="unnest", expressions=[expanded])
         body, grain = self._expand_scope_col(src, node.name, depth + 1)
         return self._consume(body, None, node.name, scope, in_agg, grain)
+
+    # ---------------- PIVOT 展开 ----------------
+    @staticmethod
+    def _pivot_of(scope, alias: str | None):
+        """作用域内挂在源 Subquery/Table 上的 Pivot:按 TableAlias 匹配(alias
+        非 None),或取第一个(alias=None,供缺投影兜底)。返回 (Pivot, 输入 Scope)。"""
+        for s in (scope.sources or {}).values():
+            if isinstance(s, exp.Table) or not hasattr(s, "expression"):
+                continue
+            par = s.expression.parent
+            for pv in (par.args.get("pivots") or []) if par is not None else []:
+                al = pv.args.get("alias")
+                nm = al.this.name if al is not None and al.this is not None else None
+                if alias is None or nm == alias:
+                    return pv, s
+        return None
+
+    def _pivot_resolve(self, scope, piv, input_scope, col: str,
+                       depth: int, in_agg: bool) -> exp.Expression:
+        """PIVOT 输出列的确定性改写:透视列 = 度量聚合参数包
+        CASE WHEN <FOR 字段> = <值> THEN <参数> END;隐式分组 = 输入列 −
+        度量引用列 − FOR 字段。id 列(不在输出清单)直通输入作用域。
+        sqlglot 的 piv.args['columns'] 给出值主序输出列名,命名规则不自造。"""
+        out_cols = [str(c.name) for c in piv.args.get("columns") or []]
+        fields = piv.args.get("fields") or []
+        measures = list(piv.expressions or [])
+        low = [c.lower() for c in out_cols]
+        if col.lower() not in low:
+            body, grain = self._expand_scope_col(input_scope, col, depth + 1)
+            return self._consume(body, None, col, scope, in_agg, grain)
+        if len(fields) != 1 or not isinstance(fields[0], exp.In) or not measures:
+            raise Unsup(f"PIVOT 结构非常规(多 FOR 字段/无度量),列 {col} 不展开")
+        fld = fields[0]
+        values = list(fld.expressions)
+        i, nm = low.index(col.lower()), len(measures)
+        if i // nm >= len(values):
+            raise Unsup(f"PIVOT 输出列 {col} 超出值×度量矩阵,不展开")
+        val, meas = values[i // nm], measures[i % nm]
+        magg = (meas.this if isinstance(meas, exp.Alias) else meas).copy()
+        wrapped = False
+        for ag in magg.find_all(exp.AggFunc):
+            arg = ag.this
+            if arg is None:
+                continue
+            # COUNT(*) → COUNT(CASE WHEN f=v THEN 1 END):行计数按透视值过滤
+            inner = exp.Literal.number(1) if isinstance(arg, exp.Star) else arg.copy()
+            ag.set("this", exp.Case(ifs=[exp.If(
+                this=exp.EQ(this=fld.this.copy(), expression=val.copy()), true=inner)]))
+            wrapped = True
+        if not wrapped:
+            raise Unsup(f"PIVOT 度量无聚合参数可绑定(列 {col})")
+        body = self._expand(scope, magg, depth + 1, in_agg)
+        # 隐式分组 = 输入列 − 全部度量引用列 − FOR 字段(任一度量用到都不是分组键)
+        used = {c.name.lower() for m in measures for c in m.find_all(exp.Column)}
+        used.add(str(fld.this.name).lower())
+        in_e = input_scope.expression
+        grain = [p.alias_or_name for p in (in_e.expressions if isinstance(in_e, exp.Select) else [])
+                 if p.alias_or_name and p.alias_or_name.lower() not in used]
+        try:
+            body.meta["def_grain"] = grain   # 钉在 body 上:def 化可能发生在后续消费位
+        except Exception:
+            pass
+        return self._consume(body, None, col, scope, in_agg, grain)
 
     def _claims(self, src, col: str, _seen: set | None = None) -> bool:
         """来源是否担保列 col:Scope 看投影(星号按 except 递归其来源);模型表看
@@ -435,7 +504,10 @@ class _Composer:
         n_srcs = len(dict(scope.selected_sources or {}) or {"_": 1})
         if has_agg or has_win:
             if in_agg or n_srcs > 1:
-                return self._make_def(model_uid, col, body, grain,
+                # 定义处 grain 优先取钉在 body 上的(PIVOT 隐式分组经中间跳
+                # 后 scope 级 grain 会丢),其次取调用方传入
+                g = (getattr(body, "meta", None) or {}).get("def_grain") or grain
+                return self._make_def(model_uid, col, body, g,
                                       "agg" if has_agg else "window", join_ctx=n_srcs > 1)
             return body
         if isinstance(body, (exp.Column, exp.Literal)) or len(_display(body)) <= INLINE_MAX:

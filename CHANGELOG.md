@@ -44,10 +44,21 @@ Dual-write race: a deterministic formula composer runs alongside the LLM.
   branches bare literals — the dbt_utils date-spine idiom); derived-table
   alias column lists (`as t(c1, c2)`); `t.* EXCEPT(col)` stars don't
   vouch for excluded columns; bare columns in multi-source scopes resolve
-  via source claims and `JOIN … USING` leftmost semantics. PIVOT output
-  columns are now a *named* known boundary (clear unsupported reason)
-  instead of a cryptic `_col` miss. MAX_DEFS is a readability cap, raised
-  48→200 after real date-spine × struct models exceeded it legitimately.
+  via source claims and `JOIN … USING` leftmost semantics. MAX_DEFS is a
+  readability cap, raised 48→200 after real date-spine × struct models
+  exceeded it legitimately.
+- **PIVOT output columns expand deterministically**: a pivot column is
+  rewritten as its measure aggregation with the argument wrapped in
+  `CASE WHEN <FOR field> = <value> THEN … END` (`COUNT(*)` becomes
+  `COUNT(CASE … THEN 1 END)`), carrying the pivot's implicit grain
+  (input columns minus all measure references minus the FOR field) onto
+  the def; id columns pass through to the input scope. Output-name ↔
+  (measure, value) mapping uses sqlglot's own value-major `columns`
+  metadata — no home-grown naming rules. Cal-ITP's 140 pivot columns all
+  flip to proven: the corpus closes at **99.9%** (16846/16856; the
+  residue is 6 rule-book columns over the defs cap and 4 by-design
+  scalar-subquery ambiguities), lifting the three-corpus total to
+  **25402/25412 = 99.96% proven**.
   `publication_status` badge, a "machine caliber" section (per-fact status
   chips, composed top formula, named subexpressions with defining grain /
   join-context / union branches, output grain) alongside the LLM technical

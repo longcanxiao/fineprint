@@ -384,3 +384,56 @@ class TestSnowflakeFlatten:
         c = _Composer(proj, graph).compose_target("model.p.m", "V")
         assert c["status"] == "unsupported"
         assert any("伪列" in r for r in c["reasons"])
+
+
+class TestPivot:
+    """PIVOT 输出列的确定性展开:透视列 = agg(case when field=value then arg end),
+    隐式分组 = 输入列 − 度量引用 − FOR 字段;id 列直通输入作用域。"""
+
+    def _mk_bq(self, tmp_path, sqls, cats):
+        nodes = {f"model.p.{n}": _node(n, f"compiled/{n}.sql") for n in sqls}
+        catalog = {f"model.p.{n}": _cat("main", n, c) for n, c in cats.items()}
+        catalog["seed.p.raw_trips"] = _cat("main", "raw_trips", {
+            "k": "STRING", "tod": "STRING", "v": "INT64", "h": "FLOAT64"})
+        proj = make_project(tmp_path, nodes=nodes, catalog_nodes=catalog,
+                            sqls={f"compiled/{n}.sql": s for n, s in sqls.items()},
+                            project_name="p", adapter="bigquery")
+        return proj, build_graph(proj)
+
+    def test_aliased_measures_value_major(self, tmp_path):
+        proj, graph = self._mk_bq(
+            tmp_path,
+            {"m": ("with pivoted as (select * from "
+                   "(select k, tod, v, h from main.raw_trips) "
+                   "pivot(min(v) as trips, min(v / h) as freq for tod in ('owl', 'early'))) "
+                   "select pv.freq_owl as owl_freq, pv.k as kk from pivoted pv")},
+            {"m": {"owl_freq": "FLOAT64", "kk": "STRING"}})
+        c = _Composer(proj, graph).compose_target("model.p.m", "owl_freq")
+        assert c["status"] == "proven"
+        top = c["top"].lower()
+        assert "min(case when" in top and "'owl'" in top and "/" in top
+        assert (".main.raw_trips", "v") in set(map(tuple, c["leaf_pairs"]))
+        assert (".main.raw_trips", "h") in set(map(tuple, c["leaf_pairs"]))
+
+    def test_id_column_passthrough(self, tmp_path):
+        proj, graph = self._mk_bq(
+            tmp_path,
+            {"m": ("with pivoted as (select * from "
+                   "(select k, tod, v from main.raw_trips) "
+                   "pivot(min(v) as trips for tod in ('owl'))) "
+                   "select pv.k as kk from pivoted pv")},
+            {"m": {"kk": "STRING"}})
+        c = _Composer(proj, graph).compose_target("model.p.m", "kk")
+        assert c["status"] == "proven"
+        assert (".main.raw_trips", "k") in set(map(tuple, c["leaf_pairs"]))
+
+    def test_count_star_measure(self, tmp_path):
+        proj, graph = self._mk_bq(
+            tmp_path,
+            {"m": ("select * from (select k, tod from main.raw_trips) "
+                   "pivot(count(*) for tod in ('a', 'b'))")},
+            {"m": {"k": "STRING", "a": "INT64", "b": "INT64"}})
+        c = _Composer(proj, graph).compose_target("model.p.m", "a")
+        assert c["status"] == "proven"
+        top = c["top"].lower()
+        assert "count(case when" in top and "'a'" in top and "then 1" in top

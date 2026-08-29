@@ -108,7 +108,7 @@ CTE + inline ephemeral + 跨源 UNION rollup)。三轮 probe→fix→re-probe:
 |---|---|---|---|---|---|
 | Fivetran ad_reporting | postgres | codegen 链式 CTE + inline ephemeral + 跨源 UNION | 350 模型 / 6771 列 | 0 列错 | **100.0%** |
 | Snowplow web | snowflake | 会话化/窗口/增量/FLATTEN,integration-test 产物 | 52 模型 / 1785 列 | 0 列错 + 1 边界模型(工件自身缺陷,诚实降级) | **100.0%** |
-| Cal-ITP warehouse | bigquery | 真实政府数据平台,610 个手写模型(UNNEST/STRUCT/date-spine/PIVOT) | 604 模型 / 16856 列 | 0 列错 | **99.1%**(残余全部具名:PIVOT 140 已知边界 + defs 规模 6 + 标量子查询 4) |
+| Cal-ITP warehouse | bigquery | 真实政府数据平台,610 个手写模型(UNNEST/STRUCT/date-spine/PIVOT) | 604 模型 / 16856 列 | 0 列错 | **99.9%**(残余全部具名:defs 规模 6 + 标量子查询 4) |
 
 **通道一被三语料推硬的地方**(全固化回归测试):单模型解析失败降级为边界节点
 (血缘/组合器在其物化表截止,与第三方包同语义,graph 门禁计入);qualify 两级
@@ -122,13 +122,17 @@ named_selects 取列(此修复让 Cal-ITP 多识别 127 列)。
 结构体名被解析成表限定名的形态);链式 UNION 拍平嵌套二叉后**按位对齐**(首分支
 命名、后续分支裸字面量——dbt_utils date_spine 惯用法);派生表列别名清单
 as t(c1,c2);`t.* EXCEPT(col)` 星号不担保被排除列;多源作用域裸列按担保源 +
-USING 最左语义归属。PIVOT 输出列 = 命名清晰的已知边界(改写语义明确:
-agg(case when field=value),0.8.x 待实现)。MAX_DEFS 48→200(可读性参数,
+USING 最左语义归属。**PIVOT 输出列已确定性展开**:透视列改写为度量聚合参数包
+CASE WHEN <FOR 字段>=<值> THEN … END(COUNT(*) → COUNT(CASE … THEN 1 END)),
+def 带透视隐式 grain(输入列 − 全部度量引用 − FOR 字段),id 列直通输入作用域;
+输出名 ↔ (度量,值) 映射用 sqlglot 自身的值主序 columns 元数据,不自造命名规则
+——Cal-ITP 实测:trips_owl := MIN(CASE WHEN time_of_day='owl' THEN n_trips END)
+per [key, service_date, route_id, direction_id]。MAX_DEFS 48→200(可读性参数,
 真实 date-spine × 结构体模型合法超出)。
 
 demo 语料回归:图语义零漂移(仅已知 sqlglot 栈序波动),门禁 14/14 + 8/8。
 GitLab dbt docs 已上 OAuth 且无 Wayback 快照,Cal-ITP(dbt-docs.dds.dot.ca.gov)
-是同级替身。三语料合计 **25412 列,总 proven 率 99.4%**,且每一例非 proven
+是同级替身。三语料合计 **25412 列,总 proven 率 99.96%(25402/25412)**,且每一例非 proven
 都有机器可读的具名原因——"漏而诚实"的失败模式经真实世界校准成立。
 
 **③ 看板渲染(已落地)**:口径卡弹窗新增发布状态徽章 + 「机器口径」区(逐事实
