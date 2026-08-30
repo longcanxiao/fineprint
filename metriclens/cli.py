@@ -143,7 +143,12 @@ def cmd_drift(args):
 
 
 def cmd_govern(args):
-    from metriclens.arbitrate import build_report, print_report
+    try:
+        from metriclens.arbitrate import build_report, print_report
+    except ImportError:
+        print("此发行版未包含治理组件(重复建设扫描与仲裁);其余命令不受影响。",
+              file=sys.stderr)
+        return 3
     from metriclens.llm import load_dotenv
     project = _project(args)
     load_dotenv(project.project_dir)

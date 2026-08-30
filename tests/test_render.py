@@ -14,7 +14,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from metriclens.governance import agg_signature  # noqa: E402
+from metriclens.fingerprint import agg_signature  # noqa: E402
 from metriclens.lineage import build_graph  # noqa: E402
 from metriclens.render import (  # noqa: E402
     _Composer,

@@ -17,9 +17,13 @@ import sqlglot
 
 from metriclens import prompts
 from metriclens.config import MetricDef, MLConfig
-from metriclens.governance import agg_signature
-from metriclens.governance import base as colbase
-from metriclens.governance import scan as governance_scan
+from metriclens.fingerprint import agg_signature
+from metriclens.fingerprint import base as colbase
+
+try:                                    # 治理是可选组件:公开发行版可整体缺席,
+    from metriclens.governance import scan as governance_scan
+except ImportError:                     # 缺席时卡片治理提示区为空,其余全量可用
+    governance_scan = None
 from metriclens.lineage import dialect, fingerprint, normalize_condition
 from metriclens.llm import chat_json, fast_model, quality_model, set_cache_dir
 from metriclens.project import DbtProject
@@ -648,7 +652,8 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
     set_cache_dir(project.workspace / "cache")
     store = CaliberStore(project.workspace / "store")
     run_id = uuid.uuid4().hex[:8]
-    scan_r = governance_scan(graph, cfg)
+    scan_r = (governance_scan(graph, cfg) if governance_scan
+              else {"duplicates": [], "row_mismatch": []})
     # 卡片治理提示 = 确定重复 + 疑似重复(行结构不同,基数未证):后者带 kind 标记
     dup_pairs = scan_r["duplicates"] + [{**p, "kind": "row_mismatch"}
                                         for p in scan_r.get("row_mismatch", [])]

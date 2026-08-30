@@ -16,12 +16,9 @@
 import hashlib
 import json
 
-import sqlglot
-from sqlglot import exp
 
 from metriclens.config import MLConfig
-from metriclens.lineage import agg_one as _agg_one
-from metriclens.lineage import dialect
+from metriclens.fingerprint import agg_signature, base  # noqa: F401  治理原语已中立化,此处转发
 from metriclens.trace import display_name, trace
 
 
@@ -34,34 +31,11 @@ def fingerprint_of(t: dict) -> str:
 
 
 
-def agg_signature(t: dict) -> tuple:
-    """表达式链上的聚合语义签名:函数名 + 是否 DISTINCT(行数等价类归一化)。
-    签名不同的两列必非重复物化。"""
-    sigs = set()
-    for e in t["expr_chain"]:
-        if not e.get("expr"):
-            continue
-        try:
-            node = sqlglot.parse_one(e["expr"], read=dialect())
-        except Exception:
-            continue
-        for f in node.find_all(exp.AggFunc):
-            sigs.add(_agg_one(f))
-    return tuple(sorted(sigs))
-
-
 def agg_maybe_equivalent(a: tuple, b: tuple) -> bool:
     """签名不同但可能语义等价的已知展开形:AVG(x) ↔ SUM(x)/COUNT(x)。
     此类不得确定性判不同义,降入 B 档 LLM 仲裁。"""
     sa, sb = set(a), set(b)
     return (sa == {"avg"} and {"sum", "count"} <= sb) or (sb == {"avg"} and {"sum", "count"} <= sa)
-
-
-def base(col: str, suffixes: list) -> str:
-    """列基名:剥离物化后缀,用于 A 档同名判定与卡片治理提示。"""
-    for suf in suffixes:
-        col = col.removesuffix(suf)
-    return col
 
 
 def _leaf_rowset(graph: dict, uid: str, memo: dict) -> frozenset:

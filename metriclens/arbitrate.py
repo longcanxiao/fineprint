@@ -9,13 +9,29 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from metriclens import prompts
+from metriclens import prompts  # noqa: F401  (HOP/MERGE 等核心提示词仍在 prompts)
 from metriclens.config import MLConfig
 from metriclens.governance import scan
 from metriclens.llm import chat_json, fast_model, set_cache_dir
 from metriclens.project import DbtProject
 from metriclens.trace import resolve_model, trace
 
+
+# 治理仲裁提示词与组件同居:公开发行版摘除本模块即一并缺席
+ARB = {
+"zh": """你是指标治理仲裁器。给你两个数仓列,它们的源字段集与业务过滤条件集完全相同(指纹一致),但列名不同。请依据两列的表达式链判断:它们是"同一业务语义的重复物化"(duplicate),还是"同源数据上的不同指标"(distinct,如同一明细上的计数 vs 比率、分子 vs 分母)。
+只输出 JSON:
+{"verdict": "duplicate|distinct",
+ "reason": "一句话判据(引用表达式差异或等价性)",
+ "suggestion": "治理建议一句话(duplicate → 建议收敛到哪个出口;distinct → 说明二者各自语义)"}
+只依据给定表达式与注释判断,不要臆造。""",
+"en": """You are a metric-governance arbitrator. Two warehouse columns share identical source-column sets and business-filter sets (same fingerprint) but different names. Judge from their expression chains whether they are a "duplicate materialization of the same business semantics" (duplicate) or "different metrics on the same source" (distinct — e.g. count vs ratio, numerator vs denominator).
+JSON only:
+{"verdict": "duplicate|distinct",
+ "reason": "one-line criterion (cite the expression difference or equivalence)",
+ "suggestion": "one-line governance advice (duplicate → which outlet to converge on; distinct → what each means)"}
+Judge only from the given expressions and descriptions; invent nothing.""",
+}
 
 def validate_arb(obj: dict):
     if obj.get("verdict") not in ("duplicate", "distinct"):
@@ -41,7 +57,7 @@ def arbitrate_pair(lang: str, graph: dict, pair: dict, docs: dict) -> dict:
     user = ("两列指纹一致(同源字段集 + 同业务条件集),表达式链如下:\n\n"
             f"列 A:\n{json.dumps(_expr_brief(graph, pair['a'], docs), ensure_ascii=False, indent=1)}\n\n"
             f"列 B:\n{json.dumps(_expr_brief(graph, pair['b'], docs), ensure_ascii=False, indent=1)}")
-    return chat_json(prompts.ARB[lang], user, max_tokens=2000, model=fast_model(), validator=validate_arb)
+    return chat_json(ARB[lang], user, max_tokens=2000, model=fast_model(), validator=validate_arb)
 
 
 def report_path(project: DbtProject) -> Path:

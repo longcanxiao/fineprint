@@ -266,7 +266,7 @@ class TestGrainAndAggSignature:
         assert output_grain(ast) == []
 
     def test_agg_signature_distinct_marked(self):
-        from metriclens.governance import agg_signature
+        from metriclens.fingerprint import agg_signature
         t = {"expr_chain": [{"expr": "COUNT(DISTINCT user_id)"}, {"expr": "MIN(dt)"}]}
         assert agg_signature(t) == ("count:distinct", "min")
 

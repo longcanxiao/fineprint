@@ -38,7 +38,8 @@ Beyond caliber cards, MetricLens ships two governance tools built on the same li
 ## Quickstart
 
 ```bash
-pip install -e .            # core CLI only (PyPI release planned)
+pip install fineprint       # from PyPI (imports as `metriclens`; CLI: fineprint / metriclens)
+pip install -e .            # or from source, core CLI only
 pip install -e ".[demo,dev]"   # + benchmark warehouse / dashboard / test deps
 
 cd your-dbt-project

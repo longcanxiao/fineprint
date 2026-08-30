@@ -38,7 +38,8 @@ dbt artifacts ──────► │  源表 / 过滤条件 / 表达式链(sq
 ## 快速开始
 
 ```bash
-pip install -e .            # 仅核心 CLI(PyPI 发布计划中)
+pip install fineprint       # PyPI 包名(import 名为 metriclens;CLI:fineprint / metriclens)
+pip install -e .            # 或从源码装,仅核心 CLI
 pip install -e ".[demo,dev]"   # + 基准数仓 / 看板 / 测试依赖
 
 cd your-dbt-project

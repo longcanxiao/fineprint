@@ -74,18 +74,3 @@ Hard rules:
 2. anything that cannot bind to an evidence ID must go to caveats suffixed '(no deterministic evidence)', never into clauses;
 3. use only facts and terms present in the input; where a column lacks a business description, translate technically and mark '(description pending)'; never introduce outside assumptions. JSON only.""",
 }
-
-ARB = {
-"zh": """你是指标治理仲裁器。给你两个数仓列,它们的源字段集与业务过滤条件集完全相同(指纹一致),但列名不同。请依据两列的表达式链判断:它们是"同一业务语义的重复物化"(duplicate),还是"同源数据上的不同指标"(distinct,如同一明细上的计数 vs 比率、分子 vs 分母)。
-只输出 JSON:
-{"verdict": "duplicate|distinct",
- "reason": "一句话判据(引用表达式差异或等价性)",
- "suggestion": "治理建议一句话(duplicate → 建议收敛到哪个出口;distinct → 说明二者各自语义)"}
-只依据给定表达式与注释判断,不要臆造。""",
-"en": """You are a metric-governance arbitrator. Two warehouse columns share identical source-column sets and business-filter sets (same fingerprint) but different names. Judge from their expression chains whether they are a "duplicate materialization of the same business semantics" (duplicate) or "different metrics on the same source" (distinct — e.g. count vs ratio, numerator vs denominator).
-JSON only:
-{"verdict": "duplicate|distinct",
- "reason": "one-line criterion (cite the expression difference or equivalence)",
- "suggestion": "one-line governance advice (duplicate → which outlet to converge on; distinct → what each means)"}
-Judge only from the given expressions and descriptions; invent nothing.""",
-}

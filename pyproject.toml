@@ -3,10 +3,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "metriclens"
-version = "0.7.1"
-description = "Metric caliber synthesis for dbt projects: deterministic column-level lineage x LLM reading, cross-validated, evidence-bound caliber cards"
-readme = "README.md"
+name = "fineprint"
+version = "0.8.0"
+description = "The fine print of your metrics: deterministic column-level lineage x LLM reading over dbt artifacts, cross-validated, evidence-bound caliber cards"
+readme = "README.pypi.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
@@ -28,6 +28,9 @@ dependencies = [
 ]
 
 [project.scripts]
+# 发行名 fineprint(指标口径的"小字条款");import 名与既有 CLI 暂保持 metriclens,
+# 两个命令等价,全面改名另起版本
+fineprint = "metriclens.cli:main"
 metriclens = "metriclens.cli:main"
 
 [project.optional-dependencies]
@@ -39,6 +42,10 @@ dev = ["pytest", "ruff", "httpx"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["metriclens"]
+
+# 发行物只含核心包:demo 数仓/看板/benchmark/设计文档/测试留在仓库,不随包发布
+[tool.hatch.build.targets.sdist]
+include = ["metriclens", "README.pypi.md", "LICENSE", "pyproject.toml"]
 
 [tool.ruff]
 line-length = 120

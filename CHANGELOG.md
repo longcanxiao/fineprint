@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased (0.8)
+## 0.8.0 (2026-08-30)
+
+First PyPI release, published as **`fineprint`** — the fine print of your
+metrics. The import name and CLI stay `metriclens` for now (a `fineprint`
+CLI alias is installed alongside); a full rename, if any, will come as its
+own versioned change.
+
+The public distribution ships the core only: lineage graph, dual-channel
+caliber cards, drift detection. The governance component (duplicate scan +
+LLM arbitration — now an optional module: `synth` degrades gracefully when
+it is absent) and dbt-exposures auto-discovery are excluded from the
+published artifacts by `scripts/release_public.sh`; the sdist carries just
+`metriclens/` + `README.pypi.md` + `LICENSE`, not the demo warehouse,
+dashboard, benchmark, design docs, or tests.
 
 Dual-write race: a deterministic formula composer runs alongside the LLM.
 **Race adjudicated (2026-08-30): the composer is now the publishing authority

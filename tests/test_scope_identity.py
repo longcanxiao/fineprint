@@ -173,7 +173,7 @@ class TestSourceIdentity:
 
 class TestAggEquivalence:
     def _sig(self, expr):
-        from metriclens.governance import _agg_one
+        from metriclens.lineage import agg_one as _agg_one
         node = sqlglot.parse_one(expr, read="duckdb")
         return {_agg_one(f) for f in node.find_all(sqlglot.exp.AggFunc)}
 
