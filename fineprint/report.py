@@ -37,6 +37,13 @@ pre { background:var(--code); border-radius:8px; padding:10px 14px; font:12px ui
   border-radius:0 8px 8px 0; font-size:13px; margin-top:8px; }
 .gov code { font:11px ui-monospace,monospace; }
 .caveat { color:var(--warn); font-size:13px; }
+.evd { margin-top:10px; font-size:12.5px; }
+.evd summary { cursor:pointer; color:var(--accent); font:12px ui-monospace,monospace; }
+.evd table { border-collapse:collapse; margin-top:8px; width:100%; }
+.evd td { border-top:1px solid var(--line); padding:4px 8px 4px 0; vertical-align:top; color:var(--sub); }
+.evd td code { font:11px ui-monospace,monospace; word-break:break-all; }
+.evk { color:var(--accent); font:11px ui-monospace,monospace; white-space:nowrap; }
+.evl { color:var(--muted); font:10.5px ui-monospace,monospace; }
 """
 
 
@@ -52,10 +59,26 @@ def card_html(c: dict) -> str:
                 f'<p class="meta">双通道互验低置信,内容待人工审核后展示。</p></div>')
     biz, tech = c.get("business", {}), c.get("technical", {})
     v = c.get("validation", {})
+    ev_by_id = {e.get("id"): e for e in c.get("evidence", []) if e.get("id")}
+
+    def badge(i):
+        e = ev_by_id.get(i)
+        tip = f'[{e.get("kind")}] {e.get("model")} L{e.get("line")}: {str(e.get("text"))[:160]}' if e else ""
+        return f'<span class="ev" title="{_esc(tip)}">{_esc(i)}</span>'
+
     clauses = "".join(
-        f'<li>{_esc(cl.get("text"))}' + "".join(f'<span class="ev">{_esc(i)}</span>' for i in cl.get("evidence_ids", []))
+        f'<li>{_esc(cl.get("text"))}' + "".join(badge(i) for i in cl.get("evidence_ids", []))
         + "</li>"
         for cl in biz.get("clauses", []))
+    ev_html = ""
+    if ev_by_id:   # 证据原文对照表:条款徽标(E1/F2…)在此可查到 SQL 原文与出处行号
+        rows = "".join(
+            f'<tr><td class="evk">{_esc(e.get("id"))}</td><td>{_esc(e.get("kind"))}</td>'
+            f'<td>{_esc(e.get("model"))} <span class="evl">L{_esc(e.get("line"))}</span></td>'
+            f'<td><code>{_esc(e.get("text"))}</code></td></tr>'
+            for e in c.get("evidence", []) if e.get("id"))
+        ev_html = (f'<details class="evd"><summary>证据原文({len(ev_by_id)} 条,条款编号对照)</summary>'
+                   f'<table>{rows}</table></details>')
     caveats = " ".join(_esc(x) for x in biz.get("caveats", []))
     gov = c.get("governance", {}).get("duplicates", [])
     gov_html = ""
@@ -77,6 +100,7 @@ def card_html(c: dict) -> str:
 {f'<p class="meta">时间窗: {_esc(tech.get("window"))}</p>' if tech.get("window") else ""}
 <h3>双通道互验</h3>
 <p class="meta">{verify}</p>
+{ev_html}
 {gov_html}
 <p class="meta">生成于 {_esc(c.get("generated_at"))} · {_esc(c.get("llm_model"))} · run {_esc(c.get("run_id"))}</p>
 </div>"""

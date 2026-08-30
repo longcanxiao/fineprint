@@ -32,10 +32,15 @@ dbt artifacts ──────► │  源表 / 过滤条件 / 表达式链(sq
 - **确定性公式组合器**(0.8):第三位作者按作用域逐层展开编译 SQL,合成可证明的指标公式——聚合/窗口边界落为命名子表达式并携带定义处粒度,UNION 分支与 PIVOT 输出列确定性展开,组合结果必须通过与 LLM 公式完全相同的词表/聚合锚点校验,且叶子源集与通道一互证(round-trip)。**公式的发布权威是组合器;LLM 负责解释与叙述,仅在组合器不可证时兜底**(多目标组合、标量子查询等——每一次拒绝都带机器可读的具名原因)。已在三方言三份公开语料上校准(Fivetran ad_reporting / postgres,Snowplow web / snowflake,Cal-ITP warehouse / bigquery):**25412 个真实世界列中 25402 个(99.96%)组合成功且自证**,残余全部具名。
 - 低置信的卡片进入人工审核队列,不直接发布。批次原子发布——消费者永远不会看到半更新状态。
 
-在口径卡之外,FinePrint 还基于同一套血缘提供两件治理工具:
+在口径卡之外,同一套血缘还支撑漂移检测:
 
 - **`fineprint drift`**——为每个指标的口径拍快照(源表 / 条件指纹 / 语义点 / 表达式),跨次重建做对比:14 天窗口改成 15 天,会在受影响的指标上精确浮出一条 `high` 漂移事件。
-- **`fineprint govern`**——指纹扫描发现跨表重复物化的指标(同源同条件);同指纹不同名的对子交由 LLM 仲裁("计数 vs 比率 → 不同义")。
+
+**Roadmap**(本仓库已有原型,暂未随 PyPI 发行版打包):
+
+- **`fineprint govern`**——重复指标治理:指纹扫描发现跨表重复物化的指标(同源同条件),同指纹不同名的对子交由 LLM 仲裁("计数 vs 比率 → 不同义")。
+- **dbt exposures 集成**——自动发现指标候选预填进 `fineprint.yml`,看板消费方标注到口径卡、漂移告警定向与治理收敛加权。
+- 非 dbt SQL 管道(见「现状与边界」)。
 
 ## 快速开始
 
@@ -50,11 +55,9 @@ cd your-dbt-project
 dbt compile && dbt docs generate    # FinePrint 只读 artifacts——不连数据库
 
 fineprint init             # 生成 fineprint.yml——列出你的看板指标(model.column;
-                            # 两个包同名模型时写 package.model.column)。项目声明过
-                            # dbt exposures 时自动预填注释候选,消费方随之进入
-                            # 口径卡(消费方区)、漂移告警定向与治理收敛加权
+                            # 两个包同名模型时写 package.model.column)
 fineprint graph            # 构建字段级血缘图
-fineprint trace mart_orders.refund_rate_14d    # 查看单个指标的 S/F/E 三元组
+fineprint trace mart_orders.refund_rate_14d    # 单个指标的口径树(--full 附出处明细)
 
 export FINEPRINT_LLM_API_KEY=sk-...            # 任意 OpenAI 兼容端点
 export FINEPRINT_LLM_MODEL=deepseek-chat       # 或 gpt-4.1-mini 等
@@ -63,14 +66,13 @@ fineprint report           # 导出自包含的 HTML 口径报告
 
 fineprint drift            # 口径漂移检测(--strict = CI 门禁:high 漂移
                             #   退出码 1,基线与日志不落盘)
-fineprint govern           # 重复指标治理报告
 ```
 
-配置都在 `fineprint.yml`(指标清单、语言 `zh|en`、词典、治理参数)。LLM 凭据只走环境变量(项目根目录的 `.env` 会被读取):`FINEPRINT_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`。
+配置都在 `fineprint.yml`(指标清单、语言 `zh|en`、词典)。LLM 凭据只走环境变量(项目根目录的 `.env` 会被读取):`FINEPRINT_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`。
 
 **第三方 dbt 包**(Fivetran 连接器、共享的供应商模型等)按**数据源边界**处理,与 ODS 表同一约定:不解析其 SQL、文档与内部口径——血缘在其物化表处截止,卡片上带归属包标注。你治理*自己*的代码;他们的是上游基础设施。确属你所有的内部共享包,在 `fineprint.yml` 顶层声明 `internal_packages: [shared_models]` 后重建图即可看穿。
 
-FinePrint 的全部产物都在 `your-dbt-project/.fineprint/` 下——血缘图、口径卡批次(带原子 `active_run` 指针)、快照、漂移日志、治理报告、LLM 缓存。
+FinePrint 的全部产物都在 `your-dbt-project/.fineprint/` 下——血缘图、口径卡批次(带原子 `active_run` 指针)、快照、漂移日志、LLM 缓存。
 
 ## 14 陷阱基准
 

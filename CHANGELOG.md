@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.6 (2026-08-30)
+
+CLI usability pass, driven by first-round field feedback:
+
+- **No more raw tracebacks for usage errors.** `main()` now has a single
+  error exit: missing artifacts/config, mistyped trace targets, report
+  without a published batch, LLM credential gaps — all already carried
+  actionable messages and now surface as one `错误: …` line (exit 1).
+  `FINEPRINT_DEBUG=1` re-raises with the full stack; Ctrl-C exits 130
+  quietly. `govern`'s exit code now actually propagates.
+- **`fineprint --version`.**
+- **The CLI no longer advertises what the distribution doesn't ship.**
+  The `govern` subcommand registers only when the governance component is
+  present (it is not in the PyPI wheel — README/PyPI pages now present
+  duplicate-metric governance and dbt-exposures integration as roadmap).
+- **`trace` output converged on the caliber tree.** Default view = tree +
+  warnings (ambiguous attributions, structural semantics); the flat
+  E/S/F receipt blocks moved behind `--full` instead of fighting the tree.
+- **No-catalog silent degradation is now named.** `graph` warns when
+  referenced source tables have no known column set (catalog absent and no
+  columns declared in sources yml), lists them, and states the consequence
+  (lineage stops there; cards can't reach VERIFIED) plus both fixes.
+- **HTML report shows evidence originals.** Each card gets a collapsible
+  evidence table (id / kind / model+line / verbatim SQL) and clause badges
+  grew hover tooltips — the "traceable" claim is now visible in the report
+  itself, and urllib3's LibreSSL warning no longer leaks into CLI output.
+
 ## 0.8.5 (2026-08-30)
 
 CTE scope names (the condition scope labels channel 1 itself produces,

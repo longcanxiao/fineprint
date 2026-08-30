@@ -1,8 +1,8 @@
 diff --git a/fineprint/cli.py b/fineprint/cli.py
-index 0ef423c..39e423f 100644
+index b05b0ab..0541401 100644
 --- a/fineprint/cli.py
 +++ b/fineprint/cli.py
-@@ -33,60 +33,14 @@ def _graph(project):
+@@ -36,60 +36,14 @@ def _graph(project):
      return load_graph(p)
  
  
@@ -64,7 +64,7 @@ index 0ef423c..39e423f 100644
 +    print(f"已生成 {f}\n下一步:填入 metrics(model.column),设置 LLM 环境变量(见 README),然后 fineprint graph")
  
  
- def cmd_graph(args):
+ def _unknown_sources(project, graph) -> list:
 diff --git a/fineprint/drift.py b/fineprint/drift.py
 index 0918bd5..a1e9e15 100644
 --- a/fineprint/drift.py
@@ -187,10 +187,10 @@ index 452baf2..3a601ea 100644
      def declared_tests(self) -> dict:
          """dbt schema 测试的基数声明(声明性证据,dbt 会按数据定期实测):
 diff --git a/fineprint/synth.py b/fineprint/synth.py
-index 2f6544b..8648a2c 100644
+index e8bd095..4f92d98 100644
 --- a/fineprint/synth.py
 +++ b/fineprint/synth.py
-@@ -404,18 +404,6 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set,
+@@ -406,18 +406,6 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set,
  
  
  # ---------------- 单指标流水线 ----------------
@@ -209,7 +209,7 @@ index 2f6544b..8648a2c 100644
  def merged_trace(graph: dict, m: MetricDef) -> dict:
      model, col = m.target.rsplit(".", 1)
      t = trace(graph, model, col)
-@@ -635,7 +623,6 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
+@@ -637,7 +625,6 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
          "confidence": val["confidence"],
          "status": "published" if val["confidence"] in ("high", "medium") else "review",
          "publication_status": pub_status,

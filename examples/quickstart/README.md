@@ -56,8 +56,8 @@ fineprint trace dm_refund_rate_1d.refund_rate
 公式在最外层运算处劈成分子/分母两支,小字条款各归其位:14 天窗口和
 去重是**分子专属**;"只算支付成功""剔测试账号"约束的是两侧共同的行集,
 归入**公共口径**(分子经 join 关联订单,同样被它们过滤——这正是只看
-值路径会归错的地方)。树下方还有带源文件行号的出处明细(条件 F/源字段 S/
-结构语义点)。
+值路径会归错的地方)。想核对每条口径的 SQL 原文与源文件行号,加 `--full`
+即可在树下附完整出处明细(表达式链 E/源字段 S/逐条过滤条件 F)。
 
 这些条款不是摆设——本例数据里有一笔 200 元的退款发生在支付后第 19 天:
 14 天口径下 8 月 1 日退款率是 **30%**,若是 30 天口径就是 **80%**。
@@ -135,5 +135,5 @@ dbt seed --profiles-dir . && dbt run --profiles-dir . && dbt docs generate --pro
 - 所有产物在 `.fineprint/`:血缘图、口径卡 JSON(`store/runs/<批次>/`)、
   HTML 报告、漂移快照与日志。
 - 命令统一为 `fineprint`(0.8.4 起;旧 `metriclens` 命令与 import 名一并退役)。
-- PyPI 发行版为核心版,`fineprint govern`(重复建设治理)会提示未包含,
-  其余命令不受影响。
+- PyPI 发行版为核心版:重复指标治理(`fineprint govern`)与 dbt exposures
+  集成在 roadmap 上,暂未随包发布,CLI 中也不出现。

@@ -32,10 +32,15 @@ dbt artifacts ──────► │  sources / filters / expression chain (s
 - **Deterministic formula composer** (0.8): a third writer expands each metric's compiled SQL scope by scope into a provable formula — named sub-expressions at aggregation/window boundaries carry their defining grain, UNION branches and PIVOT columns expand deterministically, and the result must round-trip against channel 1's leaf sources plus the same lexicon/anchor validators the LLM faces. **The composer is the publishing authority for formulas; the LLM explains and narrates, and backstops only where the composer cannot prove** (multi-target combinations, scalar subqueries — each refusal carries a named machine reason). Calibrated on three public corpora across three dialects (Fivetran ad_reporting / postgres, Snowplow web / snowflake, Cal-ITP warehouse / bigquery): **25,402 of 25,412 real-world columns (99.96%) composed and proven**, every residual named.
 - Low-confidence cards go to a review queue instead of being published. Batches publish atomically — consumers never see a half-updated state.
 
-Beyond caliber cards, FinePrint ships two governance tools built on the same lineage:
+Beyond caliber cards, the same lineage powers drift detection:
 
 - **`fineprint drift`** — snapshots each metric's caliber (sources / condition fingerprints / semantics / expressions) and diffs across rebuilds: a 14→15-day window change surfaces as a `high` drift event on exactly the affected metrics.
-- **`fineprint govern`** — fingerprint scan finds duplicated metric materializations across tables (same sources + same conditions); an LLM arbitrates same-fingerprint pairs with different names ("count vs. ratio → distinct").
+
+**Roadmap** (prototyped in this repo, not yet part of the PyPI distribution):
+
+- **`fineprint govern`** — duplicate-metric governance: a fingerprint scan finds duplicated metric materializations across tables (same sources + same conditions), and an LLM arbitrates same-fingerprint pairs with different names ("count vs. ratio → distinct").
+- **dbt exposures integration** — auto-discovered metric candidates pre-filled into `fineprint.yml`, and dashboard consumers annotated onto cards, drift alerts and governance weighting.
+- Non-dbt SQL pipelines (see [Status & scope](#status--scope)).
 
 ## Quickstart
 
@@ -52,11 +57,9 @@ cd your-dbt-project
 dbt compile && dbt docs generate    # FinePrint reads artifacts only — no DB connection
 
 fineprint init             # writes fineprint.yml — list your dashboard metrics (model.column;
-                            # package.model.column when two packages share a model name).
-                            # dbt exposures, when declared, pre-fill a commented candidate list,
-                            # and flow onto cards (consumers), drift alerts and governance weighting
+                            # package.model.column when two packages share a model name)
 fineprint graph            # build the column-level lineage graph
-fineprint trace mart_orders.refund_rate_14d    # inspect one metric's S/F/E triple
+fineprint trace mart_orders.refund_rate_14d    # caliber tree for one metric (--full adds receipts)
 
 export FINEPRINT_LLM_API_KEY=sk-...            # any OpenAI-compatible endpoint
 export FINEPRINT_LLM_MODEL=deepseek-chat       # or gpt-4.1-mini, etc.
@@ -65,14 +68,13 @@ fineprint report           # export a self-contained HTML caliber report
 
 fineprint drift            # caliber drift check (--strict = CI gate: high drift
                             #   exits 1 and leaves baseline + log untouched)
-fineprint govern           # duplicate-metric governance report
 ```
 
-Configuration lives in `fineprint.yml` (metrics list, language `zh|en`, lexicon, governance tuning). LLM credentials are env-vars only (`.env` in the project root is honored): `FINEPRINT_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`.
+Configuration lives in `fineprint.yml` (metrics list, language `zh|en`, lexicon). LLM credentials are env-vars only (`.env` in the project root is honored): `FINEPRINT_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`.
 
 **Third-party dbt packages** (Fivetran connectors, shared vendor models, …) are treated as **data-source boundaries**, the same convention as ODS tables: their SQL, docs and internal calibers are not parsed — lineage stops at their materialized tables, which appear on cards tagged with the owning package. You govern *your* code; theirs is upstream infrastructure. To see through an internal shared package you do own, list it under a top-level `internal_packages: [shared_models]` in `fineprint.yml` and rebuild the graph.
 
-Everything FinePrint produces lives under `your-dbt-project/.fineprint/` — graph, caliber card batches (with an atomic `active_run` pointer), snapshots, drift log, governance report, LLM cache.
+Everything FinePrint produces lives under `your-dbt-project/.fineprint/` — graph, caliber card batches (with an atomic `active_run` pointer), snapshots, drift log, LLM cache.
 
 ## The 14-trap benchmark
 

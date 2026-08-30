@@ -33,4 +33,7 @@ LLM 端点经环境变量或项目根 `.env` 配置(`FINEPRINT_LLM_BASE_URL` /
 无 catalog 也能跑(列 schema 由 yml 声明 + 编译 SQL 拓扑推断补全);能执行
 `dbt docs generate` 时仍建议补上,实测列集更可靠。
 
+**Roadmap**(暂未随本发行版打包):重复指标治理 `fineprint govern`(指纹扫描 +
+LLM 仲裁)、dbt exposures 集成(指标候选预填 + 看板消费方标注)、非 dbt SQL 管道。
+
 License: Apache-2.0

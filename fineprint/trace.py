@@ -223,12 +223,15 @@ def trace(graph: dict, model: str, column: str) -> dict:
     }
 
 
-def render(t: dict, tree: str | None = None) -> str:
+def render(t: dict, tree: str | None = None, full: bool = False) -> str:
+    # 有树时默认只出树 + 警示类信息(归因不明/结构语义点),树已覆盖源、条件与
+    # 公式拆分,再平铺一遍 S/F/E 是观感冲突;--full 在树下附逐条出处(带编译行号)。
+    detail = full or not tree
     L = []
     if tree:
-        # 口径树在顶:公式按分支劈开,口径条件归到各自分支;下方保留出处明细
         L.append(tree)
-        L.append(f"\n(链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型;以下为出处明细)")
+        tail = "以下为出处明细" if detail else "fineprint trace --full 查看表达式链与逐条出处"
+        L.append(f"\n(链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型;{tail})")
     else:
         L.append(f"◎ 目标: {t['target']}   (链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型)")
         L.append("\n── 表达式链 E ──")
@@ -238,23 +241,26 @@ def render(t: dict, tree: str | None = None) -> str:
             if len(expr) > 96:
                 expr = expr[:96] + "…"
             L.append(f"{pad}[{e['layer']}] {e['model']}.{e['column']} = {expr}")
-    L.append(f"\n── 源字段 S ({len(t['sources'])} 个) ──")
-    for s in t["sources"]:
-        tag = f"   ⟵ 第三方包 {s['package']}(数据源边界,内部口径不解析)" if s.get("package") else ""
-        L.append(f"  {s['table']}.{s['column']}{tag}")
-    key_conds = [c for c in t["conditions"] if not c.get("is_pure_key")]
-    pure = [c for c in t["conditions"] if c.get("is_pure_key")]
-    L.append(f"\n── 过滤条件 F ({len(key_conds)} 条业务条件 + {len(pure)} 条纯关联键) ──")
-    for c in key_conds:
-        jt = f" join({c.get('join_table')})" if c["kind"] == "join_on" else ""
-        L.append(f"  [{c['kind']}{jt}] {c['sql'].replace(chr(34), '')}"
-                 f"\n      ↳ {c['src_path']} · {c['model']}({c['scope']}) · 编译行 L{c['line']}")
+    if detail:
+        L.append(f"\n── 源字段 S ({len(t['sources'])} 个) ──")
+        for s in t["sources"]:
+            tag = f"   ⟵ 第三方包 {s['package']}(数据源边界,内部口径不解析)" if s.get("package") else ""
+            L.append(f"  {s['table']}.{s['column']}{tag}")
+        key_conds = [c for c in t["conditions"] if not c.get("is_pure_key")]
+        pure = [c for c in t["conditions"] if c.get("is_pure_key")]
+        L.append(f"\n── 过滤条件 F ({len(key_conds)} 条业务条件 + {len(pure)} 条纯关联键) ──")
+        for c in key_conds:
+            jt = f" join({c.get('join_table')})" if c["kind"] == "join_on" else ""
+            L.append(f"  [{c['kind']}{jt}] {c['sql'].replace(chr(34), '')}"
+                     f"\n      ↳ {c['src_path']} · {c['model']}({c['scope']}) · 编译行 L{c['line']}")
     amb = t.get("scope_ambiguous") or []
     if amb:
         L.append(f"\n── 归因不明 ({len(amb)},别名复用 scope,须人工确认) ──")
         for c in amb:
             L.append(f"  ? {str(c.get('sql', '')).replace(chr(34), '')[:80]}"
                      f"   ↳ {c.get('model')}({c.get('scope')}) L{c.get('line')}")
+    if not detail and not t["semantics"]:
+        return "\n".join(L)
     L.append(f"\n── 结构语义点 ({len(t['semantics'])}) ──")
     for s in t["semantics"]:
         desc = {

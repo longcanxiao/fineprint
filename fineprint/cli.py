@@ -10,7 +10,10 @@
     fineprint report  --project DIR [-o FILE]      口径卡导出为自包含 HTML
 """
 import argparse
+import importlib.util
+import os
 import sys
+import warnings
 from pathlib import Path
 
 
@@ -89,6 +92,27 @@ def cmd_init(args):
           f"设置 LLM 环境变量(见 README),然后 fineprint graph")
 
 
+def _unknown_sources(project, graph) -> list:
+    """被血缘引用、但列集完全未知的源表(catalog 未覆盖且 sources yml 未声明列)。
+    这些表前血缘截止,列归属只能靠拓扑推断,口径卡难以达到 VERIFIED——
+    静默降级须点名,不能让用户从卡片置信度倒推原因。"""
+    used = set()
+    for m in graph["models"].values():
+        used.update(m["row_set_tables"])
+        for c in m["columns"].values():
+            used.update(u["table"] for u in c["upstreams"])
+    srcs = graph["relations"]["sources"]
+    out = []
+    for rel in sorted(used):
+        parts = rel.split(".")
+        if rel not in srcs or len(parts) != 3:
+            continue
+        db, sch, tbl = parts
+        if not ((project.schema.get(db) or {}).get(sch) or {}).get(tbl):
+            out.append(rel)
+    return out
+
+
 def cmd_graph(args):
     from fineprint.lineage import build_graph, save_graph
     project = _project(args)
@@ -97,6 +121,14 @@ def cmd_graph(args):
               "编译 SQL 拓扑推断补全;能执行 dbt docs generate 时仍建议补上(实测列集更强)",
               file=sys.stderr)
     graph = build_graph(project)
+    unknown = _unknown_sources(project, graph)
+    if unknown:
+        shown = "、".join(unknown[:6]) + (f" ……共 {len(unknown)} 个" if len(unknown) > 6 else "")
+        print(f"⚠ {len(unknown)} 个被引用的源表列集未知(catalog 未覆盖且 sources yml 未声明列):\n"
+              f"    {shown}\n"
+              f"  血缘在这些表前截止,列归属仅靠拓扑推断,相关口径卡难以达到 VERIFIED;\n"
+              f"  修复:执行 dbt docs generate 生成 catalog,或在 sources yml 为上述表声明 columns",
+              file=sys.stderr)
     ncols = sum(len(m["columns"]) for m in graph["models"].values())
     nconds = sum(len(m["conditions"]) for m in graph["models"].values())
     nsem = sum(len(m["semantics"]) for m in graph["models"].values())
@@ -128,7 +160,7 @@ def cmd_trace(args):
             tree_txt = render_tree(tr)
     except Exception:
         tree_txt = None
-    print(render(t, tree=tree_txt))
+    print(render(t, tree=tree_txt, full=args.full))
 
 
 def cmd_synth(args):
@@ -173,9 +205,31 @@ def cmd_report(args):
     print(f"报告已导出: {out}({n} 张口径卡)")
 
 
+def _version() -> str:
+    try:
+        from importlib.metadata import version
+        return version("fineprint")
+    except Exception:
+        return "0+unknown"
+
+
+def _err_text(e: BaseException) -> str:
+    # KeyError 的 str() 会给消息包上引号,取原始 args 还原文案
+    if isinstance(e, KeyError) and len(e.args) == 1 and isinstance(e.args[0], str):
+        return e.args[0]
+    return str(e)
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="fineprint", description=__doc__,
+    # urllib3 在 LibreSSL 环境(macOS 系统 Python)每次 import 都告警一次,
+    # 与用户操作无关,按消息精确静默(不整类屏蔽,其余 urllib3 告警照常)
+    warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL")
+    has_govern = importlib.util.find_spec("fineprint.governance") is not None
+    doc = __doc__ if has_govern else "\n".join(
+        line for line in (__doc__ or "").splitlines() if "govern" not in line)
+    ap = argparse.ArgumentParser(prog="fineprint", description=doc,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--version", action="version", version=f"%(prog)s {_version()}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def common(p):
@@ -190,8 +244,10 @@ def main(argv=None):
     p = common(sub.add_parser("graph", help="构建字段级血缘图"))
     p.add_argument("--allow-partial", action="store_true", help="存在解析失败的列时仍以 0 退出")
     p.set_defaults(fn=cmd_graph)
-    p = common(sub.add_parser("trace", help="回溯 S/F/E 三元组"))
+    p = common(sub.add_parser("trace", help="口径树回溯(--full 附出处明细)"))
     p.add_argument("target", help="model.column")
+    p.add_argument("--full", action="store_true",
+                   help="在口径树下附完整出处明细(表达式链 E / 源字段 S / 逐条过滤条件 F)")
     p.set_defaults(fn=cmd_trace)
     p = common(sub.add_parser("synth", help="双通道口径合成(LLM)"))
     p.add_argument("--only", help="只重跑一个指标 key(从 active 批次补齐其余)")
@@ -200,14 +256,30 @@ def main(argv=None):
     p.add_argument("--strict", action="store_true", help="high 级漂移非零退出")
     p.add_argument("--dry-run", action="store_true", help="只对比不落盘")
     p.set_defaults(fn=cmd_drift)
-    common(sub.add_parser("govern", help="指纹扫描 + LLM 仲裁 → 治理报告")).set_defaults(fn=cmd_govern)
+    if has_govern:   # 治理组件未随发行版打包时不注册子命令:CLI 不宣传交付里没有的东西
+        common(sub.add_parser("govern", help="指纹扫描 + LLM 仲裁 → 治理报告")).set_defaults(fn=cmd_govern)
     p = common(sub.add_parser("report", help="口径卡导出 HTML"))
     p.add_argument("-o", "--output", help="输出文件(默认 .fineprint/caliber_report.html)")
     p.set_defaults(fn=cmd_report)
 
     args = ap.parse_args(argv)
-    args.fn(args)
+    try:
+        return args.fn(args)
+    except KeyboardInterrupt:
+        print("\n已中断", file=sys.stderr)
+        return 130
+    except Exception as e:
+        # 常见使用错误(缺 artifacts/配置、目标写错、批次未发布……)的异常文案
+        # 本身已可行动,统一在此收口成一行提示;真正的缺陷才需要堆栈,
+        # FINEPRINT_DEBUG=1 原样抛出
+        if os.environ.get("FINEPRINT_DEBUG"):
+            raise
+        expected = isinstance(e, (FileNotFoundError, ValueError, KeyError, RuntimeError))
+        head = "错误" if expected else f"内部错误({type(e).__name__})"
+        print(f"{head}: {_err_text(e)}", file=sys.stderr)
+        print("(FINEPRINT_DEBUG=1 可查看完整堆栈)", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
