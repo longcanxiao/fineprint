@@ -70,6 +70,19 @@ fineprint drift            # 口径漂移检测(--strict = CI 门禁:high 漂移
 
 配置都在 `fineprint.yml`(指标清单、语言 `zh|en`、词典)。`language` 同时驱动卡片内容与 CLI 自身输出(`FINEPRINT_LANG` 可覆盖)。LLM 凭据只走环境变量(项目根目录的 `.env` 会被读取):`FINEPRINT_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`,调优项 `_CONCURRENCY / _TIMEOUT / _RETRIES`。
 
+### 从 ≤0.8.3(`metriclens`)升级
+
+0.8.4 一次切净统一为 `fineprint`——PyPI 包名不变,无兼容垫片。迁移就是四个改名,格式全部未变:
+
+| 改名前 | 改名后 |
+|---|---|
+| `metriclens` 命令 · `import metriclens` | `fineprint` · `import fineprint` |
+| `metriclens.yml` | `fineprint.yml` —— `mv metriclens.yml fineprint.yml` |
+| `.metriclens/` 工作区 | `.fineprint/` —— `mv .metriclens .fineprint` 原样保留 LLM 缓存、口径批次与漂移历史 |
+| `METRICLENS_*` 环境变量 / `.env` 键 | `FINEPRINT_*`(值不用变) |
+
+0.8.9 起 CLI 会检测残留——旧配置文件、旧工作区目录、`METRICLENS_*` 键——并直接给出改名命令,不再只报"未找到"。
+
 **第三方 dbt 包**(Fivetran 连接器、共享的供应商模型等)按**数据源边界**处理,与 ODS 表同一约定:不解析其 SQL、文档与内部口径——血缘在其物化表处截止,卡片上带归属包标注。你治理*自己*的代码;他们的是上游基础设施。确属你所有的内部共享包,在 `fineprint.yml` 顶层声明 `internal_packages: [shared_models]` 后重建图即可看穿。
 
 FinePrint 的全部产物都在 `your-dbt-project/.fineprint/` 下——血缘图、口径卡批次(带原子 `active_run` 指针)、快照、漂移日志、LLM 缓存。

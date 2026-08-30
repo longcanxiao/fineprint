@@ -121,10 +121,17 @@ class MLConfig:
     def load(cls, project_dir: Path) -> "MLConfig":
         f = Path(project_dir) / "fineprint.yml"
         if not f.exists():
+            legacy = ""
+            if (Path(project_dir) / "metriclens.yml").exists():
+                # 0.8.4 品牌统一改名:老项目升级后最常见的第一脚,指路而非让人猜
+                legacy = t("\n检测到旧配置 metriclens.yml:0.8.4 起统一改名,执行 "
+                           "mv metriclens.yml fineprint.yml 即可(内容格式未变)",
+                           "\nfound legacy metriclens.yml: renamed in 0.8.4 — run "
+                           "mv metriclens.yml fineprint.yml (the format is unchanged)")
             raise FileNotFoundError(t(
-                f"未找到 {f}\n请先执行 fineprint init 生成配置,或手工创建(模板见 README)",
+                f"未找到 {f}\n请先执行 fineprint init 生成配置,或手工创建(模板见 README){legacy}",
                 f"{f} not found\nrun fineprint init to generate the config, "
-                f"or create it by hand (template in README)"))
+                f"or create it by hand (template in README){legacy}"))
         raw = yaml.safe_load(f.read_text()) or {}
         if not isinstance(raw, dict):
             raise ValueError(t(f"{f} 顶层须为映射(language/metrics/…),实得 {type(raw).__name__}",

@@ -44,8 +44,17 @@ def _graph(project):
     from fineprint.trace import load_graph
     p = project.graph_path()
     if not p.exists():
-        print(t(f"血缘图不存在({p});请先执行 fineprint graph",
-                f"lineage graph not found ({p}); run fineprint graph first"), file=sys.stderr)
+        legacy = ""
+        if (project.project_dir / ".metriclens" / "graph.json").exists():
+            # 0.8.4 工作区改名:整目录搬迁可保留 LLM 缓存/口径批次/漂移历史
+            legacy = t("\n检测到旧工作区 .metriclens/:0.8.4 起统一改名,执行 "
+                       "mv .metriclens .fineprint 可原样保留缓存、口径批次与漂移历史",
+                       "\nfound legacy .metriclens/ workspace: renamed in 0.8.4 — run "
+                       "mv .metriclens .fineprint to keep the cache, card batches "
+                       "and drift history intact")
+        print(t(f"血缘图不存在({p});请先执行 fineprint graph{legacy}",
+                f"lineage graph not found ({p}); run fineprint graph first{legacy}"),
+              file=sys.stderr)
         sys.exit(1)
     return load_graph(p)
 
@@ -240,11 +249,8 @@ def cmd_report(args):
 
 
 def _version() -> str:
-    try:
-        from importlib.metadata import version
-        return version("fineprint")
-    except Exception:
-        return "0+unknown"
+    from fineprint import __version__   # 单一事实源:包元数据(见 __init__)
+    return __version__
 
 
 def _err_text(e: BaseException) -> str:
@@ -292,7 +298,9 @@ def main(argv=None):
 
     p = common(sub.add_parser("init", help=t("生成 fineprint.yml 模板",
                                              "write a fineprint.yml template")))
-    p.add_argument("--force", action="store_true")
+    p.add_argument("--force", action="store_true",
+                   help=t("已存在 fineprint.yml 时覆盖重写",
+                          "overwrite an existing fineprint.yml"))
     p.set_defaults(fn=cmd_init)
     p = common(sub.add_parser("graph", help=t("构建字段级血缘图",
                                               "build the column-level lineage graph")))

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.8.9 (2026-08-30)
+
+Upgrade-experience fixes for the 0.8.4 rename, from field feedback:
+
+- **`fineprint.__version__` reads package metadata** instead of a hardcoded
+  copy (which had silently stuck at 0.8.5 while `--version` was correct).
+  Both now share one source of truth.
+- **Legacy leftovers are detected and pointed at, not silently ignored**:
+  a `metriclens.yml` next to a missing `fineprint.yml` gets
+  "`mv metriclens.yml fineprint.yml`" appended to the error; a `.metriclens/`
+  workspace next to a missing graph gets "`mv .metriclens .fineprint`
+  (keeps cache, card batches and drift history)"; `METRICLENS_*` keys in
+  `.env` print a rename warning at load, and `METRICLENS_LLM_*` in the
+  process environment is called out inside the missing-credential error.
+  Still no compat shims — the clean break stands; it just explains itself.
+- **README gains an "Upgrading from ≤0.8.3" table** (four renames, formats
+  unchanged) in both languages, with a pointer on the PyPI page.
+- **urllib3's LibreSSL warning is filtered at package import time**
+  (`fineprint/__init__.py`, plus a guard before `import requests` in
+  `fineprint.llm`) — previously the filter sat in `main()` and could lose
+  the race in environments that import urllib3 early. If the host imports
+  urllib3 before Python loads fineprint at all, that remains an
+  environment-level issue.
+- `init --force` now has help text.
+
 ## 0.8.8 (2026-08-30)
 
 **The tool now speaks English.** Every user-facing string — CLI help,

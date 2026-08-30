@@ -25,7 +25,10 @@ fineprint synth --project DIR              # 合成口径卡(需配置 LLM 端�
 fineprint drift --project DIR              # 漂移检测
 ```
 
-命令与 import 名统一为 `fineprint`(0.8.4 起)。CLI 与卡片双语(zh|en):
+命令与 import 名统一为 `fineprint`(0.8.4 起;老项目迁移 = 四个改名:
+CLI/import、`metriclens.yml`→`fineprint.yml`、`.metriclens/`→`.fineprint/`、
+`METRICLENS_*`→`FINEPRINT_*`,CLI 检测到残留会给出具体改名命令)。
+CLI 与卡片双语(zh|en):
 `fineprint.yml` 的 `language` 或 `FINEPRINT_LANG` 环境变量控制。
 LLM 端点经环境变量或项目根 `.env` 配置(`FINEPRINT_LLM_BASE_URL` /
 `FINEPRINT_LLM_API_KEY` / `FINEPRINT_LLM_MODEL`,调优项 `_CONCURRENCY` /

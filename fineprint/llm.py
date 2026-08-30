@@ -26,9 +26,13 @@ import uuid
 from functools import lru_cache
 from pathlib import Path
 
-import requests
+import warnings
 
-from fineprint.i18n import t
+# 兜底一道:Python API 直接 import fineprint.llm 也不放 urllib3 告警进来
+warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL")
+import requests  # noqa: E402
+
+from fineprint.i18n import t  # noqa: E402
 
 PROMPT_VER = "v4"
 
@@ -95,10 +99,12 @@ def set_cache_dir(p: Path | None):
 
 
 def load_dotenv(project_dir: Path):
-    """项目根 .env 里的 FINEPRINT_*/OPENAI_* 变量补进环境(不覆盖已有)。"""
+    """项目根 .env 里的 FINEPRINT_*/OPENAI_* 变量补进环境(不覆盖已有)。
+    旧 METRICLENS_* 键(≤0.8.3)不再生效——静默失效最伤人,点名提示改键。"""
     f = Path(project_dir) / ".env"
     if not f.exists():
         return
+    legacy = []
     for line in f.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -107,6 +113,28 @@ def load_dotenv(project_dir: Path):
         k = k.strip()
         if (k.startswith("FINEPRINT_") or k.startswith("OPENAI_")) and k not in os.environ:
             os.environ[k] = v.strip()
+        elif k.startswith("METRICLENS_"):
+            legacy.append(k)
+    if legacy:
+        import sys
+        print(t(f"⚠ {f} 含旧 METRICLENS_* 变量({len(legacy)} 个:{', '.join(legacy[:4])}"
+                f"{'…' if len(legacy) > 4 else ''}):0.8.4 起改名 FINEPRINT_*,"
+                f"旧键不再生效,请更新键名(值不用变)",
+                f"⚠ {f} contains legacy METRICLENS_* variables ({len(legacy)}: "
+                f"{', '.join(legacy[:4])}{'…' if len(legacy) > 4 else ''}): renamed to "
+                f"FINEPRINT_* in 0.8.4 — the old keys no longer take effect; "
+                f"update the key names (values unchanged)"), file=sys.stderr)
+
+
+def _legacy_env_hint() -> str:
+    """进程环境里带着旧 METRICLENS_LLM_*(shell export 的老配置):报错顺路指路。"""
+    if not any(k.startswith("METRICLENS_LLM_") for k in os.environ):
+        return ""
+    return t("\n(检测到旧 METRICLENS_LLM_* 环境变量:0.8.4 起改名 FINEPRINT_LLM_*,"
+             "旧名不再生效,改键名即可,值不用变)",
+             "\n(legacy METRICLENS_LLM_* environment variables detected: renamed to "
+             "FINEPRINT_LLM_* in 0.8.4 — the old names no longer take effect; "
+             "rename the keys, values unchanged)")
 
 
 @lru_cache(maxsize=1)
@@ -117,11 +145,12 @@ def settings() -> dict:
             "缺少 LLM 凭据:请设置 FINEPRINT_LLM_API_KEY(或 OPENAI_API_KEY),"
             "可放在被分析项目根目录的 .env 中",
             "Missing LLM credentials: set FINEPRINT_LLM_API_KEY (or OPENAI_API_KEY), "
-            "e.g. in a .env file at the analyzed project's root"))
+            "e.g. in a .env file at the analyzed project's root") + _legacy_env_hint())
     model = os.environ.get("FINEPRINT_LLM_MODEL")
     if not model:
         raise KeyError(t("缺少 FINEPRINT_LLM_MODEL(任意 OpenAI 兼容模型名)",
-                         "Missing FINEPRINT_LLM_MODEL (any OpenAI-compatible model name)"))
+                         "Missing FINEPRINT_LLM_MODEL (any OpenAI-compatible model name)")
+                       + _legacy_env_hint())
     base = (os.environ.get("FINEPRINT_LLM_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
     return {
         "api_key": key, "base_url": base, "model": model,

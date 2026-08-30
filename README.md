@@ -72,6 +72,19 @@ fineprint drift            # caliber drift check (--strict = CI gate: high drift
 
 Configuration lives in `fineprint.yml` (metrics list, language `zh|en`, lexicon). The `language` setting drives both card content and the CLI's own output (`FINEPRINT_LANG` overrides). LLM credentials are env-vars only (`.env` in the project root is honored): `FINEPRINT_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`, plus tuning knobs `_CONCURRENCY / _TIMEOUT / _RETRIES`.
 
+### Upgrading from ≤0.8.3 (`metriclens`)
+
+0.8.4 unified every name to `fineprint` in one clean break — same PyPI package, no compat shims. Migration is four renames; no format changed:
+
+| before | after |
+|---|---|
+| `metriclens` CLI · `import metriclens` | `fineprint` · `import fineprint` |
+| `metriclens.yml` | `fineprint.yml` — `mv metriclens.yml fineprint.yml` |
+| `.metriclens/` workspace | `.fineprint/` — `mv .metriclens .fineprint` keeps the LLM cache, card batches and drift history |
+| `METRICLENS_*` env / `.env` keys | `FINEPRINT_*` (values unchanged) |
+
+Since 0.8.9 the CLI detects leftovers — a legacy config file, workspace directory, or `METRICLENS_*` keys — and prints the exact rename instead of a bare "not found".
+
 **Third-party dbt packages** (Fivetran connectors, shared vendor models, …) are treated as **data-source boundaries**, the same convention as ODS tables: their SQL, docs and internal calibers are not parsed — lineage stops at their materialized tables, which appear on cards tagged with the owning package. You govern *your* code; theirs is upstream infrastructure. To see through an internal shared package you do own, list it under a top-level `internal_packages: [shared_models]` in `fineprint.yml` and rebuild the graph.
 
 Everything FinePrint produces lives under `your-dbt-project/.fineprint/` — graph, caliber card batches (with an atomic `active_run` pointer), snapshots, drift log, LLM cache.
