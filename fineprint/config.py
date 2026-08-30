@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""metriclens.yml 配置:指标清单、语言、业务词典、治理参数。
+"""fineprint.yml 配置:指标清单、语言、业务词典、治理参数。
 
 放在 dbt 项目根目录。密钥永不进配置文件——LLM 凭据只走环境变量(见 llm.py)。
 """
@@ -27,18 +27,18 @@ def _internal_packages_of(raw: dict) -> tuple:
 
 
 def read_internal_packages(project_dir) -> tuple:
-    """metriclens.yml 顶层 internal_packages:按一方代码解析的额外 dbt 包名单。
+    """fineprint.yml 顶层 internal_packages:按一方代码解析的额外 dbt 包名单。
 
-    独立于 MLConfig.load 的轻量读取器——`metriclens graph` 不要求完整配置
+    独立于 MLConfig.load 的轻量读取器——`fineprint graph` 不要求完整配置
     (可以没有 metrics),但第三方包的数据源边界判定必须在建图时就生效。"""
-    f = Path(project_dir) / "metriclens.yml"
+    f = Path(project_dir) / "fineprint.yml"
     if not f.exists():
         return ()
     raw = yaml.safe_load(f.read_text()) or {}
     return _internal_packages_of(raw) if isinstance(raw, dict) else ()
 
 EXAMPLE = """\
-# MetricLens 配置(放在 dbt 项目根目录)
+# FinePrint 配置(放在 dbt 项目根目录)
 language: zh            # 口径卡语言: zh | en
 metrics:                # 要合成口径卡的看板指标(model.column)
   - key: revenue
@@ -86,10 +86,10 @@ class MLConfig:
 
     @classmethod
     def load(cls, project_dir: Path) -> "MLConfig":
-        f = Path(project_dir) / "metriclens.yml"
+        f = Path(project_dir) / "fineprint.yml"
         if not f.exists():
             raise FileNotFoundError(
-                f"未找到 {f}\n请先执行 metriclens init 生成配置,或手工创建(模板见 README)")
+                f"未找到 {f}\n请先执行 fineprint init 生成配置,或手工创建(模板见 README)")
         raw = yaml.safe_load(f.read_text()) or {}
         if not isinstance(raw, dict):
             raise ValueError(f"{f} 顶层须为映射(language/metrics/…),实得 {type(raw).__name__}")

@@ -1,4 +1,4 @@
-# MetricLens
+# FinePrint
 
 **English** | [中文](README.zh.md)
 
@@ -6,7 +6,7 @@
 
 Ask your dashboard what a metric *actually* means.
 
-MetricLens reverse-engineers the business & technical definition ("caliber") of every dashboard metric from the SQL that already exists in your dbt project — no upfront semantic-layer registration, no manual documentation. It answers questions like:
+FinePrint reverse-engineers the business & technical definition ("caliber") of every dashboard metric from the SQL that already exists in your dbt project — no upfront semantic-layer registration, no manual documentation. It answers questions like:
 
 > *"Does this refund rate count refunds forever, or only within 14 days of payment?"*
 > *"Is GMV here net of instant refunds? Which layer excludes test accounts?"*
@@ -32,10 +32,10 @@ dbt artifacts ──────► │  sources / filters / expression chain (s
 - **Deterministic formula composer** (0.8): a third writer expands each metric's compiled SQL scope by scope into a provable formula — named sub-expressions at aggregation/window boundaries carry their defining grain, UNION branches and PIVOT columns expand deterministically, and the result must round-trip against channel 1's leaf sources plus the same lexicon/anchor validators the LLM faces. **The composer is the publishing authority for formulas; the LLM explains and narrates, and backstops only where the composer cannot prove** (multi-target combinations, scalar subqueries — each refusal carries a named machine reason). Calibrated on three public corpora across three dialects (Fivetran ad_reporting / postgres, Snowplow web / snowflake, Cal-ITP warehouse / bigquery): **25,402 of 25,412 real-world columns (99.96%) composed and proven**, every residual named.
 - Low-confidence cards go to a review queue instead of being published. Batches publish atomically — consumers never see a half-updated state.
 
-Beyond caliber cards, MetricLens ships two governance tools built on the same lineage:
+Beyond caliber cards, FinePrint ships two governance tools built on the same lineage:
 
-- **`metriclens drift`** — snapshots each metric's caliber (sources / condition fingerprints / semantics / expressions) and diffs across rebuilds: a 14→15-day window change surfaces as a `high` drift event on exactly the affected metrics.
-- **`metriclens govern`** — fingerprint scan finds duplicated metric materializations across tables (same sources + same conditions); an LLM arbitrates same-fingerprint pairs with different names ("count vs. ratio → distinct").
+- **`fineprint drift`** — snapshots each metric's caliber (sources / condition fingerprints / semantics / expressions) and diffs across rebuilds: a 14→15-day window change surfaces as a `high` drift event on exactly the affected metrics.
+- **`fineprint govern`** — fingerprint scan finds duplicated metric materializations across tables (same sources + same conditions); an LLM arbitrates same-fingerprint pairs with different names ("count vs. ratio → distinct").
 
 ## Quickstart
 
@@ -44,35 +44,35 @@ Beyond caliber cards, MetricLens ships two governance tools built on the same li
 > dbt install and no database needed.
 
 ```bash
-pip install fineprint       # from PyPI (imports as `metriclens`; CLI: fineprint / metriclens)
+pip install fineprint       # from PyPI — import name and CLI are both `fineprint`
 pip install -e .            # or from source, core CLI only
 pip install -e ".[demo,dev]"   # + benchmark warehouse / dashboard / test deps
 
 cd your-dbt-project
-dbt compile && dbt docs generate    # MetricLens reads artifacts only — no DB connection
+dbt compile && dbt docs generate    # FinePrint reads artifacts only — no DB connection
 
-metriclens init             # writes metriclens.yml — list your dashboard metrics (model.column;
+fineprint init             # writes fineprint.yml — list your dashboard metrics (model.column;
                             # package.model.column when two packages share a model name).
                             # dbt exposures, when declared, pre-fill a commented candidate list,
                             # and flow onto cards (consumers), drift alerts and governance weighting
-metriclens graph            # build the column-level lineage graph
-metriclens trace mart_orders.refund_rate_14d    # inspect one metric's S/F/E triple
+fineprint graph            # build the column-level lineage graph
+fineprint trace mart_orders.refund_rate_14d    # inspect one metric's S/F/E triple
 
-export METRICLENS_LLM_API_KEY=sk-...            # any OpenAI-compatible endpoint
-export METRICLENS_LLM_MODEL=deepseek-chat       # or gpt-4.1-mini, etc.
-metriclens synth            # synthesize caliber cards (cached, atomic batch publish)
-metriclens report           # export a self-contained HTML caliber report
+export FINEPRINT_LLM_API_KEY=sk-...            # any OpenAI-compatible endpoint
+export FINEPRINT_LLM_MODEL=deepseek-chat       # or gpt-4.1-mini, etc.
+fineprint synth            # synthesize caliber cards (cached, atomic batch publish)
+fineprint report           # export a self-contained HTML caliber report
 
-metriclens drift            # caliber drift check (--strict = CI gate: high drift
+fineprint drift            # caliber drift check (--strict = CI gate: high drift
                             #   exits 1 and leaves baseline + log untouched)
-metriclens govern           # duplicate-metric governance report
+fineprint govern           # duplicate-metric governance report
 ```
 
-Configuration lives in `metriclens.yml` (metrics list, language `zh|en`, lexicon, governance tuning). LLM credentials are env-vars only (`.env` in the project root is honored): `METRICLENS_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`.
+Configuration lives in `fineprint.yml` (metrics list, language `zh|en`, lexicon, governance tuning). LLM credentials are env-vars only (`.env` in the project root is honored): `FINEPRINT_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`.
 
-**Third-party dbt packages** (Fivetran connectors, shared vendor models, …) are treated as **data-source boundaries**, the same convention as ODS tables: their SQL, docs and internal calibers are not parsed — lineage stops at their materialized tables, which appear on cards tagged with the owning package. You govern *your* code; theirs is upstream infrastructure. To see through an internal shared package you do own, list it under a top-level `internal_packages: [shared_models]` in `metriclens.yml` and rebuild the graph.
+**Third-party dbt packages** (Fivetran connectors, shared vendor models, …) are treated as **data-source boundaries**, the same convention as ODS tables: their SQL, docs and internal calibers are not parsed — lineage stops at their materialized tables, which appear on cards tagged with the owning package. You govern *your* code; theirs is upstream infrastructure. To see through an internal shared package you do own, list it under a top-level `internal_packages: [shared_models]` in `fineprint.yml` and rebuild the graph.
 
-Everything MetricLens produces lives under `your-dbt-project/.metriclens/` — graph, caliber card batches (with an atomic `active_run` pointer), snapshots, drift log, governance report, LLM cache.
+Everything FinePrint produces lives under `your-dbt-project/.fineprint/` — graph, caliber card batches (with an atomic `active_run` pointer), snapshots, drift log, governance report, LLM cache.
 
 ## The 14-trap benchmark
 
@@ -94,7 +94,7 @@ Not yet: non-dbt pipelines (stored procedures, script-generated SQL, Flink/Spark
 
 ### Data egress & privacy
 
-Channel 2 sends **compiled model SQL, column descriptions from your schema.yml, your `metriclens.yml` lexicon, and metric context (titles, target columns, layer names, query filters, the deterministic evidence list, and earlier LLM extraction outputs being merged)** to the LLM endpoint you configure (`METRICLENS_LLM_BASE_URL`) — never warehouse data or credentials. If your SQL is sensitive, point it at a self-hosted or VPC endpoint; Channel 1 (lineage, drift, fingerprint scan) runs fully offline. LLM responses are cached content-addressed under `.metriclens/cache/` in your project — treat that directory as containing your SQL. Third-party dbt package SQL and docs never reach the LLM at all (data-source boundary, see above); SQL comments in your own models remain untrusted input to the LLM. Machine checks bound what a prompt-injected model can smuggle into a published card — verbatim quotes, evidence-bound clauses, and a channel-1 lexicon/aggregation screen over free-text fields all cap confidence on mismatch — but the prose wording itself is still LLM output and is not proven correct, so review cards from untrusted model code before publishing them to consumers.
+Channel 2 sends **compiled model SQL, column descriptions from your schema.yml, your `fineprint.yml` lexicon, and metric context (titles, target columns, layer names, query filters, the deterministic evidence list, and earlier LLM extraction outputs being merged)** to the LLM endpoint you configure (`FINEPRINT_LLM_BASE_URL`) — never warehouse data or credentials. If your SQL is sensitive, point it at a self-hosted or VPC endpoint; Channel 1 (lineage, drift, fingerprint scan) runs fully offline. LLM responses are cached content-addressed under `.fineprint/cache/` in your project — treat that directory as containing your SQL. Third-party dbt package SQL and docs never reach the LLM at all (data-source boundary, see above); SQL comments in your own models remain untrusted input to the LLM. Machine checks bound what a prompt-injected model can smuggle into a published card — verbatim quotes, evidence-bound clauses, and a channel-1 lexicon/aggregation screen over free-text fields all cap confidence on mismatch — but the prose wording itself is still LLM output and is not proven correct, so review cards from untrusted model code before publishing them to consumers.
 
 A demo dashboard (FastAPI + React) that renders caliber cards, drift badges, a governance console and a lineage canvas against the benchmark warehouse lives in `server/` + `dashboard/`.
 

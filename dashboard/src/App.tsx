@@ -99,7 +99,7 @@ export default function App() {
   return (
     <div className="wrap">
       <div className="topbar">
-        <h1>MetricLens · 业务大盘</h1>
+        <h1>FinePrint · 业务大盘</h1>
         <span className="sub">电商四域数仓 ODS→APP 全链路 · 每个指标卡都是口径卡入口</span>
         <span className="spacer" />
         {range && <span className="range-note">{range.start} ~ {range.end} · 环比 {ov?.prev_start} ~ {ov?.prev_end}</span>}

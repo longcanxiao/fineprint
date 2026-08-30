@@ -19,15 +19,15 @@ artifacts (manifest / catalog / compiled SQL) — zero database connection.
 ```bash
 pip install fineprint
 
-metriclens init  --project <dbt 项目目录>   # 生成 metriclens.yml 模板
-metriclens graph --project DIR              # 建血缘图(需先 dbt compile + docs generate)
-metriclens synth --project DIR              # 合成口径卡(需配置 LLM 端点)
-metriclens drift --project DIR              # 漂移检测
+fineprint init  --project <dbt 项目目录>   # 生成 fineprint.yml 模板
+fineprint graph --project DIR              # 建血缘图(需先 dbt compile + docs generate)
+fineprint synth --project DIR              # 合成口径卡(需配置 LLM 端点)
+fineprint drift --project DIR              # 漂移检测
 ```
 
-`fineprint` 与 `metriclens` 两个命令等价;import 名为 `metriclens`。
-LLM 端点经环境变量或项目根 `.env` 配置(`METRICLENS_LLM_BASE_URL` /
-`METRICLENS_LLM_API_KEY` / `METRICLENS_LLM_MODEL`),兼容 OpenAI 风格 API;
+命令与 import 名统一为 `fineprint`(0.8.4 起)。
+LLM 端点经环境变量或项目根 `.env` 配置(`FINEPRINT_LLM_BASE_URL` /
+`FINEPRINT_LLM_API_KEY` / `FINEPRINT_LLM_MODEL`),兼容 OpenAI 风格 API;
 `graph` / `trace` / `drift` 零 LLM 即可用。
 
 无 catalog 也能跑(列 schema 由 yml 声明 + 编译 SQL 拓扑推断补全);能执行

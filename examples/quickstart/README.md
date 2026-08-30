@@ -21,17 +21,17 @@ pip install fineprint
 ## 1. 建字段级血缘图(秒级,零 LLM)
 
 ```bash
-metriclens graph
+fineprint graph
 ```
 
 ```
-graph: 4 models, 15 columns, 7 conditions, 5 semantic points → .metriclens/graph.json  (dialect=duckdb)
+graph: 4 models, 15 columns, 7 conditions, 5 semantic points → .fineprint/graph.json  (dialect=duckdb)
 ```
 
 ## 2. 追口径:退款率的小字条款
 
 ```bash
-metriclens trace dm_refund_rate_1d.refund_rate
+fineprint trace dm_refund_rate_1d.refund_rate
 ```
 
 ```
@@ -71,7 +71,7 @@ cp .env.example .env    # 打开 .env 填入你的 key(OpenAI 风格 API 均可,
 ## 4. 双通道合成口径卡
 
 ```bash
-metriclens synth
+fineprint synth
 ```
 
 ```
@@ -88,8 +88,8 @@ metriclens synth
 ## 5. 导出口径卡报告
 
 ```bash
-metriclens report
-open .metriclens/caliber_report.html     # Windows: start,Linux: xdg-open
+fineprint report
+open .fineprint/caliber_report.html     # Windows: start,Linux: xdg-open
 ```
 
 ## 6. 漂移实验:有人悄悄把 14 天改成 30 天
@@ -97,14 +97,14 @@ open .metriclens/caliber_report.html     # Windows: start,Linux: xdg-open
 先建基线,再动手脚:
 
 ```bash
-metriclens drift        # 首次运行:基线快照已建立
+fineprint drift        # 首次运行:基线快照已建立
 ```
 
 打开 `target/compiled/fineprint_quickstart/models/dm/dm_refund_rate_1d.sql`,
 把 `INTERVAL 14 DAY` 改成 `INTERVAL 30 DAY`,然后:
 
 ```bash
-metriclens graph && metriclens drift
+fineprint graph && fineprint drift
 ```
 
 ```
@@ -132,8 +132,8 @@ dbt seed --profiles-dir . && dbt run --profiles-dir . && dbt docs generate --pro
 ---
 
 **备注**
-- 所有产物在 `.metriclens/`:血缘图、口径卡 JSON(`store/runs/<批次>/`)、
+- 所有产物在 `.fineprint/`:血缘图、口径卡 JSON(`store/runs/<批次>/`)、
   HTML 报告、漂移快照与日志。
-- `metriclens` 与 `fineprint` 两个命令等价。
-- PyPI 发行版为核心版,`metriclens govern`(重复建设治理)会提示未包含,
+- 命令统一为 `fineprint`(0.8.4 起;旧 `metriclens` 命令与 import 名一并退役)。
+- PyPI 发行版为核心版,`fineprint govern`(重复建设治理)会提示未包含,
   其余命令不受影响。

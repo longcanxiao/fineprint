@@ -12,7 +12,7 @@ paid_orders 的过滤同样约束分子行集——只看值路径会把 status=
 """
 from sqlglot import exp, parse_one
 
-from metriclens.lineage import dialect, table_key
+from fineprint.lineage import dialect, table_key
 
 _OPS = {exp.Div: ("÷", "分子", "分母"), exp.Mul: ("×", "左因子", "右因子"),
         exp.Add: ("+", "左项", "右项"), exp.Sub: ("−", "被减项", "减项")}
@@ -148,7 +148,7 @@ def _defining_hop(graph, comp, uid: str, col: str) -> tuple:
 
 def caliber_tree(project, graph, uid: str, column: str, t: dict) -> dict | None:
     """组合器产物 + trace 三元组 → 树结构;不可树化(top 缺失/结构不劈)返回 None。"""
-    from metriclens.render import _Composer
+    from fineprint.render import _Composer
     comp = _Composer(project, graph)
     root_uid = uid
     uid, column = _defining_hop(graph, comp, uid, column)

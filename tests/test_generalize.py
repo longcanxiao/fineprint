@@ -13,9 +13,9 @@ import sqlglot
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from metriclens.lineage import build_graph, row_scope_closure  # noqa: E402
-from metriclens.project import DbtProject  # noqa: E402
-from metriclens.trace import trace  # noqa: E402
+from fineprint.lineage import build_graph, row_scope_closure  # noqa: E402
+from fineprint.project import DbtProject  # noqa: E402
+from fineprint.trace import trace  # noqa: E402
 
 
 def _node(name, sql_rel, schema="main"):
@@ -148,9 +148,9 @@ class TestMetricKeyValidation:
     """metric key 直接拼接文件路径:逃逸/重复/保留名一律拒绝。"""
 
     def _load(self, tmp_path, keys):
-        from metriclens.config import MLConfig
+        from fineprint.config import MLConfig
         items = "\n".join(f"  - key: {json.dumps(k)}\n    target: m.c" for k in keys)
-        (tmp_path / "metriclens.yml").write_text(f"language: zh\nmetrics:\n{items}\n")
+        (tmp_path / "fineprint.yml").write_text(f"language: zh\nmetrics:\n{items}\n")
         return MLConfig.load(tmp_path)
 
     def test_path_escape_rejected(self, tmp_path):
@@ -191,8 +191,8 @@ class TestDriftGate:
     """strict 门禁语义:high 漂移时基线与事件日志均不推进,失败可复现。"""
 
     def _setup(self, rowset_project):
-        from metriclens.config import MetricDef, MLConfig
-        from metriclens.drift import run_check
+        from fineprint.config import MetricDef, MLConfig
+        from fineprint.drift import run_check
         cfg = MLConfig(metrics=[MetricDef(key="amt", title="amt", target="metric.amt")])
         g = build_graph(rowset_project)
         run_check(rowset_project, cfg, g)        # 建基线
@@ -227,19 +227,19 @@ class TestConfigDrift:
              "semantics": [], "exprs": {}}
 
     def test_target_changed_high(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         new = {**self._base, "target": "m.d"}
         assert [(e["kind"], e["severity"]) for e in diff_metric("k", self._base, new)] \
             == [("target_changed", "high")]
 
     def test_query_filter_changed_high(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         new = {**self._base, "query_filter": "channel = 'live'"}
         assert [(e["kind"], e["severity"]) for e in diff_metric("k", self._base, new)] \
             == [("query_filter_changed", "high")]
 
     def test_legacy_snapshot_without_key_silent(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         old = {k: v for k, v in self._base.items() if k != "query_filter"}
         new = {**self._base, "query_filter": "x = 1"}
         assert diff_metric("k", old, new) == []
@@ -249,24 +249,24 @@ class TestGrainAndAggSignature:
     """治理粒度签名:grain 沿 FROM 主链取第一个聚合层;空签名不可比(缺证不下结论)。"""
 
     def test_grain_from_cte_chain(self):
-        from metriclens.lineage import output_grain
+        from fineprint.lineage import output_grain
         ast = sqlglot.parse_one(
             "with agg as (select dt, sum(x) as gmv from t group by dt) "
             "select a.dt, a.gmv, b.y from agg a join other b on a.dt = b.dt", read="duckdb")
         assert output_grain(ast) == ["dt"]
 
     def test_grain_top_level_group(self):
-        from metriclens.lineage import output_grain
+        from fineprint.lineage import output_grain
         ast = sqlglot.parse_one("select dt, ch, sum(x) as v from t group by 1, 2", read="duckdb")
         assert output_grain(ast) == ["ch", "dt"]
 
     def test_grain_detail_empty(self):
-        from metriclens.lineage import output_grain
+        from fineprint.lineage import output_grain
         ast = sqlglot.parse_one("select id, x from t where x > 0", read="duckdb")
         assert output_grain(ast) == []
 
     def test_agg_signature_distinct_marked(self):
-        from metriclens.fingerprint import agg_signature
+        from fineprint.fingerprint import agg_signature
         t = {"expr_chain": [{"expr": "COUNT(DISTINCT user_id)"}, {"expr": "MIN(dt)"}]}
         assert agg_signature(t) == ("count:distinct", "min")
 
@@ -282,7 +282,7 @@ class TestLLMErrorClassification:
         return R()
 
     def test_401_fails_fast(self, monkeypatch):
-        from metriclens import llm
+        from fineprint import llm
         calls = {"n": 0}
 
         def fake_post(*a, **k):
@@ -295,7 +295,7 @@ class TestLLMErrorClassification:
         assert calls["n"] == 1
 
     def test_429_honors_retry_after(self, monkeypatch):
-        from metriclens import llm
+        from fineprint import llm
         r = self._fake_response(429)
         r.headers = {"Retry-After": "3"}
         seen = []
@@ -334,7 +334,7 @@ class TestParseFailureBoundary:
         assert [(s["table"], s["column"]) for s in t["sources"]] == [("broken", "v")]
 
     def test_composer_leafs_boundary(self, tmp_path):
-        from metriclens.render import _Composer
+        from fineprint.render import _Composer
         proj = self._proj(tmp_path)
         g = build_graph(proj)
         c = _Composer(proj, g).compose_target("model.p.consumer", "total")

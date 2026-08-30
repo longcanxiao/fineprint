@@ -16,7 +16,7 @@ from sqlglot.lineage import lineage as sg_lineage
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.simplify import simplify
 
-from metriclens.project import DbtProject
+from fineprint.project import DbtProject
 
 _DIALECT = "duckdb"
 
@@ -587,7 +587,7 @@ def model_agg_fns(raw_ast: exp.Expression) -> list:
 
 # ---------------- 图构建 ----------------
 def build_graph(project: DbtProject) -> dict:
-    from metriclens.project import rel3
+    from fineprint.project import rel3
     set_dialect(project.dialect)
     graph = {
         "meta": {
@@ -595,7 +595,7 @@ def build_graph(project: DbtProject) -> dict:
             "project_dir": str(project.project_dir),
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             # v3:models 主键 = dbt unique_id(逻辑身份),relations 反查键 = 物理三段名
-            "metriclens_graph_version": 3,
+            "fineprint_graph_version": 3,
         },
         "relations": {"models": dict(project.model_by_relation),
                       "sources": dict(project.source_by_relation),

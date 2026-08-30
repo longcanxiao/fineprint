@@ -4,17 +4,17 @@ import hashlib
 import json
 from pathlib import Path
 
-from metriclens.lineage import set_dialect
+from fineprint.lineage import set_dialect
 
 
 def load_graph(path: Path) -> dict:
     raw = Path(path).read_bytes()
     g = json.loads(raw)
-    ver = g.get("meta", {}).get("metriclens_graph_version", 0)
+    ver = g.get("meta", {}).get("fineprint_graph_version", 0)
     if ver < 3:
         raise ValueError(
             f"血缘图版本过旧(v{ver}):0.7 起身份体系升级为 unique_id 主键 + 物理三段反查键;"
-            f"请重新执行 metriclens graph(图是派生物,重建零成本)")
+            f"请重新执行 fineprint graph(图是派生物,重建零成本)")
     # 图文件指纹:卡片/治理报告/漂移快照据此绑定生成时的图,验收可检出混版本产物
     g.setdefault("meta", {})["graph_md5"] = hashlib.md5(raw).hexdigest()[:16]
     set_dialect(g.get("meta", {}).get("dialect", "duckdb"))
@@ -57,7 +57,7 @@ def resolve_model(graph: dict, ref: str) -> str:
     external = graph.get("relations", {}).get("external", {})
     pkgs = sorted({e["package"] for e in external.values() if e.get("name") == (nm or ref)})
     hint = (f"(属第三方包 {'/'.join(pkgs)},按数据源边界处理,不解析其内部口径;"
-            f"如需为其出卡,把包名加入 metriclens.yml 顶层 internal_packages 并重建图)"
+            f"如需为其出卡,把包名加入 fineprint.yml 顶层 internal_packages 并重建图)"
             if pkgs else "")
     raise KeyError(f"unknown model: {ref}{hint}")
 

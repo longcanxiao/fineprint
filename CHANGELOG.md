@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.4 (2026-08-30)
+
+**Unified naming: everything is `fineprint` now.** `import fineprint` works —
+the module directory, CLI command, config file (`fineprint.yml`), workspace
+directory (`.fineprint/`), and env-var prefix (`FINEPRINT_LLM_*`,
+`FINEPRINT_DB`, `FINEPRINT_GRAPH`) all carry the distribution name. The old
+`metriclens` module, CLI alias, `metriclens.yml`, `.metriclens/` and
+`METRICLENS_*` names are retired in one clean break (pre-1.0, day-one
+package — no compat shims to carry forever). Upgrading replaces the old
+module wholesale; rename your project's `metriclens.yml` → `fineprint.yml`,
+`.metriclens/` → `.fineprint/`, and `METRICLENS_*` env keys → `FINEPRINT_*`.
+The demo warehouse's physical duckdb filenames are data identity, not
+branding, and are unchanged.
+
 ## 0.8.3 (2026-08-30)
 
 **Caliber tree** (`metriclens/tree.py`): `trace` now leads with a tree view

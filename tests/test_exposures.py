@@ -12,12 +12,12 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from metriclens.cli import _exposure_candidates  # noqa: E402
-from metriclens.config import MLConfig  # noqa: E402
-from metriclens.drift import annotate_exposures  # noqa: E402
-from metriclens.governance import scan  # noqa: E402
-from metriclens.lineage import build_graph  # noqa: E402
-from metriclens.synth import target_exposures  # noqa: E402
+from fineprint.cli import _exposure_candidates  # noqa: E402
+from fineprint.config import MLConfig  # noqa: E402
+from fineprint.drift import annotate_exposures  # noqa: E402
+from fineprint.governance import scan  # noqa: E402
+from fineprint.lineage import build_graph  # noqa: E402
+from fineprint.synth import target_exposures  # noqa: E402
 from tests.test_generalize import _cat, _node, make_project  # noqa: E402
 
 EXPO = {

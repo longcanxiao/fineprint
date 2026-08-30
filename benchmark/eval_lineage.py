@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 from benchmark.paths import GRAPH
-from metriclens.trace import load_graph, trace
+from fineprint.trace import load_graph, trace
 
 
 def mnorm(s: str) -> str:

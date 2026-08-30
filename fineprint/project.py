@@ -11,7 +11,7 @@ import re
 from functools import cached_property
 from pathlib import Path
 
-from metriclens.config import read_internal_packages
+from fineprint.config import read_internal_packages
 
 ADAPTER_DIALECT = {
     "duckdb": "duckdb", "snowflake": "snowflake", "bigquery": "bigquery",
@@ -146,9 +146,9 @@ class DbtProject:
     def external_models(self) -> dict:
         """{'db.schema.alias': {name, alias, schema, database, package}} — 第三方包模型。
 
-        与 ODS 同一约定:它们是别人维护的数据源,MetricLens 不解析其 SQL、注释与
+        与 ODS 同一约定:它们是别人维护的数据源,FinePrint 不解析其 SQL、注释与
         内部口径,血缘在其物化表处截止,治理扫描与卡片合成均不覆盖。需要看穿的
-        内部共享包在 metriclens.yml 顶层 internal_packages 显式声明。"""
+        内部共享包在 fineprint.yml 顶层 internal_packages 显式声明。"""
         out = {}
         for uid, n in self.manifest["nodes"].items():
             if n.get("resource_type") != "model":
@@ -467,10 +467,10 @@ class DbtProject:
     # ---------------- 工作目录 ----------------
     @cached_property
     def workspace(self) -> Path:
-        """MetricLens 的全部产物都放在被分析项目的 .metriclens/ 下。"""
-        ws = self.project_dir / ".metriclens"
+        """FinePrint 的全部产物都放在被分析项目的 .fineprint/ 下。"""
+        ws = self.project_dir / ".fineprint"
         ws.mkdir(exist_ok=True)
         return ws
 
     def graph_path(self) -> Path:
-        return Path(os.environ.get("METRICLENS_GRAPH") or self.workspace / "graph.json")
+        return Path(os.environ.get("FINEPRINT_GRAPH") or self.workspace / "graph.json")

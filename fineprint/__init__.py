@@ -1,4 +1,4 @@
-"""MetricLens — metric caliber synthesis for dbt projects.
+"""FinePrint — metric caliber synthesis for dbt projects.
 
 Reverse-engineers the business & technical definition ("caliber") of every
 dashboard metric from your existing multi-layer SQL: deterministic column-level
@@ -8,4 +8,4 @@ as consumer-facing caliber cards.
 Distributed on PyPI as ``fineprint`` — read the fine print of your metrics;
 a decompiler for your dashboards.
 """
-__version__ = "0.8.3"
+__version__ = "0.8.4"

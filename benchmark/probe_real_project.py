@@ -22,9 +22,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from metriclens.lineage import build_graph  # noqa: E402
-from metriclens.project import DbtProject  # noqa: E402
-from metriclens.render import _Composer  # noqa: E402
+from fineprint.lineage import build_graph  # noqa: E402
+from fineprint.project import DbtProject  # noqa: E402
+from fineprint.render import _Composer  # noqa: E402
 
 # unsupported/ambiguous 原因归桶:前缀匹配,可枚举可修的清单
 REASON_BUCKETS = [
@@ -105,10 +105,10 @@ def main(argv=None):
     t0 = time.time()
     # 图缓存:大项目建图以 sqlglot lineage 为主开销(Cal-ITP 610 模型约 19 分钟),
     # 组合器迭代无须反复重建——manifest 未变则直接复用上次的图
-    cache = pdir / ".metriclens_probe_graph.json"
+    cache = pdir / ".fineprint_probe_graph.json"
     mani_mtime = (pdir / "target" / "manifest.json").stat().st_mtime
     if cache.exists() and cache.stat().st_mtime > mani_mtime and not args.rebuild_graph:
-        from metriclens.trace import load_graph
+        from fineprint.trace import load_graph
         graph = load_graph(cache)
         print(f"(复用缓存图 {cache.name};--rebuild-graph 可强制重建)")
     else:

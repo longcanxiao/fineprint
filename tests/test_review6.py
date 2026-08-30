@@ -9,10 +9,10 @@ import sqlglot
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from metriclens.config import MLConfig  # noqa: E402
-from metriclens.governance import scan  # noqa: E402
-from metriclens.lineage import agg_one, build_graph  # noqa: E402
-from metriclens.trace import trace  # noqa: E402
+from fineprint.config import MLConfig  # noqa: E402
+from fineprint.governance import scan  # noqa: E402
+from fineprint.lineage import agg_one, build_graph  # noqa: E402
+from fineprint.trace import trace  # noqa: E402
 
 from tests.test_generalize import _cat, _node, make_project  # noqa: E402
 
@@ -33,7 +33,7 @@ class TestCrossValidateIdentity:
             {"table": table, "column": "amount"}]}}}}
 
     def _run(self, table):
-        from metriclens.synth import cross_validate
+        from fineprint.synth import cross_validate
         return cross_validate(dict(self._t), self._hops(table), dict(_CLS), set(self._legal))
 
     def test_exact_three_part_matches(self):
@@ -59,7 +59,7 @@ class TestCrossValidateIdentity:
         assert self._run("orders")["confidence"] == "high"
 
     def test_unknown_db_on_chain_side_is_lenient(self):
-        from metriclens.synth import cross_validate
+        from fineprint.synth import cross_validate
         t = {"sources": [{"table": "orders", "schema": "erp", "database": "",
                           "column": "amount"}], "conditions": [], "semantics": []}
         v = cross_validate(t, self._hops("db9.erp.orders"), dict(_CLS), set())
@@ -79,17 +79,17 @@ class TestFormulaChainVocab:
         "relations": {"sources": {}}}
 
     def test_out_of_chain_real_column_caught_by_chain_vocab(self):
-        from metriclens.synth import build_vocab, verify_freetext
+        from fineprint.synth import build_vocab, verify_freetext
         c_idents, c_nums = build_vocab(self._t, "GMV", None, {}, None)
         assert verify_freetext("sum(refund_amt_14d)", c_idents, c_nums) == ["refund_amt_14d"]
 
     def test_chain_column_passes_chain_vocab(self):
-        from metriclens.synth import build_vocab, verify_freetext
+        from fineprint.synth import build_vocab, verify_freetext
         c_idents, c_nums = build_vocab(self._t, "GMV", None, {}, None)
         assert verify_freetext("sum(order_amt_cny)", c_idents, c_nums) == []
 
     def test_summary_still_allows_graph_objects(self):
-        from metriclens.synth import build_vocab, verify_freetext
+        from fineprint.synth import build_vocab, verify_freetext
         v_idents, v_nums = build_vocab(self._t, "GMV", None, {}, self._graph)
         assert verify_freetext("与 other.refund_amt_14d 口径不同", v_idents, v_nums) == []
 
@@ -138,20 +138,20 @@ class TestDriftTargetUid:
     _base = {"sources": [], "conditions": {}, "semantics": [], "exprs": {}}
 
     def test_same_uid_different_spelling_no_event(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         old = {**self._base, "target": "m.gmv", "target_uid": "model.p.m.gmv"}
         new = {**self._base, "target": "p.m.gmv", "target_uid": "model.p.m.gmv"}
         assert diff_metric("k", old, new) == []
 
     def test_uid_change_is_high(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         old = {**self._base, "target": "m.gmv", "target_uid": "model.p.m.gmv"}
         new = {**self._base, "target": "m.gmv", "target_uid": "model.p.m2.gmv"}
         assert [(e["kind"], e["severity"]) for e in diff_metric("k", old, new)] == \
             [("target_changed", "high")]
 
     def test_legacy_snapshot_falls_back_to_raw_target(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         old = {**self._base, "target": "m.gmv"}
         new = {**self._base, "target": "m2.gmv", "target_uid": "model.p.m2.gmv"}
         assert [e["kind"] for e in diff_metric("k", old, new)] == ["target_changed"]
@@ -242,7 +242,7 @@ class TestAggCaseEquivalence:
 class TestGraphBinding:
     def test_load_graph_stamps_md5_and_snapshot_carries_it(self, tmp_path):
         import json
-        from metriclens.trace import load_graph
+        from fineprint.trace import load_graph
         p = make_project(tmp_path,
                          nodes={"model.p.m1": _node("m1", "compiled/m1.sql")},
                          catalog_nodes={"model.p.m1": _cat("main", "m1", {"x": "INT"}),
@@ -253,8 +253,8 @@ class TestGraphBinding:
         f.write_text(json.dumps(g))
         loaded = load_graph(f)
         assert loaded["meta"]["graph_md5"]
-        from metriclens.config import MetricDef
-        from metriclens.drift import take_snapshot
+        from fineprint.config import MetricDef
+        from fineprint.drift import take_snapshot
         snap = take_snapshot(loaded, MLConfig(metrics=[MetricDef(key="k", title="k", target="m1.x")]))
         assert snap["graph_md5"] == loaded["meta"]["graph_md5"]
         assert snap["metrics"]["k"]["target_uid"] == "model.p.m1.x"

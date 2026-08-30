@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fineprint"
-version = "0.8.3"
+version = "0.8.4"
 description = "Read the fine print of your metrics — a decompiler for your dashboards: column-level lineage x LLM over dbt artifacts, evidence-bound caliber cards"
 readme = "README.pypi.md"
 license = "Apache-2.0"
@@ -35,10 +35,8 @@ dependencies = [
 # Changelog = "https://github.com/<org>/<repo>/blob/main/CHANGELOG.md"
 
 [project.scripts]
-# 发行名 fineprint(指标口径的"小字条款");import 名与既有 CLI 暂保持 metriclens,
-# 两个命令等价,全面改名另起版本
-fineprint = "metriclens.cli:main"
-metriclens = "metriclens.cli:main"
+# 0.8.4 起发行名/import 名/CLI 统一为 fineprint(旧 metriclens 名退役)
+fineprint = "fineprint.cli:main"
 
 [project.optional-dependencies]
 demo = [
@@ -48,11 +46,11 @@ demo = [
 dev = ["pytest", "ruff", "httpx"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["metriclens"]
+packages = ["fineprint"]
 
 # 发行物只含核心包:demo 数仓/看板/benchmark/设计文档/测试留在仓库,不随包发布
 [tool.hatch.build.targets.sdist]
-include = ["metriclens", "README.pypi.md", "LICENSE", "pyproject.toml"]
+include = ["fineprint", "README.pypi.md", "LICENSE", "pyproject.toml"]
 
 [tool.ruff]
 line-length = 120

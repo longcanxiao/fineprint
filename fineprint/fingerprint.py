@@ -7,8 +7,8 @@
 import sqlglot
 from sqlglot import exp
 
-from metriclens.lineage import agg_one as _agg_one
-from metriclens.lineage import dialect
+from fineprint.lineage import agg_one as _agg_one
+from fineprint.lineage import dialect
 
 
 def agg_signature(t: dict) -> tuple:

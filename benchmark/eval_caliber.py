@@ -9,7 +9,7 @@ import re
 import sys
 
 from benchmark.paths import WORKSPACE
-from metriclens.store import CaliberStore
+from fineprint.store import CaliberStore
 
 STORE = CaliberStore(WORKSPACE / "store")
 T8_PAIR = {"dm_trade_stats_1d.refund_amt", "dm_after_sale_stats_1d.refund_amt_total"}
@@ -62,14 +62,14 @@ CHECKS = [
 def main():
     # 前置硬门禁:卡片必须由当前血缘图生成——图重建后旧卡的揭示命中不作数
     from benchmark.paths import GRAPH
-    from metriclens.trace import load_graph
+    from fineprint.trace import load_graph
     cur_md5 = load_graph(GRAPH)["meta"].get("graph_md5")
     keys = [k for k in (STORE.index() or {}).get("cards", {})]
     stale = [k for k in keys if card(k).get("graph_md5") != cur_md5]
     if not keys or stale:
         print("=== 口径卡陷阱揭示评测 ===\n")
         print(f"  ✗ 口径卡与当前血缘图版本不一致(过期卡: {stale or '无卡'});"
-              f"请先 metriclens synth 重新生成整批后再验收: FAIL ❌")
+              f"请先 fineprint synth 重新生成整批后再验收: FAIL ❌")
         sys.exit(1)
 
     oks = 0

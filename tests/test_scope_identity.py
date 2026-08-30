@@ -11,8 +11,8 @@ from sqlglot import parse_one
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from metriclens.lineage import build_graph, extract_conditions, output_grain, row_scope_closure  # noqa: E402
-from metriclens.trace import trace  # noqa: E402
+from fineprint.lineage import build_graph, extract_conditions, output_grain, row_scope_closure  # noqa: E402
+from fineprint.trace import trace  # noqa: E402
 
 from tests.test_generalize import _cat, _node, make_project  # noqa: E402
 
@@ -62,7 +62,7 @@ class TestModelIdentity:
             sqls={"compiled/a.sql": "select 1 as x", "compiled/b.sql": "select 2 as x"}, **kw)
 
     def test_same_name_coexists_and_bare_ref_is_ambiguous(self, tmp_path):
-        from metriclens.trace import resolve_model
+        from fineprint.trace import resolve_model
         p = self._two_pkg_project(tmp_path)   # root 未知 → 全按一方:两模型以 uid 共存
         assert set(p.models) == {"model.pkg_a.orders", "model.pkg_b.orders"}
         g = build_graph(p)
@@ -70,7 +70,7 @@ class TestModelIdentity:
             resolve_model(g, "orders")
 
     def test_qualified_forms_resolve(self, tmp_path):
-        from metriclens.trace import display_name, resolve_model
+        from fineprint.trace import display_name, resolve_model
         g = build_graph(self._two_pkg_project(tmp_path))
         assert resolve_model(g, "pkg_a.orders") == "model.pkg_a.orders"
         assert resolve_model(g, "pkg_b:orders") == "model.pkg_b.orders"
@@ -81,7 +81,7 @@ class TestModelIdentity:
         assert t["expr_chain"][0]["model_uid"] == "model.pkg_a.orders"
 
     def test_unique_short_name_still_plain(self, tmp_path):
-        from metriclens.trace import display_name
+        from fineprint.trace import display_name
         n = _node("m1", "compiled/m1.sql")
         p = make_project(tmp_path, nodes={"model.p.m1": n},
                          catalog_nodes={"model.p.m1": _cat("main", "m1", {"x": "INT"})},
@@ -132,7 +132,7 @@ class TestExternalPackages:
 
     def test_internal_packages_via_yml_sees_through(self, tmp_path):
         (tmp_path / "proj").mkdir()
-        (tmp_path / "proj" / "metriclens.yml").write_text("internal_packages: [pkg_x]\n")
+        (tmp_path / "proj" / "fineprint.yml").write_text("internal_packages: [pkg_x]\n")
         own = _node("m1", "compiled/m1.sql")
         own["package_name"] = "p"
         ext = _node("ext_orders", "compiled/ext.sql", schema="vendor")
@@ -165,7 +165,7 @@ class TestSourceIdentity:
         assert p.source_by_relation == {"db.erp.orders": "orders", "db.crm.orders": "orders"}
 
     def test_fingerprint_distinguishes_schema(self):
-        from metriclens.governance import fingerprint_of
+        from fineprint.governance import fingerprint_of
         t1 = {"sources": [{"table": "orders", "schema": "erp", "column": "amount"}], "conditions": []}
         t2 = {"sources": [{"table": "orders", "schema": "crm", "column": "amount"}], "conditions": []}
         assert fingerprint_of(t1) != fingerprint_of(t2)
@@ -173,7 +173,7 @@ class TestSourceIdentity:
 
 class TestAggEquivalence:
     def _sig(self, expr):
-        from metriclens.lineage import agg_one as _agg_one
+        from fineprint.lineage import agg_one as _agg_one
         node = sqlglot.parse_one(expr, read="duckdb")
         return {_agg_one(f) for f in node.find_all(sqlglot.exp.AggFunc)}
 
@@ -190,7 +190,7 @@ class TestFreetextLexicon:
     """展示层自由文本(公式/定义/告诫)的字段引用与口径数字必须可溯源。"""
 
     def _vocab(self):
-        from metriclens.synth import build_vocab
+        from fineprint.synth import build_vocab
         t = {"expr_chain": [{"model": "dm_stats", "column": "refund_amt_14d",
                              "expr": "sum(refund_amt)"}],
              "sources": [{"table": "ods_refund", "schema": "ods", "column": "refund_amt"}],
@@ -199,42 +199,42 @@ class TestFreetextLexicon:
         return build_vocab(t, "退款率", None, {})
 
     def test_real_references_pass(self):
-        from metriclens.synth import verify_freetext
+        from fineprint.synth import verify_freetext
         idents, nums = self._vocab()
         assert verify_freetext("sum(dm_stats.refund_amt_14d) 窗口 14 天", idents, nums) == []
 
     def test_fabricated_column_caught(self):
-        from metriclens.synth import verify_freetext
+        from fineprint.synth import verify_freetext
         idents, nums = self._vocab()
         assert verify_freetext("sum(fake_table.fake_col)", idents, nums)
 
     def test_fabricated_number_caught(self):
-        from metriclens.synth import verify_freetext
+        from fineprint.synth import verify_freetext
         idents, nums = self._vocab()
         assert verify_freetext("限 15 天内的退款", idents, nums) == ["15"]
 
     def test_plain_prose_not_flagged(self):
-        from metriclens.synth import verify_freetext
+        from fineprint.synth import verify_freetext
         idents, nums = self._vocab()
         assert verify_freetext("Total payment amount attributed to each customer.",
                                idents, nums) == []
 
     def test_single_digit_window_caught(self):
-        from metriclens.synth import verify_freetext
+        from fineprint.synth import verify_freetext
         idents, nums = self._vocab()
         assert verify_freetext("限 7 天内退款", idents, nums) == ["7"]      # 篡改窗口
         assert verify_freetext("限 14 天内退款", idents, nums) == []        # 真实窗口
 
     def test_prose_formula_without_aggregation_caught(self):
-        from metriclens.synth import formula_agg_check
+        from fineprint.synth import formula_agg_check
         assert formula_agg_check("退款金额除以支付人数", {"sum", "count:distinct"})
 
     def test_fabricated_aggregation_caught(self):
-        from metriclens.synth import formula_agg_check
+        from fineprint.synth import formula_agg_check
         assert formula_agg_check("count(distinct order_id)", {"sum"})
 
     def test_matching_aggregation_passes(self):
-        from metriclens.synth import formula_agg_check
+        from fineprint.synth import formula_agg_check
         assert formula_agg_check("sum(refund_amt) / sum(pay_amt)", {"sum"}) == []
         assert formula_agg_check("count(*)", {"rowcount"}) == []
         assert formula_agg_check("avg(x)", {"sum", "count"}) == []          # 展开形豁免
@@ -272,8 +272,8 @@ class TestJoinCountQuality:
                           "join items i on o.id = i.order_id") == []               # 非行数型
 
     def test_scan_reports_sql_quality(self):
-        from metriclens.config import MLConfig
-        from metriclens.governance import scan
+        from fineprint.config import MLConfig
+        from fineprint.governance import scan
         graph = {"models": {"m": {"layer": "dm", "columns": {}, "conditions": [],
                                   "semantics": [{"type": "join_count", "column": "n", "line": 3,
                                                  "tables": ["a", "b"], "join_keys": ["a.k = b.k"]}]}},
@@ -286,8 +286,8 @@ class TestJoinCountQuality:
 
 class TestConfigContract:
     def _load(self, tmp_path, body):
-        from metriclens.config import MLConfig
-        (tmp_path / "metriclens.yml").write_text(body)
+        from fineprint.config import MLConfig
+        (tmp_path / "fineprint.yml").write_text(body)
         return MLConfig.load(tmp_path)
 
     def test_negative_max_llm_pairs_rejected(self, tmp_path):
@@ -331,12 +331,12 @@ class TestDriftSourcesFull:
             "conditions": {}, "semantics": [], "exprs": {}}
 
     def test_legacy_snapshot_no_false_positive(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         new = {**self._old, "sources_full": ["erp.orders.amount"]}
         assert diff_metric("k", dict(self._old), new) == []   # 老快照缺 full → 回退裸名
 
     def test_cross_schema_repoint_detected(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         old = {**self._old, "sources_full": ["erp.orders.amount"]}
         new = {**self._old, "sources_full": ["crm.orders.amount"]}
         kinds = {(e["kind"], e["severity"]) for e in diff_metric("k", old, new)}
@@ -344,7 +344,7 @@ class TestDriftSourcesFull:
 
     def test_cross_database_repoint_detected_with_full3(self):
         """0.7 物理三段版:跨 database 改指向(schema.table 不变)也可检出。"""
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         base = {**self._old, "sources_full": ["erp.orders.amount"]}
         old = {**base, "sources_full3": ["db1.erp.orders.amount"]}
         new = {**base, "sources_full3": ["db2.erp.orders.amount"]}

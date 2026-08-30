@@ -4,11 +4,11 @@
 #   ./scripts/release_public.sh          # 产物落 dist/
 #
 # 摘除内容(仓库本体一行不动):
-#   - 治理组件:metriclens/governance.py + metriclens/arbitrate.py 整文件删除
+#   - 治理组件:fineprint/governance.py + fineprint/arbitrate.py 整文件删除
 #     (synth 对 governance 是可选导入,缺席时卡片治理提示区为空;
 #      cli govern 缺席时给出友好提示;仲裁提示词与 arbitrate 同居一并缺席)
 #   - exposures 功能:git revert exposures 提交(EXPOSURES_COMMIT)
-# sdist 本就只含 metriclens/ + README.pypi.md + LICENSE(见 pyproject sdist 配置),
+# sdist 本就只含 fineprint/ + README.pypi.md + LICENSE(见 pyproject sdist 配置),
 # demo 数仓/看板/benchmark/设计文档/测试不随包发布。
 set -euo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
@@ -22,17 +22,17 @@ cd "$REPO"
 git worktree add --detach "$STAGE" HEAD >/dev/null
 cd "$STAGE"
 git revert --no-commit "$EXPOSURES_COMMIT" || { echo "revert 冲突:exposures 摘除需人工处理"; exit 1; }
-rm metriclens/governance.py metriclens/arbitrate.py
+rm fineprint/governance.py fineprint/arbitrate.py
 
 # 摘除后自检 1:被删符号不得残留于发行包
-! grep -rn "target_exposures\|exposures_by_model\|annotate_exposures" metriclens/ \
-  || { echo "exposures 残留于 metriclens/"; exit 1; }
-! grep -rn "^from metriclens.governance\|^from metriclens.arbitrate" metriclens/ \
+! grep -rn "target_exposures\|exposures_by_model\|annotate_exposures" fineprint/ \
+  || { echo "exposures 残留于 fineprint/"; exit 1; }
+! grep -rn "^from fineprint.governance\|^from fineprint.arbitrate" fineprint/ \
   || { echo "治理硬依赖残留"; exit 1; }
 
 # 摘除后自检 2:跑不依赖治理/exposures 的测试子集(revert 已删 test_exposures)
 PY="$REPO/.venv/bin/python"
-IGNORES=$(grep -rl "metriclens.governance\|metriclens.arbitrate" tests/ | sed 's/^/--ignore=/' | tr '\n' ' ')
+IGNORES=$(grep -rl "fineprint.governance\|fineprint.arbitrate" tests/ | sed 's/^/--ignore=/' | tr '\n' ' ')
 "$PY" -m pytest tests/ $IGNORES -q || { echo "摘除后测试子集失败"; exit 1; }
 
 rm -rf "$REPO/dist"
@@ -50,8 +50,8 @@ d = tempfile.mkdtemp(); venv.create(d, with_pip=False)
 whl = glob.glob("dist/*.whl")[0]
 subprocess.run(["uv", "pip", "install", "-q", "--python", os.path.join(d, "bin", "python"), whl], check=True)
 r = subprocess.run([os.path.join(d, "bin", "python"), "-c",
-    "import metriclens.synth as s; assert s.governance_scan is None; "
-    "import metriclens.cli, metriclens.drift, metriclens.render; print('smoke ok')"],
+    "import fineprint.synth as s; assert s.governance_scan is None; "
+    "import fineprint.cli, fineprint.drift, fineprint.render; print('smoke ok')"],
     capture_output=True, text=True, cwd=d)  # cwd 必须离开仓库根:-c 会把 cwd 注入 sys.path
 print(r.stdout.strip() or r.stderr.strip()); sys.exit(r.returncode)
 PYEOF

@@ -14,9 +14,9 @@ import sqlglot
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from metriclens.config import MLConfig  # noqa: E402
-from metriclens.governance import scan  # noqa: E402
-from metriclens.lineage import build_graph, output_unique_on  # noqa: E402
+from fineprint.config import MLConfig  # noqa: E402
+from fineprint.governance import scan  # noqa: E402
+from fineprint.lineage import build_graph, output_unique_on  # noqa: E402
 from tests.test_generalize import _cat, _node, make_project  # noqa: E402
 
 

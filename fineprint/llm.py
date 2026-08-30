@@ -2,11 +2,11 @@
 """LLM 客户端(OpenAI 兼容):温度 0、JSON 输出、结构校验、重试、内容寻址缓存。
 
 配置只走环境变量(或项目根 .env),密钥永不进配置文件:
-  METRICLENS_LLM_BASE_URL      默认 https://api.openai.com/v1
-  METRICLENS_LLM_API_KEY       必填(fallback: OPENAI_API_KEY)
-  METRICLENS_LLM_MODEL         必填,如 deepseek-chat / gpt-4.1-mini
-  METRICLENS_LLM_FAST_MODEL    可选,逐跳抽取用(默认 = MODEL)
-  METRICLENS_LLM_QUALITY_MODEL 可选,归并/业务口径用(默认 = MODEL)
+  FINEPRINT_LLM_BASE_URL      默认 https://api.openai.com/v1
+  FINEPRINT_LLM_API_KEY       必填(fallback: OPENAI_API_KEY)
+  FINEPRINT_LLM_MODEL         必填,如 deepseek-chat / gpt-4.1-mini
+  FINEPRINT_LLM_FAST_MODEL    可选,逐跳抽取用(默认 = MODEL)
+  FINEPRINT_LLM_QUALITY_MODEL 可选,归并/业务口径用(默认 = MODEL)
 
 推理型模型注意:思维链计入 max_tokens——content 为空或 JSON 被截断且
 finish_reason=length 时自动扩容重试(温度 0 下同预算必然复现)。
@@ -42,7 +42,7 @@ def _sem() -> threading.BoundedSemaphore:
     global _SEM
     with _SEM_GUARD:
         if _SEM is None:
-            n = max(1, int(os.environ.get("METRICLENS_LLM_CONCURRENCY", "8")))
+            n = max(1, int(os.environ.get("FINEPRINT_LLM_CONCURRENCY", "8")))
             _SEM = threading.BoundedSemaphore(n)
     return _SEM
 
@@ -63,7 +63,7 @@ def set_cache_dir(p: Path | None):
 
 
 def load_dotenv(project_dir: Path):
-    """项目根 .env 里的 METRICLENS_*/OPENAI_* 变量补进环境(不覆盖已有)。"""
+    """项目根 .env 里的 FINEPRINT_*/OPENAI_* 变量补进环境(不覆盖已有)。"""
     f = Path(project_dir) / ".env"
     if not f.exists():
         return
@@ -73,25 +73,25 @@ def load_dotenv(project_dir: Path):
             continue
         k, v = line.split("=", 1)
         k = k.strip()
-        if (k.startswith("METRICLENS_") or k.startswith("OPENAI_")) and k not in os.environ:
+        if (k.startswith("FINEPRINT_") or k.startswith("OPENAI_")) and k not in os.environ:
             os.environ[k] = v.strip()
 
 
 @lru_cache(maxsize=1)
 def settings() -> dict:
-    key = os.environ.get("METRICLENS_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    key = os.environ.get("FINEPRINT_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
     if not key:
         raise KeyError(
-            "缺少 LLM 凭据:请设置 METRICLENS_LLM_API_KEY(或 OPENAI_API_KEY),"
+            "缺少 LLM 凭据:请设置 FINEPRINT_LLM_API_KEY(或 OPENAI_API_KEY),"
             "可放在被分析项目根目录的 .env 中")
-    model = os.environ.get("METRICLENS_LLM_MODEL")
+    model = os.environ.get("FINEPRINT_LLM_MODEL")
     if not model:
-        raise KeyError("缺少 METRICLENS_LLM_MODEL(任意 OpenAI 兼容模型名)")
-    base = (os.environ.get("METRICLENS_LLM_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
+        raise KeyError("缺少 FINEPRINT_LLM_MODEL(任意 OpenAI 兼容模型名)")
+    base = (os.environ.get("FINEPRINT_LLM_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
     return {
         "api_key": key, "base_url": base, "model": model,
-        "fast_model": os.environ.get("METRICLENS_LLM_FAST_MODEL", model),
-        "quality_model": os.environ.get("METRICLENS_LLM_QUALITY_MODEL", model),
+        "fast_model": os.environ.get("FINEPRINT_LLM_FAST_MODEL", model),
+        "quality_model": os.environ.get("FINEPRINT_LLM_QUALITY_MODEL", model),
     }
 
 

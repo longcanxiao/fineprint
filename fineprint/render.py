@@ -23,7 +23,7 @@ from sqlglot import exp, parse_one
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.scope import build_scope
 
-from metriclens.lineage import dialect, open_world_tables, table_key
+from fineprint.lineage import dialect, open_world_tables, table_key
 
 MAX_HOPS = 512      # 纯兜底护栏:环由模型级/作用域级 in_progress 显式防护;
                     # 真实深度可观(Fivetran ad_reporting 跨源 rollup 实测 257 层,
@@ -738,7 +738,7 @@ def build_facts(project, graph: dict, t: dict, targets: list,
     """逐事实技术口径:formula(组合器合成)/ key_filters / sources / window /
     grain,均带 status 与机器原因。除 formula 外都是通道一既有确定性产物的
     显式归档(它们本就由机器作者)。"""
-    from metriclens.synth import formula_agg_check, verify_freetext
+    from fineprint.synth import formula_agg_check, verify_freetext
 
     comp = _Composer(project, graph)
     per_target = []
@@ -877,7 +877,7 @@ def _leaf_mismatch(graph: dict, t: dict, per_target: list) -> str | None:
 
 def attach_evidence(facts: dict, evidence: list) -> None:
     """把确定性证据清单的 ID 回挂到逐事实块(与 build_evidence 同键规则)。"""
-    from metriclens.synth import norm_text
+    from fineprint.synth import norm_text
     by_key = {(e["kind"], norm_text(e["text"])): e["id"] for e in evidence}
     facts["formula"]["evidence"] = sorted(
         e["id"] for e in evidence if e["kind"] == "expression")

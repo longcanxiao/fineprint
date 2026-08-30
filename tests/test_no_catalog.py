@@ -11,8 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from metriclens.lineage import build_graph  # noqa: E402
-from metriclens.project import DbtProject  # noqa: E402
+from fineprint.lineage import build_graph  # noqa: E402
+from fineprint.project import DbtProject  # noqa: E402
 from tests.test_generalize import _cat, _node, make_project  # noqa: E402
 
 

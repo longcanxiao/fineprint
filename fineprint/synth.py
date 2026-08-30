@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """口径合成流水线:双通道互验 + 技术/业务口径生成 + 批次化口径知识库。
 
-通道一 = 血缘引擎的确定性 S₁/F₁/E₁(metriclens.trace);
+通道一 = 血缘引擎的确定性 S₁/F₁/E₁(fineprint.trace);
 通道二 = LLM 逐跳解析单模型 SQL(独立输入,不喂通道一结果),原文引用机器校验防幻觉;
 归并输入只保留互验 matched 的条件;业务条款必须绑定确定性证据 ID;
 互验分歧 → 置信分级,低置信进审核队列不对外展示。
@@ -15,22 +15,22 @@ from datetime import datetime
 
 import sqlglot
 
-from metriclens import prompts
-from metriclens.config import MetricDef, MLConfig
-from metriclens.fingerprint import agg_signature
-from metriclens.fingerprint import base as colbase
+from fineprint import prompts
+from fineprint.config import MetricDef, MLConfig
+from fineprint.fingerprint import agg_signature
+from fineprint.fingerprint import base as colbase
 
 try:                                    # 治理是可选组件:公开发行版可整体缺席,
-    from metriclens.governance import scan as governance_scan
+    from fineprint.governance import scan as governance_scan
 except ImportError:                     # 缺席时卡片治理提示区为空,其余全量可用
     governance_scan = None
-from metriclens.lineage import dialect, fingerprint, normalize_condition
-from metriclens.llm import chat_json, fast_model, quality_model, set_cache_dir
-from metriclens.project import DbtProject
-from metriclens.render import (attach_evidence, build_facts, formula_authority,
+from fineprint.lineage import dialect, fingerprint, normalize_condition
+from fineprint.llm import chat_json, fast_model, quality_model, set_cache_dir
+from fineprint.project import DbtProject
+from fineprint.render import (attach_evidence, build_facts, formula_authority,
                                publication_status, race_formula)
-from metriclens.store import CaliberStore
-from metriclens.trace import display_name, resolve_model, trace
+from fineprint.store import CaliberStore
+from fineprint.trace import display_name, resolve_model, trace
 
 
 def norm_text(s: str) -> str:
@@ -85,7 +85,7 @@ def build_vocab(t: dict, title: str, query_filter, lexicon: dict, graph: dict | 
     """通道一确定性词表(标识符集 + 数字集):公式/定义/告诫等自由文本里的
     复合标识符(snake_case/带点引用)与口径数字必须能在这里找到出处。
     词表不含任何 LLM 产物,也不含 schema 文档——第三方 dbt 包的注释属不可信输入,
-    不得为卡片表述背书;lexicon 是用户在 metriclens.yml 亲手维护的一方配置,保留。
+    不得为卡片表述背书;lexicon 是用户在 fineprint.yml 亲手维护的一方配置,保留。
     graph=None 时是"链内词表"(只含本指标值链对象),供公式校验——公式写了项目里
     真实存在但不在本链的列就是错误公式,必须拦;传 graph 时并入全图模型/列/源表名,
     供摘要/告诫校验——对比说明引用真实对象不是词法幻觉,不拦。口径数字始终限

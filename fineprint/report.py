@@ -4,8 +4,8 @@ import html
 import json
 from pathlib import Path
 
-from metriclens.project import DbtProject
-from metriclens.store import CaliberStore
+from fineprint.project import DbtProject
+from fineprint.store import CaliberStore
 
 CSS = """
 :root { --ink:#1a222c; --sub:#46515e; --muted:#87909c; --line:#dfe3dc; --page:#f6f7f4;
@@ -86,7 +86,7 @@ def export_html(project: DbtProject, out: Path) -> int:
     store = CaliberStore(project.workspace / "store")
     d = store.active_dir()
     if d is None:
-        raise FileNotFoundError("没有已发布的口径批次;请先执行 metriclens synth")
+        raise FileNotFoundError("没有已发布的口径批次;请先执行 fineprint synth")
     idx = store.index() or {}
     cards = []
     for f in sorted(d.glob("*.json")):
@@ -94,8 +94,8 @@ def export_html(project: DbtProject, out: Path) -> int:
             cards.append(json.loads(f.read_text()))
     body = "".join(card_html(c) for c in cards)
     page = f"""<!doctype html><html><head><meta charset="utf-8">
-<title>MetricLens 口径卡</title><style>{CSS}</style></head><body><div class="wrap">
-<h1>MetricLens 口径卡</h1>
+<title>FinePrint 口径卡</title><style>{CSS}</style></head><body><div class="wrap">
+<h1>FinePrint 口径卡</h1>
 <p class="sub">批次 {_esc(idx.get("run_id"))} · {_esc(idx.get("at"))} · {len(cards)} 个指标 ·
 业务/技术双口径由血缘 × LLM 双通道互验生成,条款级证据编号可溯源</p>
 {body}</div></body></html>"""

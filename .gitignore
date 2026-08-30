@@ -12,7 +12,9 @@ warehouse/dbt_project/dbt_packages/
 warehouse/dbt_project/logs/
 logs/
 .metriclens/
+.fineprint/
 warehouse/dbt_project/.metriclens/
+warehouse/dbt_project/.fineprint/
 .env
 *.log
 .DS_Store

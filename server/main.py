@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MetricLens 大盘取数服务:读 DuckDB 数仓(APP 层为主,人数去重类指标辅以 DWM/DWD 明细)。"""
+"""FinePrint 大盘取数服务:读 DuckDB 数仓(APP 层为主,人数去重类指标辅以 DWM/DWD 明细)。"""
 import json
 from datetime import date, timedelta
 from pathlib import Path
@@ -9,8 +9,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from benchmark.paths import GRAPH, WORKSPACE
-from metriclens.store import CaliberStore
-from metriclens.trace import display_name, load_graph, trace as lineage_trace
+from fineprint.store import CaliberStore
+from fineprint.trace import display_name, load_graph, trace as lineage_trace
 
 DB = Path(__file__).resolve().parent.parent / "warehouse" / "metriclens.duckdb"
 _store = CaliberStore(WORKSPACE / "store")
@@ -26,7 +26,7 @@ def _graph():
     return _graph_cache["graph"]
 
 
-app = FastAPI(title="MetricLens API")
+app = FastAPI(title="FinePrint API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -260,7 +260,7 @@ def governance_report():
     f = GOV_STORE / "governance_report.json"
     if not f.exists():
         return {"generated_at": None, "duplicates": [], "distinct": [],
-                "note": "治理报告尚未生成(运行 metriclens govern --project <dbt 项目>)"}
+                "note": "治理报告尚未生成(运行 fineprint govern --project <dbt 项目>)"}
     return json.loads(f.read_text())
 
 

@@ -3,5 +3,5 @@ metriclens:
   outputs:
     dev:
       type: duckdb
-      path: "{{ env_var('METRICLENS_DB', '../metriclens.duckdb') }}"
+      path: "{{ env_var('FINEPRINT_DB', '../metriclens.duckdb') }}"
       threads: 4

@@ -10,11 +10,11 @@ import sqlglot
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from metriclens.lineage import fingerprint, normalize_condition  # noqa: E402
+from fineprint.lineage import fingerprint, normalize_condition  # noqa: E402
 
 # benchmark 数仓产物(不入库):本地 jobs/rebuild.sh 生成;CI 上跳过依赖它们的用例
 DB_EXISTS = (ROOT / "warehouse" / "metriclens.duckdb").exists()
-GRAPH_EXISTS = (ROOT / "warehouse" / "dbt_project" / ".metriclens" / "graph.json").exists()
+GRAPH_EXISTS = (ROOT / "warehouse" / "dbt_project" / ".fineprint" / "graph.json").exists()
 
 
 def _norm(sql):
@@ -34,22 +34,22 @@ class TestNormalize:
 
 class TestLLMValidators:
     def test_hop_rejects_missing_columns(self):
-        from metriclens.synth import validate_hop
+        from fineprint.synth import validate_hop
         with pytest.raises(ValueError):
             validate_hop({"filters": []})
 
     def test_hop_rejects_bad_filter(self):
-        from metriclens.synth import validate_hop
+        from fineprint.synth import validate_hop
         with pytest.raises(ValueError):
             validate_hop({"columns": {}, "filters": [{"kind": "where"}]})  # 缺 quote
 
     def test_merge_requires_formula(self):
-        from metriclens.synth import validate_merge
+        from fineprint.synth import validate_merge
         with pytest.raises(ValueError):
             validate_merge({"summary": "x"})
 
     def test_biz_requires_evidence_ids(self):
-        from metriclens.synth import validate_biz
+        from fineprint.synth import validate_biz
         with pytest.raises(ValueError):
             validate_biz({"definition": "x", "clauses": [{"text": "t", "basis": "b"}]})  # 缺 evidence_ids
 
@@ -58,17 +58,17 @@ class TestVerifyQuotes:
     """空引用/幻觉引用拒绝——直接调用生产函数 verify_quotes(非复刻逻辑)。"""
 
     def test_empty_quote_rejected(self):
-        from metriclens.synth import verify_quotes
+        from fineprint.synth import verify_quotes
         out = verify_quotes({"filters": [{"quote": "", "kind": "where"}]}, "select 1 from t where a=1")
         assert out["filters"][0]["quote_verified"] is False
 
     def test_fabricated_quote_rejected(self):
-        from metriclens.synth import verify_quotes
+        from fineprint.synth import verify_quotes
         out = verify_quotes({"filters": [{"quote": "b = 2", "kind": "where"}]}, "select 1 from t where a=1")
         assert out["filters"][0]["quote_verified"] is False
 
     def test_real_quote_passes(self):
-        from metriclens.synth import verify_quotes
+        from fineprint.synth import verify_quotes
         out = verify_quotes({"filters": [{"quote": "where  A=1", "kind": "where"}]},
                             "select 1 from t where a=1")
         assert out["filters"][0]["quote_verified"] is True
@@ -78,7 +78,7 @@ class TestCrossValidateSeeds:
     """seed / 未声明 source 的项目(如 jaffle_shop):通道一叶子表须计入源表集,不得恒判 S 漏。"""
 
     def test_seed_leaf_table_counts_as_source(self):
-        from metriclens.synth import cross_validate
+        from fineprint.synth import cross_validate
         t = {"sources": [{"table": "raw_payments", "column": "amount"}],
              "conditions": [], "semantics": []}
         hops = {"stg_payments": {"columns": {"amount": {
@@ -103,7 +103,7 @@ class TestStorePublish:
     """批次发布原子性:active 指针只认已完整落盘的 run 目录。"""
 
     def test_activate_and_read_back(self, tmp_path):
-        from metriclens.store import CaliberStore
+        from fineprint.store import CaliberStore
         st = CaliberStore(tmp_path)
         assert st.active_dir() is None                     # 无指针 → 无 active
         st.run_dir("abc123")
@@ -112,7 +112,7 @@ class TestStorePublish:
         assert st.active_dir() == tmp_path / "runs" / "abc123"
 
     def test_pointer_to_missing_dir_is_inactive(self, tmp_path):
-        from metriclens.store import CaliberStore
+        from fineprint.store import CaliberStore
         st = CaliberStore(tmp_path)
         st.activate("ghost")                               # 指针指向不存在的目录
         assert st.active_dir() is None
@@ -120,7 +120,7 @@ class TestStorePublish:
     def test_prune_keeps_recent(self, tmp_path):
         import os
         import time
-        from metriclens.store import CaliberStore
+        from fineprint.store import CaliberStore
         st = CaliberStore(tmp_path)
         for i, rid in enumerate(["r1", "r2", "r3", "r4"]):
             d = st.run_dir(rid)
@@ -143,55 +143,55 @@ class TestDriftDiff:
         return base
 
     def test_identical_no_events(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         assert diff_metric("k", self._snap(), self._snap()) == []
 
     def test_condition_change_high(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         new = self._snap(conditions={"fp2": {"sql": "a = 2", "kind": "where", "model": "m"}})
         ev = diff_metric("k", self._snap(), new)
         kinds = {(e["kind"], e["severity"]) for e in ev}
         assert ("condition_removed", "high") in kinds and ("condition_added", "high") in kinds
 
     def test_source_removed_high(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         ev = diff_metric("k", self._snap(), self._snap(sources=[]))
         assert [(e["kind"], e["severity"]) for e in ev] == [("source_removed", "high")]
 
     def test_semantic_change_high(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         new = self._snap(semantics=[["case_when", "m", "case when d <= 15 then x end"]])
         ev = diff_metric("k", self._snap(), new)
         assert {e["severity"] for e in ev} == {"high"}
         assert {e["kind"] for e in ev} == {"semantic_removed", "semantic_added"}
 
     def test_expr_changed_medium(self):
-        from metriclens.drift import diff_metric
+        from fineprint.drift import diff_metric
         ev = diff_metric("k", self._snap(), self._snap(exprs={"m.c": "sum(y)"}))
         assert [(e["kind"], e["severity"]) for e in ev] == [("expr_changed", "medium")]
 
 
 class TestArbitrate:
     def test_validator_rejects_bad_verdict(self):
-        from metriclens.arbitrate import validate_arb
+        from fineprint.arbitrate import validate_arb
         with pytest.raises(ValueError):
             validate_arb({"verdict": "maybe", "reason": "x"})
 
     def test_validator_accepts_good(self):
-        from metriclens.arbitrate import validate_arb
+        from fineprint.arbitrate import validate_arb
         validate_arb({"verdict": "distinct", "reason": "计数 vs 比率"})
 
 
 class TestConfig:
     def test_load_requires_metrics(self, tmp_path):
-        from metriclens.config import MLConfig
-        (tmp_path / "metriclens.yml").write_text("language: zh\nmetrics: []\n")
+        from fineprint.config import MLConfig
+        (tmp_path / "fineprint.yml").write_text("language: zh\nmetrics: []\n")
         with pytest.raises(ValueError):
             MLConfig.load(tmp_path)
 
     def test_load_roundtrip(self, tmp_path):
-        from metriclens.config import MLConfig
-        (tmp_path / "metriclens.yml").write_text(
+        from fineprint.config import MLConfig
+        (tmp_path / "fineprint.yml").write_text(
             "language: en\nmetrics:\n  - key: gmv\n    title: GMV\n    target: m.gmv\n")
         cfg = MLConfig.load(tmp_path)
         assert cfg.language == "en" and cfg.metric("gmv").target == "m.gmv"
@@ -226,7 +226,7 @@ class TestCaliberAPI:
     """口径 API 只读 active 批次;review 卡对外裁剪为状态占位。"""
 
     def _store_with(self, tmp_path, card):
-        from metriclens.store import CaliberStore
+        from fineprint.store import CaliberStore
         st = CaliberStore(tmp_path)
         d = st.run_dir("r1")
         (d / f"{card['metric_key']}.json").write_text(json.dumps(card))
