@@ -115,11 +115,20 @@ def cmd_graph(args):
 
 
 def cmd_trace(args):
-    from metriclens.trace import render, trace
+    from metriclens.trace import render, resolve_model, trace
     project = _project(args)
     graph = _graph(project)
     model, col = args.target.rsplit(".", 1)
-    print(render(trace(graph, model, col)))
+    t = trace(graph, model, col)
+    tree_txt = None
+    try:                                  # 口径树是展示增强:失败静默回退平铺视图
+        from metriclens.tree import caliber_tree, render_tree
+        tr = caliber_tree(project, graph, resolve_model(graph, model), col, t)
+        if tr:
+            tree_txt = render_tree(tr)
+    except Exception:
+        tree_txt = None
+    print(render(t, tree=tree_txt))
 
 
 def cmd_synth(args):

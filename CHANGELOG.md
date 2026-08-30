@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.3 (2026-08-30)
+
+**Caliber tree** (`metriclens/tree.py`): `trace` now leads with a tree view
+built from the composer's decomposition. The formula splits at its outermost
+arithmetic operator into numerator/denominator branches (transparent
+wrappers — ROUND/CAST/parens — are peeled first, and the skeleton like
+`ROUND(A / B, 6)` heads the tree); passthrough columns descend to the model
+where the caliber is actually defined. Each branch carries its expanded
+formula (aliases already resolved to real table names by the composer),
+its named subexpressions with defining grain, its **exclusive** conditions,
+and a layer-by-layer chain; conditions constraining both sides land in a
+shared group. Attribution is row-set-closure based, not value-path based —
+a join partner's filters (`status='paid'`, test-account exclusion)
+constrain the numerator too, so they group as common instead of being
+mis-assigned to one side. Display-only: nothing enters fingerprints or
+drift snapshots, and any failure falls back silently to the flat
+S/F/E view. Addresses three field reports on the old output: opaque
+one-letter aliases, undifferentiated numerator/denominator conditions,
+and the four-block reading cost.
+
 ## 0.8.2 (2026-08-30)
 
 Docs-only: the PyPI readme's LLM env-var names were wrong

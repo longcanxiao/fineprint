@@ -223,16 +223,21 @@ def trace(graph: dict, model: str, column: str) -> dict:
     }
 
 
-def render(t: dict) -> str:
+def render(t: dict, tree: str | None = None) -> str:
     L = []
-    L.append(f"◎ 目标: {t['target']}   (链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型)")
-    L.append("\n── 表达式链 E ──")
-    for e in t["expr_chain"]:
-        pad = "  " * e["depth"]
-        expr = (e["expr"] or "").replace('"', "")
-        if len(expr) > 96:
-            expr = expr[:96] + "…"
-        L.append(f"{pad}[{e['layer']}] {e['model']}.{e['column']} = {expr}")
+    if tree:
+        # 口径树在顶:公式按分支劈开,口径条件归到各自分支;下方保留出处明细
+        L.append(tree)
+        L.append(f"\n(链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型;以下为出处明细)")
+    else:
+        L.append(f"◎ 目标: {t['target']}   (链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型)")
+        L.append("\n── 表达式链 E ──")
+        for e in t["expr_chain"]:
+            pad = "  " * e["depth"]
+            expr = (e["expr"] or "").replace('"', "")
+            if len(expr) > 96:
+                expr = expr[:96] + "…"
+            L.append(f"{pad}[{e['layer']}] {e['model']}.{e['column']} = {expr}")
     L.append(f"\n── 源字段 S ({len(t['sources'])} 个) ──")
     for s in t["sources"]:
         tag = f"   ⟵ 第三方包 {s['package']}(数据源边界,内部口径不解析)" if s.get("package") else ""

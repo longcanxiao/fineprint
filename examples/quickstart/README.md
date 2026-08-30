@@ -35,26 +35,29 @@ metriclens trace dm_refund_rate_1d.refund_rate
 ```
 
 ```
-◎ 目标: dm.dm_refund_rate_1d.refund_rate   (链路 2 层,经过 3 个模型)
-
-── 表达式链 E ──
-[dm] dm_refund_rate_1d.refund_rate = SUM(COALESCE(r.refund_amount, 0)) / SUM(o.amount)
-  [staging] stg_refunds.refund_amount = t.refund_amount
-  [staging] stg_orders.amount = raw_orders.amount
-
-── 源字段 S (2 个) ──
-  raw_orders.amount
-  raw_refunds.refund_amount
-
-── 过滤条件 F (4 条业务条件 + 1 条纯关联键) ──
-  [where] status = 'paid'
-  [where] r.refunded_at <= o.paid_at + INTERVAL '14' DAY
-  [where] rn = 1
-  [where] is_test = 0
+◎ dm.dm_refund_rate_1d.refund_rate
+│  输出维度: stat_date = CAST(paid_at AS DATE)
+│  公式: A / B
+│
+├─ A 分子  SUM(COALESCE(refund_amount, 0))
+│  ├─ 其中 refund_amount = SUM(raw_refunds.refund_amount) 按 order_id 聚合(经 join)
+│  ├─ 口径: r.refunded_at <= o.paid_at + INTERVAL '14' DAY   (dm_refund_rate_1d.refund_14d)
+│  ├─ 口径: rn = 1   (stg_refunds)
+│  └─ 链路: stg_refunds → 本层
+│
+├─ B 分母  SUM(raw_orders.amount)
+│  └─ 链路: stg_orders → 本层
+│
+└─ 两侧共同口径
+   ├─ status = 'paid'   (dm_refund_rate_1d.paid_orders)
+   └─ is_test = 0   (stg_orders)
 ```
 
-四条小字条款一屏看全,每条都带源文件与行号:只算支付成功的单、
-退款要在支付后 14 天内、退款消息去过重、测试账号在清洗层就被剔掉了。
+公式在最外层运算处劈成分子/分母两支,小字条款各归其位:14 天窗口和
+去重是**分子专属**;"只算支付成功""剔测试账号"约束的是两侧共同的行集,
+归入**公共口径**(分子经 join 关联订单,同样被它们过滤——这正是只看
+值路径会归错的地方)。树下方还有带源文件行号的出处明细(条件 F/源字段 S/
+结构语义点)。
 
 这些条款不是摆设——本例数据里有一笔 200 元的退款发生在支付后第 19 天:
 14 天口径下 8 月 1 日退款率是 **30%**,若是 30 天口径就是 **80%**。
