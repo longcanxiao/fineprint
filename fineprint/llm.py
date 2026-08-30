@@ -7,6 +7,11 @@
   FINEPRINT_LLM_MODEL         必填,如 deepseek-chat / gpt-4.1-mini
   FINEPRINT_LLM_FAST_MODEL    可选,逐跳抽取用(默认 = MODEL)
   FINEPRINT_LLM_QUALITY_MODEL 可选,归并/业务口径用(默认 = MODEL)
+  FINEPRINT_LLM_TIMEOUT       可选,单次请求超时秒数(默认 180)
+  FINEPRINT_LLM_RETRIES       可选,最大重试轮数(默认 8)
+
+重试不再沉默:每次退避经 on_retry 钩子上报(默认打一行 stderr——错误类型/
+第几轮/等多久),长任务"几分钟没动静"的最大来源就是这里。
 
 推理型模型注意:思维链计入 max_tokens——content 为空或 JSON 被截断且
 finish_reason=length 时自动扩容重试(温度 0 下同预算必然复现)。
@@ -23,7 +28,34 @@ from pathlib import Path
 
 import requests
 
+from fineprint.i18n import t
+
 PROMPT_VER = "v4"
+
+
+def _print_retry(info: dict):
+    print(t(f"  ⟳ LLM 重试 {info['attempt']}/{info['max']}({info['error']}),"
+            f"等待 {info['wait']:.1f}s",
+            f"  ⟳ LLM retry {info['attempt']}/{info['max']} ({info['error']}), "
+            f"waiting {info['wait']:.1f}s"), file=__import__("sys").stderr, flush=True)
+
+
+# 重试上报钩子:默认一行 stderr;synth --json 模式替换为 JSONL 事件发射器
+on_retry = _print_retry
+
+
+def _timeout() -> float:
+    try:
+        return max(1.0, float(os.environ.get("FINEPRINT_LLM_TIMEOUT", "180")))
+    except ValueError:
+        return 180.0
+
+
+def _retries() -> int:
+    try:
+        return max(1, int(os.environ.get("FINEPRINT_LLM_RETRIES", "8")))
+    except ValueError:
+        return 8
 _CACHE_DIR: Path | None = None
 # 同 key 并发去重:首跑全 miss 时,多个指标途经同一模型会同时发起相同请求,
 # 各拿到不同回答导致下游 prompt 分叉、缓存键漂移(温度 0 也不保证逐字节一致)
@@ -81,12 +113,15 @@ def load_dotenv(project_dir: Path):
 def settings() -> dict:
     key = os.environ.get("FINEPRINT_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
     if not key:
-        raise KeyError(
+        raise KeyError(t(
             "缺少 LLM 凭据:请设置 FINEPRINT_LLM_API_KEY(或 OPENAI_API_KEY),"
-            "可放在被分析项目根目录的 .env 中")
+            "可放在被分析项目根目录的 .env 中",
+            "Missing LLM credentials: set FINEPRINT_LLM_API_KEY (or OPENAI_API_KEY), "
+            "e.g. in a .env file at the analyzed project's root"))
     model = os.environ.get("FINEPRINT_LLM_MODEL")
     if not model:
-        raise KeyError("缺少 FINEPRINT_LLM_MODEL(任意 OpenAI 兼容模型名)")
+        raise KeyError(t("缺少 FINEPRINT_LLM_MODEL(任意 OpenAI 兼容模型名)",
+                         "Missing FINEPRINT_LLM_MODEL (any OpenAI-compatible model name)"))
     base = (os.environ.get("FINEPRINT_LLM_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
     return {
         "api_key": key, "base_url": base, "model": model,
@@ -131,7 +166,8 @@ def _request(cfg: dict, model: str, system: str, user: str, max_tokens: int,
              validator, cf: Path | None) -> dict:
     last_err = None
     budget = max_tokens
-    for attempt in range(8):
+    max_attempts = _retries()
+    for attempt in range(max_attempts):
         payload = {
             "model": model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -142,14 +178,16 @@ def _request(cfg: dict, model: str, system: str, user: str, max_tokens: int,
         retry_after = None
         try:
             with _sem():
-                r = requests.post(f"{cfg['base_url']}/chat/completions", timeout=180,
+                r = requests.post(f"{cfg['base_url']}/chat/completions", timeout=_timeout(),
                                   headers={"Authorization": f"Bearer {cfg['api_key']}"}, json=payload)
             if r.status_code in (408, 429) or r.status_code >= 500:
                 retry_after = r.headers.get("Retry-After")
                 raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
             if 400 <= r.status_code < 500:
                 # 凭据/模型名/请求体错误重试不会好转,速死并给出可行动信息
-                raise FatalLLMError(f"HTTP {r.status_code}(不可重试,请检查 API key/模型名/请求): {r.text[:300]}")
+                raise FatalLLMError(t(
+                    f"HTTP {r.status_code}(不可重试,请检查 API key/模型名/请求): {r.text[:300]}",
+                    f"HTTP {r.status_code} (not retryable — check API key/model name/request): {r.text[:300]}"))
             ch = r.json()["choices"][0]
             content = ch["message"]["content"] or ""
             if not content.strip():
@@ -175,6 +213,13 @@ def _request(cfg: dict, model: str, system: str, user: str, max_tokens: int,
             raise
         except Exception as e:
             last_err = e
-            if attempt < 7:                  # 最后一轮失败直接抛出,不再空等退避
-                time.sleep(_backoff(attempt, retry_after))
-    raise RuntimeError(f"LLM 调用失败(重试 8 次): {last_err}")
+            if attempt < max_attempts - 1:   # 最后一轮失败直接抛出,不再空等退避
+                wait = _backoff(attempt, retry_after)
+                try:
+                    on_retry({"attempt": attempt + 1, "max": max_attempts, "model": model,
+                              "error": f"{type(e).__name__}: {str(e)[:120]}", "wait": wait})
+                except Exception:
+                    pass                     # 上报钩子绝不反噬调用
+                time.sleep(wait)
+    raise RuntimeError(t(f"LLM 调用失败(重试 {max_attempts} 次): {last_err}",
+                         f"LLM call failed after {max_attempts} attempts: {last_err}"))

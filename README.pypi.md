@@ -25,15 +25,17 @@ fineprint synth --project DIR              # 合成口径卡(需配置 LLM 端�
 fineprint drift --project DIR              # 漂移检测
 ```
 
-命令与 import 名统一为 `fineprint`(0.8.4 起)。
+命令与 import 名统一为 `fineprint`(0.8.4 起)。CLI 与卡片双语(zh|en):
+`fineprint.yml` 的 `language` 或 `FINEPRINT_LANG` 环境变量控制。
 LLM 端点经环境变量或项目根 `.env` 配置(`FINEPRINT_LLM_BASE_URL` /
-`FINEPRINT_LLM_API_KEY` / `FINEPRINT_LLM_MODEL`),兼容 OpenAI 风格 API;
+`FINEPRINT_LLM_API_KEY` / `FINEPRINT_LLM_MODEL`,调优项 `_CONCURRENCY` /
+`_TIMEOUT` / `_RETRIES`),兼容 OpenAI 风格 API;
 `graph` / `trace` / `drift` 零 LLM 即可用。
 
 无 catalog 也能跑(列 schema 由 yml 声明 + 编译 SQL 拓扑推断补全);能执行
 `dbt docs generate` 时仍建议补上,实测列集更可靠。
 
-**Roadmap**(暂未随本发行版打包):重复指标治理 `fineprint govern`(指纹扫描 +
-LLM 仲裁)、dbt exposures 集成(指标候选预填 + 看板消费方标注)、非 dbt SQL 管道。
+**Roadmap**(不随本发行版打包):2.0 = 重复指标治理 `fineprint govern`(指纹扫描 +
+LLM 仲裁)与 dbt exposures 集成(指标候选预填 + 看板消费方标注);另有非 dbt SQL 管道。
 
 License: Apache-2.0

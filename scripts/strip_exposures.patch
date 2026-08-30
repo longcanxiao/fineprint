@@ -1,8 +1,8 @@
 diff --git a/fineprint/cli.py b/fineprint/cli.py
-index b05b0ab..0541401 100644
+index 33429fd..453b956 100644
 --- a/fineprint/cli.py
 +++ b/fineprint/cli.py
-@@ -36,60 +36,14 @@ def _graph(project):
+@@ -50,62 +50,16 @@ def _graph(project):
      return load_graph(p)
  
  
@@ -44,32 +44,35 @@ index b05b0ab..0541401 100644
 -
 -
  def cmd_init(args):
-     from fineprint.config import EXAMPLE
+     from fineprint.config import example_yml
      f = Path(args.project) / "fineprint.yml"
      if f.exists() and not args.force:
-         print(f"{f} 已存在(--force 覆盖)")
+         print(t(f"{f} 已存在(--force 覆盖)", f"{f} already exists (--force to overwrite)"))
          return
--    text, tip = EXAMPLE, ""
+-    text, tip = example_yml(), ""
 -    try:
 -        block = _exposure_candidates(_project(args))
 -        if block:
 -            text += block
--            tip = ";已按 dbt exposures 预填指标候选(文件尾部注释)"
+-            tip = t(";已按 dbt exposures 预填指标候选(文件尾部注释)",
+-                    "; metric candidates pre-filled from dbt exposures (commented, end of file)")
 -    except Exception:
 -        pass          # artifacts 尚未编译时 init 仍可用,只出模板
 -    f.write_text(text)
--    print(f"已生成 {f}\n下一步:填入 metrics(model.column){tip},"
--          f"设置 LLM 环境变量(见 README),然后 fineprint graph")
-+    f.write_text(EXAMPLE)
-+    print(f"已生成 {f}\n下一步:填入 metrics(model.column),设置 LLM 环境变量(见 README),然后 fineprint graph")
+-    print(t(f"已生成 {f}\n下一步:填入 metrics(model.column){tip},"
++    f.write_text(example_yml())
++    print(t(f"已生成 {f}\n下一步:填入 metrics(model.column),"
+             f"设置 LLM 环境变量(见 README),然后 fineprint graph",
+-            f"wrote {f}\nnext: fill in metrics (model.column){tip}, "
++            f"wrote {f}\nnext: fill in metrics (model.column), "
+             f"set the LLM env vars (see README), then run fineprint graph"))
  
  
- def _unknown_sources(project, graph) -> list:
 diff --git a/fineprint/drift.py b/fineprint/drift.py
-index 0918bd5..a1e9e15 100644
+index 9784f55..68b4f8f 100644
 --- a/fineprint/drift.py
 +++ b/fineprint/drift.py
-@@ -182,30 +182,6 @@ def append_events(project: DbtProject, events: list, from_at: str, to_at: str):
+@@ -183,30 +183,6 @@ def append_events(project: DbtProject, events: list, from_at: str, to_at: str):
          tmp.replace(f)
  
  
@@ -100,19 +103,21 @@ index 0918bd5..a1e9e15 100644
  def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True,
                block_high: bool = False) -> list:
      """基线不存在则建立基线(无事件);否则对比最近快照。
-@@ -221,7 +197,6 @@ def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True
-         print(f"基线快照已建立({len(cur['metrics'])} 个指标),无对比对象")
+@@ -224,7 +200,6 @@ def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True
+                 f"nothing to compare against"))
          return []
      events = diff_snapshots(prev, cur)
 -    annotate_exposures(events, cfg, graph)
      blocked = block_high and any(e["severity"] == "high" for e in events)
      if save and not blocked:
          if events:
-@@ -242,5 +217,4 @@ def print_events(events: list):
+@@ -249,7 +224,4 @@ def print_events(events: list):
          mark = {"high": "⚠", "medium": "·", "info": "i"}[e["severity"]]
          d = e["detail"]
          brief = d.get("sql") or d.get("source") or d.get("column") or ""
--        tail = f"  ⇒ 消费方: {', '.join(e['exposures'][:3])}" if e.get("exposures") else ""
+-        tail = (t(f"  ⇒ 消费方: {', '.join(e['exposures'][:3])}",
+-                  f"  ⇒ consumers: {', '.join(e['exposures'][:3])}")
+-                if e.get("exposures") else "")
 -        print(f"  {mark} [{e['severity']:<6}] {e['metric_key']:<26} {e['kind']:<18} {brief[:70]}{tail}")
 +        print(f"  {mark} [{e['severity']:<6}] {e['metric_key']:<26} {e['kind']:<18} {brief[:70]}")
 diff --git a/fineprint/governance.py b/fineprint/governance.py
@@ -156,10 +161,10 @@ index cd8bc5a..fcdf46e 100644
      fk_by_uid: dict = {}
      for e in project.declared_tests["fk"]:
 diff --git a/fineprint/project.py b/fineprint/project.py
-index 452baf2..3a601ea 100644
+index 42e02a5..dd4ccd4 100644
 --- a/fineprint/project.py
 +++ b/fineprint/project.py
-@@ -168,26 +168,6 @@ class DbtProject:
+@@ -175,26 +175,6 @@ class DbtProject:
                  "database": n.get("database"), "package": n.get("package_name")}
          return out
  
@@ -187,10 +192,10 @@ index 452baf2..3a601ea 100644
      def declared_tests(self) -> dict:
          """dbt schema 测试的基数声明(声明性证据,dbt 会按数据定期实测):
 diff --git a/fineprint/synth.py b/fineprint/synth.py
-index e8bd095..4f92d98 100644
+index 3c64768..c3c7916 100644
 --- a/fineprint/synth.py
 +++ b/fineprint/synth.py
-@@ -406,18 +406,6 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set,
+@@ -472,18 +472,6 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set,
  
  
  # ---------------- 单指标流水线 ----------------
@@ -209,7 +214,7 @@ index e8bd095..4f92d98 100644
  def merged_trace(graph: dict, m: MetricDef) -> dict:
      model, col = m.target.rsplit(".", 1)
      t = trace(graph, model, col)
-@@ -637,7 +625,6 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
+@@ -712,7 +700,6 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
          "confidence": val["confidence"],
          "status": "published" if val["confidence"] in ("high", "medium") else "review",
          "publication_status": pub_status,

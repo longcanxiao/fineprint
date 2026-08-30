@@ -36,10 +36,10 @@ Beyond caliber cards, the same lineage powers drift detection:
 
 - **`fineprint drift`** — snapshots each metric's caliber (sources / condition fingerprints / semantics / expressions) and diffs across rebuilds: a 14→15-day window change surfaces as a `high` drift event on exactly the affected metrics.
 
-**Roadmap** (prototyped in this repo, not yet part of the PyPI distribution):
+**Roadmap** (prototyped in this repo, not part of the PyPI distribution; see [docs/stability.md](docs/stability.md)):
 
-- **`fineprint govern`** — duplicate-metric governance: a fingerprint scan finds duplicated metric materializations across tables (same sources + same conditions), and an LLM arbitrates same-fingerprint pairs with different names ("count vs. ratio → distinct").
-- **dbt exposures integration** — auto-discovered metric candidates pre-filled into `fineprint.yml`, and dashboard consumers annotated onto cards, drift alerts and governance weighting.
+- **2.0 — `fineprint govern`**, duplicate-metric governance: a fingerprint scan finds duplicated metric materializations across tables (same sources + same conditions), and an LLM arbitrates same-fingerprint pairs with different names ("count vs. ratio → distinct").
+- **2.0 — dbt exposures integration**: auto-discovered metric candidates pre-filled into `fineprint.yml`, and dashboard consumers annotated onto cards, drift alerts and governance weighting.
 - Non-dbt SQL pipelines (see [Status & scope](#status--scope)).
 
 ## Quickstart
@@ -70,7 +70,7 @@ fineprint drift            # caliber drift check (--strict = CI gate: high drift
                             #   exits 1 and leaves baseline + log untouched)
 ```
 
-Configuration lives in `fineprint.yml` (metrics list, language `zh|en`, lexicon). LLM credentials are env-vars only (`.env` in the project root is honored): `FINEPRINT_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`.
+Configuration lives in `fineprint.yml` (metrics list, language `zh|en`, lexicon). The `language` setting drives both card content and the CLI's own output (`FINEPRINT_LANG` overrides). LLM credentials are env-vars only (`.env` in the project root is honored): `FINEPRINT_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`, plus tuning knobs `_CONCURRENCY / _TIMEOUT / _RETRIES`.
 
 **Third-party dbt packages** (Fivetran connectors, shared vendor models, …) are treated as **data-source boundaries**, the same convention as ODS tables: their SQL, docs and internal calibers are not parsed — lineage stops at their materialized tables, which appear on cards tagged with the owning package. You govern *your* code; theirs is upstream infrastructure. To see through an internal shared package you do own, list it under a top-level `internal_packages: [shared_models]` in `fineprint.yml` and rebuild the graph.
 

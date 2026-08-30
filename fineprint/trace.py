@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from fineprint.i18n import t as _t
 from fineprint.lineage import set_dialect
 
 
@@ -12,9 +13,12 @@ def load_graph(path: Path) -> dict:
     g = json.loads(raw)
     ver = g.get("meta", {}).get("fineprint_graph_version", 0)
     if ver < 3:
-        raise ValueError(
+        raise ValueError(_t(
             f"血缘图版本过旧(v{ver}):0.7 起身份体系升级为 unique_id 主键 + 物理三段反查键;"
-            f"请重新执行 fineprint graph(图是派生物,重建零成本)")
+            f"请重新执行 fineprint graph(图是派生物,重建零成本)",
+            f"lineage graph too old (v{ver}): since 0.7 identity uses unique_id primary keys "
+            f"+ physical three-part reverse-lookup keys; re-run fineprint graph "
+            f"(the graph is derived — rebuilding costs nothing)"))
     # 图文件指纹:卡片/治理报告/漂移快照据此绑定生成时的图,验收可检出混版本产物
     g.setdefault("meta", {})["graph_md5"] = hashlib.md5(raw).hexdigest()[:16]
     set_dialect(g.get("meta", {}).get("dialect", "duckdb"))
@@ -53,11 +57,16 @@ def resolve_model(graph: dict, ref: str) -> str:
             return hits[0]
         if len(hits) > 1:
             cands = ", ".join(f'{models[u].get("package")}.{nm}' for u in sorted(hits))
-            raise KeyError(f"模型名有歧义: {ref}(候选: {cands};请用 package.model 消歧)")
+            raise KeyError(_t(f"模型名有歧义: {ref}(候选: {cands};请用 package.model 消歧)",
+                              f"ambiguous model name: {ref} (candidates: {cands}; "
+                              f"use package.model to disambiguate)"))
     external = graph.get("relations", {}).get("external", {})
     pkgs = sorted({e["package"] for e in external.values() if e.get("name") == (nm or ref)})
-    hint = (f"(属第三方包 {'/'.join(pkgs)},按数据源边界处理,不解析其内部口径;"
-            f"如需为其出卡,把包名加入 fineprint.yml 顶层 internal_packages 并重建图)"
+    hint = (_t(f"(属第三方包 {'/'.join(pkgs)},按数据源边界处理,不解析其内部口径;"
+               f"如需为其出卡,把包名加入 fineprint.yml 顶层 internal_packages 并重建图)",
+               f" (belongs to third-party package {'/'.join(pkgs)}; treated as a data-source "
+               f"boundary, its internal caliber is not parsed; to card it, add the package to "
+               f"top-level internal_packages in fineprint.yml and rebuild the graph)")
             if pkgs else "")
     raise KeyError(f"unknown model: {ref}{hint}")
 
@@ -77,10 +86,14 @@ def trace(graph: dict, model: str, column: str) -> dict:
 
     if column not in models[model]["columns"]:
         if models[model].get("error"):
-            raise KeyError(f"模型 {disp(model)} 解析失败,无法回溯其列 {column}"
-                           f"({models[model]['error']})")
-        raise KeyError(f"unknown column: {disp(model)}.{column} "
-                       f"(有效列: {list(models[model]['columns'])[:8]}...)")
+            raise KeyError(_t(f"模型 {disp(model)} 解析失败,无法回溯其列 {column}"
+                              f"({models[model]['error']})",
+                              f"model {disp(model)} failed to parse; cannot trace its column "
+                              f"{column} ({models[model]['error']})"))
+        raise KeyError(_t(f"unknown column: {disp(model)}.{column} "
+                          f"(有效列: {list(models[model]['columns'])[:8]}...)",
+                          f"unknown column: {disp(model)}.{column} "
+                          f"(valid columns: {list(models[model]['columns'])[:8]}...)"))
 
     sources, chain, visited = [], [], set()
     visited_models = []
@@ -230,11 +243,16 @@ def render(t: dict, tree: str | None = None, full: bool = False) -> str:
     L = []
     if tree:
         L.append(tree)
-        tail = "以下为出处明细" if detail else "fineprint trace --full 查看表达式链与逐条出处"
-        L.append(f"\n(链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型;{tail})")
+        tail = (_t("以下为出处明细", "receipts below") if detail
+                else _t("fineprint trace --full 查看表达式链与逐条出处",
+                        "run fineprint trace --full for the expression chain and per-item receipts"))
+        L.append(_t(f"\n(链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型;{tail})",
+                    f"\n(chain {t['depth']} levels deep across {len(t['models_visited'])} models; {tail})"))
     else:
-        L.append(f"◎ 目标: {t['target']}   (链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型)")
-        L.append("\n── 表达式链 E ──")
+        L.append(_t(f"◎ 目标: {t['target']}   (链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型)",
+                    f"◎ target: {t['target']}   (chain {t['depth']} levels deep across "
+                    f"{len(t['models_visited'])} models)"))
+        L.append(_t("\n── 表达式链 E ──", "\n── expression chain E ──"))
         for e in t["expr_chain"]:
             pad = "  " * e["depth"]
             expr = (e["expr"] or "").replace('"', "")
@@ -242,35 +260,52 @@ def render(t: dict, tree: str | None = None, full: bool = False) -> str:
                 expr = expr[:96] + "…"
             L.append(f"{pad}[{e['layer']}] {e['model']}.{e['column']} = {expr}")
     if detail:
-        L.append(f"\n── 源字段 S ({len(t['sources'])} 个) ──")
+        L.append(_t(f"\n── 源字段 S ({len(t['sources'])} 个) ──",
+                    f"\n── sources S ({len(t['sources'])}) ──"))
         for s in t["sources"]:
-            tag = f"   ⟵ 第三方包 {s['package']}(数据源边界,内部口径不解析)" if s.get("package") else ""
+            tag = (_t(f"   ⟵ 第三方包 {s['package']}(数据源边界,内部口径不解析)",
+                      f"   ⟵ third-party package {s['package']} (data-source boundary; "
+                      f"internal caliber not parsed)") if s.get("package") else "")
             L.append(f"  {s['table']}.{s['column']}{tag}")
         key_conds = [c for c in t["conditions"] if not c.get("is_pure_key")]
         pure = [c for c in t["conditions"] if c.get("is_pure_key")]
-        L.append(f"\n── 过滤条件 F ({len(key_conds)} 条业务条件 + {len(pure)} 条纯关联键) ──")
+        L.append(_t(f"\n── 过滤条件 F ({len(key_conds)} 条业务条件 + {len(pure)} 条纯关联键) ──",
+                    f"\n── filters F ({len(key_conds)} business conditions "
+                    f"+ {len(pure)} pure join keys) ──"))
         for c in key_conds:
             jt = f" join({c.get('join_table')})" if c["kind"] == "join_on" else ""
             L.append(f"  [{c['kind']}{jt}] {c['sql'].replace(chr(34), '')}"
-                     f"\n      ↳ {c['src_path']} · {c['model']}({c['scope']}) · 编译行 L{c['line']}")
+                     f"\n      ↳ {c['src_path']} · {c['model']}({c['scope']}) · "
+                     f"{_t('编译行', 'compiled line')} L{c['line']}")
     amb = t.get("scope_ambiguous") or []
     if amb:
-        L.append(f"\n── 归因不明 ({len(amb)},别名复用 scope,须人工确认) ──")
+        L.append(_t(f"\n── 归因不明 ({len(amb)},别名复用 scope,须人工确认) ──",
+                    f"\n── ambiguous attribution ({len(amb)}; alias-reused scopes, "
+                    f"needs human confirmation) ──"))
         for c in amb:
             L.append(f"  ? {str(c.get('sql', '')).replace(chr(34), '')[:80]}"
                      f"   ↳ {c.get('model')}({c.get('scope')}) L{c.get('line')}")
     if not detail and not t["semantics"]:
         return "\n".join(L)
-    L.append(f"\n── 结构语义点 ({len(t['semantics'])}) ──")
+    L.append(_t(f"\n── 结构语义点 ({len(t['semantics'])}) ──",
+                f"\n── structural semantics ({len(t['semantics'])}) ──"))
     for s in t["semantics"]:
         desc = {
-            "window": lambda s: f"窗口/{s['idiom']}: {s['sql'].replace(chr(34), '')}"
-                      + (f"  → 按 {','.join(s['partition_by'])} 取 {s['order_by']} 首行" if s["idiom"] == "dedup" else ""),
+            "window": lambda s: _t(f"窗口/{s['idiom']}: {s['sql'].replace(chr(34), '')}",
+                                   f"window/{s['idiom']}: {s['sql'].replace(chr(34), '')}")
+                      + (_t(f"  → 按 {','.join(s['partition_by'])} 取 {s['order_by']} 首行",
+                            f"  → keep first row per {','.join(s['partition_by'])} by {s['order_by']}")
+                         if s["idiom"] == "dedup" else ""),
             "case_when": lambda s: f"CASE WHEN → {s.get('column')}: {s['sql'][:80].replace(chr(34), '')}",
-            "coalesce": lambda s: f"COALESCE 兜底 → {s.get('column')}: {s['sql'][:80].replace(chr(34), '')}",
-            "stat_date_key": lambda s: f"统计日归属 → {s.get('column')} = {s['sql'].replace(chr(34), '')}",
-            "join_count": lambda s: (f"⚠ 行数聚合跨 join → {s.get('column')}: 行集由 "
-                                     f"{' ⋈ '.join(s.get('tables', []))} 匹配结构决定,计数对象未自证(质量治理项)"),
+            "coalesce": lambda s: _t(f"COALESCE 兜底 → {s.get('column')}: {s['sql'][:80].replace(chr(34), '')}",
+                                     f"COALESCE fallback → {s.get('column')}: {s['sql'][:80].replace(chr(34), '')}"),
+            "stat_date_key": lambda s: _t(f"统计日归属 → {s.get('column')} = {s['sql'].replace(chr(34), '')}",
+                                          f"stat-date attribution → {s.get('column')} = {s['sql'].replace(chr(34), '')}"),
+            "join_count": lambda s: _t(f"⚠ 行数聚合跨 join → {s.get('column')}: 行集由 "
+                                       f"{' ⋈ '.join(s.get('tables', []))} 匹配结构决定,计数对象未自证(质量治理项)",
+                                       f"⚠ row-count aggregate across join → {s.get('column')}: the row set is "
+                                       f"determined by the {' ⋈ '.join(s.get('tables', []))} match structure; "
+                                       f"what gets counted is not self-evident (quality governance item)"),
         }[s["type"]](s)
         L.append(f"  [{s['model']}] {desc}  @L{s['line']}")
     return "\n".join(L)

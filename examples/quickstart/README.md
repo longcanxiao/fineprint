@@ -136,4 +136,4 @@ dbt seed --profiles-dir . && dbt run --profiles-dir . && dbt docs generate --pro
   HTML 报告、漂移快照与日志。
 - 命令统一为 `fineprint`(0.8.4 起;旧 `metriclens` 命令与 import 名一并退役)。
 - PyPI 发行版为核心版:重复指标治理(`fineprint govern`)与 dbt exposures
-  集成在 roadmap 上,暂未随包发布,CLI 中也不出现。
+  集成定于 2.0,不随包发布,CLI 中也不出现。

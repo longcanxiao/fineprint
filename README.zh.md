@@ -36,10 +36,10 @@ dbt artifacts ──────► │  源表 / 过滤条件 / 表达式链(sq
 
 - **`fineprint drift`**——为每个指标的口径拍快照(源表 / 条件指纹 / 语义点 / 表达式),跨次重建做对比:14 天窗口改成 15 天,会在受影响的指标上精确浮出一条 `high` 漂移事件。
 
-**Roadmap**(本仓库已有原型,暂未随 PyPI 发行版打包):
+**Roadmap**(本仓库已有原型,不随 PyPI 发行版打包;详见 [docs/stability.md](docs/stability.md)):
 
-- **`fineprint govern`**——重复指标治理:指纹扫描发现跨表重复物化的指标(同源同条件),同指纹不同名的对子交由 LLM 仲裁("计数 vs 比率 → 不同义")。
-- **dbt exposures 集成**——自动发现指标候选预填进 `fineprint.yml`,看板消费方标注到口径卡、漂移告警定向与治理收敛加权。
+- **2.0——`fineprint govern`** 重复指标治理:指纹扫描发现跨表重复物化的指标(同源同条件),同指纹不同名的对子交由 LLM 仲裁("计数 vs 比率 → 不同义")。
+- **2.0——dbt exposures 集成**:自动发现指标候选预填进 `fineprint.yml`,看板消费方标注到口径卡、漂移告警定向与治理收敛加权。
 - 非 dbt SQL 管道(见「现状与边界」)。
 
 ## 快速开始
@@ -68,7 +68,7 @@ fineprint drift            # 口径漂移检测(--strict = CI 门禁:high 漂移
                             #   退出码 1,基线与日志不落盘)
 ```
 
-配置都在 `fineprint.yml`(指标清单、语言 `zh|en`、词典)。LLM 凭据只走环境变量(项目根目录的 `.env` 会被读取):`FINEPRINT_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`。
+配置都在 `fineprint.yml`(指标清单、语言 `zh|en`、词典)。`language` 同时驱动卡片内容与 CLI 自身输出(`FINEPRINT_LANG` 可覆盖)。LLM 凭据只走环境变量(项目根目录的 `.env` 会被读取):`FINEPRINT_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`,调优项 `_CONCURRENCY / _TIMEOUT / _RETRIES`。
 
 **第三方 dbt 包**(Fivetran 连接器、共享的供应商模型等)按**数据源边界**处理,与 ODS 表同一约定:不解析其 SQL、文档与内部口径——血缘在其物化表处截止,卡片上带归属包标注。你治理*自己*的代码;他们的是上游基础设施。确属你所有的内部共享包,在 `fineprint.yml` 顶层声明 `internal_packages: [shared_models]` 后重建图即可看穿。
 

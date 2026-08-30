@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.8.8 (2026-08-30)
+
+**The tool now speaks English.** Every user-facing string — CLI help,
+progress, errors, the trace/caliber-tree labels, drift events, and the HTML
+report chrome — is bilingual (zh|en). The card `language` in `fineprint.yml`
+drives the CLI's own output too; `FINEPRINT_LANG` overrides, and with no
+signal at all the default is English (our first users are international).
+Card content was already bilingual at the prompt layer; this closes the gap
+for everything around it.
+
+**Long tasks are no longer silent** (field feedback: `synth` ran 3+ minutes
+with zero output):
+
+- `synth` opens with a batch banner — metric count, worker/LLM concurrency,
+  and an upper-bound estimate of LLM calls — then reports each metric's
+  stage as it happens (lineage trace → per-hop extraction → merge →
+  business caliber → validation & composer).
+- Completion is reported in **completion order** (`as_completed`), not
+  submission order: a fast metric no longer waits behind a slow one.
+- **LLM retries are visible**: each backoff prints error type, attempt
+  count and wait time (the single biggest source of silent minutes).
+- `synth --verbose` adds per-hop model lists; `synth --json` emits one JSON
+  event per line on stdout (`batch_start`/`stage`/`retry`/`metric_done`/
+  `metric_failed`/`batch_published`) for CI and wrappers.
+- Timeout and retry budget are configurable: `FINEPRINT_LLM_TIMEOUT`
+  (default 180s) and `FINEPRINT_LLM_RETRIES` (default 8).
+
+Also: `docs/stability.md` — a draft of the 1.0 interface-freeze policy
+(public surface: CLI/exit codes/config/env/stored formats; internal:
+Python API/prompts/cache). The governance component and dbt exposures
+integration are now formally scheduled for 2.0.
+
 ## 0.8.7 (2026-08-30)
 
 The HTML report now obeys the publication state machine and formula

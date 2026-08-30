@@ -7,10 +7,13 @@
 互验分歧 → 置信分级,低置信进审核队列不对外展示。
 """
 import json
+import os
 import re
 import sys
+import threading
+import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 import sqlglot
@@ -24,6 +27,8 @@ try:                                    # 治理是可选组件:公开发行版�
     from fineprint.governance import scan as governance_scan
 except ImportError:                     # 缺席时卡片治理提示区为空,其余全量可用
     governance_scan = None
+from fineprint import llm
+from fineprint.i18n import t as t_  # 别名:run_metric 的局部 t 是 trace 结果
 from fineprint.lineage import dialect, fingerprint, normalize_condition
 from fineprint.llm import chat_json, fast_model, quality_model, set_cache_dir
 from fineprint.project import DbtProject
@@ -35,6 +40,67 @@ from fineprint.trace import display_name, resolve_model, trace
 
 def norm_text(s: str) -> str:
     return re.sub(r"\s+", " ", str(s).replace('"', "").lower()).strip()
+
+
+# ---------------- 进度上报 ----------------
+STAGES = {
+    "trace":    ("血缘回溯", "tracing lineage"),
+    "extract":  ("逐跳抽取", "per-hop extraction"),
+    "merge":    ("归并技术口径", "merging technical caliber"),
+    "business": ("业务口径生成", "generating business caliber"),
+    "validate": ("互验与组合器", "cross-validation & composer"),
+}
+
+
+class Progress:
+    """合成进度:长任务不得静默。human 模式逐事件打 stderr(线程安全,阶段可见);
+    json 模式在 stdout 逐行发 JSON 事件(供 CI/封装脚本消费),人读文案让位。
+    LLM 重试经 llm.on_retry 钩子并入同一出口。"""
+
+    def __init__(self, mode: str = "human", verbose: bool = False):
+        self.mode, self.verbose = mode, verbose
+        self._lock = threading.Lock()
+        self._t0 = time.monotonic()
+
+    def _out(self, line: str):
+        with self._lock:
+            print(line, file=sys.stderr, flush=True)
+
+    def emit(self, event: str, key: str | None = None, verbose_only: bool = False, **kw):
+        if verbose_only and not self.verbose:
+            return
+        if self.mode == "json":
+            with self._lock:
+                print(json.dumps({"event": event, "key": key,
+                                  "elapsed_s": round(time.monotonic() - self._t0, 1), **kw},
+                                 ensure_ascii=False), flush=True)
+            return
+        if event == "batch_start":
+            self._out(t_(
+                f"▶ 批次 {kw['run_id']}:{kw['metrics']} 个指标,指标并发 {kw['workers']},"
+                f"LLM 并发 {kw['llm_concurrency']},预计 ≤ {kw['est_llm_calls']} 次 LLM 调用(缓存命中不计)",
+                f"▶ batch {kw['run_id']}: {kw['metrics']} metrics, {kw['workers']} metric workers, "
+                f"LLM concurrency {kw['llm_concurrency']}, ≤ {kw['est_llm_calls']} LLM calls expected "
+                f"(cache hits excluded)"))
+        elif event == "stage":
+            zh, en = STAGES.get(kw["stage"], (kw["stage"], kw["stage"]))
+            d = kw.get("detail") or ""
+            self._out(f"  [{key}] {t_(zh, en)}" + (f"({d})" if d else ""))
+        elif event == "retry":
+            self._out(t_(
+                f"  ⟳ LLM 重试 {kw['attempt']}/{kw['max']}({kw['error']}),等待 {kw['wait']:.1f}s",
+                f"  ⟳ LLM retry {kw['attempt']}/{kw['max']} ({kw['error']}), waiting {kw['wait']:.1f}s"))
+
+    def install_retry_hook(self):
+        llm.on_retry = lambda info: self.emit("retry", **info)
+
+
+class _NullProgress(Progress):
+    def __init__(self):
+        super().__init__()
+
+    def emit(self, *a, **k):
+        pass
 
 
 # ---------------- LLM 输出结构校验 ----------------
@@ -441,8 +507,10 @@ def merged_trace(graph: dict, m: MetricDef) -> dict:
 
 
 def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
-               dup_pairs: list, run_id: str) -> dict:
+               dup_pairs: list, run_id: str, progress: Progress | None = None) -> dict:
     lang = cfg.language
+    prog = progress or _NullProgress()
+    prog.emit("stage", key=m.key, stage="trace")
     t = merged_trace(graph, m)
 
     # 通道二:逐跳(同模型合并一次调用;输入只有该模型 SQL,与通道一独立)
@@ -451,6 +519,10 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
     for e in t["expr_chain"]:
         cols_by_model.setdefault(e["model_uid"], set()).add(e["column"])
         disp_of[e["model_uid"]] = e["model"]
+    prog.emit("stage", key=m.key, stage="extract",
+              detail=t_(f"{len(cols_by_model)} 模型", f"{len(cols_by_model)} models"))
+    prog.emit("stage", key=m.key, stage="extract", verbose_only=True,
+              detail=", ".join(sorted(disp_of.values())))
     hops_by_model = {}
     with ThreadPoolExecutor(max_workers=4) as hex_:
         futs = {}
@@ -487,6 +559,7 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
                     "filters": [{"quote": f["quote"], "kind": f.get("kind"), "effect": f.get("effect")}
                                 for f in h.get("filters", []) if f.get("match") == "matched"]}
                    for h in hops_seq]
+    prog.emit("stage", key=m.key, stage="merge")
     technical = merge_hops(lang, m.title, m.target, merge_input)
     if m.query_filter:
         technical.setdefault("key_filters", []).append({"text": m.query_filter, "layer": "query"})
@@ -505,8 +578,10 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
             docs_ctx[f"{e['model']}.{e['column']}"] = d
 
     evidence = build_evidence(t, hops_seq)
+    prog.emit("stage", key=m.key, stage="business")
     business = gen_business(lang, m.title, technical, docs_ctx, cfg.lexicon, m.query_filter, evidence)
 
+    prog.emit("stage", key=m.key, stage="validate")
     # 条款证据绑定:每条业务条款必须引用有效证据 ID;任一未绑定 → 该卡不得 high
     ev_by_id = {e["id"]: e for e in evidence}
     unverified = 0
@@ -648,11 +723,27 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
     }
 
 
+def _estimate_llm_calls(graph: dict, todo: list) -> int:
+    """预估 LLM 调用上限:每指标 = 途经模型数(逐跳)+ 归并 + 业务生成。
+    trace 是纯图遍历(毫秒级),先走一遍不冤;坏 target 此处不报,交给 run_metric。"""
+    total = 0
+    for m in todo:
+        try:
+            hops = {e["model_uid"] for e in merged_trace(graph, m)["expr_chain"]}
+            total += len(hops) + 2
+        except Exception:
+            total += 2
+    return total
+
+
 # ---------------- 批次执行 ----------------
-def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = None) -> int:
+def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = None,
+            progress: Progress | None = None) -> int:
     """整批合成并原子发布;返回进程退出码(0=发布成功)。"""
     set_cache_dir(project.workspace / "cache")
     store = CaliberStore(project.workspace / "store")
+    prog = progress or Progress()
+    prog.install_retry_hook()
     run_id = uuid.uuid4().hex[:8]
     scan_r = (governance_scan(graph, cfg) if governance_scan
               else {"duplicates": [], "row_mismatch": []})
@@ -661,35 +752,64 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
                                         for p in scan_r.get("row_mismatch", [])]
     todo = [m for m in cfg.metrics if not only or m.key == only]
     if only and not todo:
-        print(f"未知指标 key: {only}(配置里有: {[m.key for m in cfg.metrics]})", file=sys.stderr)
+        print(t_(f"未知指标 key: {only}(配置里有: {[m.key for m in cfg.metrics]})",
+                 f"unknown metric key: {only} (configured: {[m.key for m in cfg.metrics]})"),
+              file=sys.stderr)
         return 2
+    workers = 8
+    prog.emit("batch_start", run_id=run_id, metrics=len(todo), workers=workers,
+              llm_concurrency=max(1, int(os.environ.get("FINEPRINT_LLM_CONCURRENCY", "8"))),
+              est_llm_calls=_estimate_llm_calls(graph, todo))
     run_dir = store.run_dir(run_id)
     results, failed = {}, []
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        futs = {ex.submit(run_metric, project, cfg, graph, m, dup_pairs, run_id): m for m in todo}
-        for fut, m in futs.items():
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(run_metric, project, cfg, graph, m, dup_pairs, run_id, prog): m
+                for m in todo}
+        for fut in as_completed(futs):       # 谁先完成先汇报,不按提交序干等
+            m = futs[fut]
             try:
                 r = fut.result()
                 results[m.key] = r
                 (run_dir / f"{m.key}.json").write_text(json.dumps(r, ensure_ascii=False, indent=1))
                 v = r["validation"]
-                print(f"  ✓ {m.key:<26} conf={r['confidence']:<6} F覆盖 {v['f1_covered']:.0%}"
-                      f"  S漏/多 {len(v['s_missing_by_llm'])}/{len(v['s_extra_by_llm'])}"
-                      f"  可疑 {len(v.get('f2_suspect', []))}  未证条款 {v.get('unverified_clauses', 0)}"
-                      f"  词表失配 {len(v.get('freetext_unverified') or {})}"
-                      f"  赛马 {r.get('race', {}).get('verdict', '-')}"
-                      f"→{r.get('publication_status', '-')}")
+                if prog.mode == "json":
+                    prog.emit("metric_done", key=m.key, confidence=r["confidence"],
+                              publication_status=r.get("publication_status"),
+                              race=r.get("race", {}).get("verdict"),
+                              f1_covered=v["f1_covered"],
+                              unverified_clauses=v.get("unverified_clauses", 0))
+                else:
+                    print(t_(
+                        f"  ✓ {m.key:<26} conf={r['confidence']:<6} F覆盖 {v['f1_covered']:.0%}"
+                        f"  S漏/多 {len(v['s_missing_by_llm'])}/{len(v['s_extra_by_llm'])}"
+                        f"  可疑 {len(v.get('f2_suspect', []))}  未证条款 {v.get('unverified_clauses', 0)}"
+                        f"  词表失配 {len(v.get('freetext_unverified') or {})}"
+                        f"  赛马 {r.get('race', {}).get('verdict', '-')}"
+                        f"→{r.get('publication_status', '-')}",
+                        f"  ✓ {m.key:<26} conf={r['confidence']:<6} F-cover {v['f1_covered']:.0%}"
+                        f"  S miss/extra {len(v['s_missing_by_llm'])}/{len(v['s_extra_by_llm'])}"
+                        f"  suspect {len(v.get('f2_suspect', []))}  unproven clauses {v.get('unverified_clauses', 0)}"
+                        f"  lexicon misses {len(v.get('freetext_unverified') or {})}"
+                        f"  race {r.get('race', {}).get('verdict', '-')}"
+                        f"→{r.get('publication_status', '-')}"), flush=True)
             except Exception as e:
                 failed.append(m.key)
-                print(f"  ✗ {m.key}: {e}")
+                if prog.mode == "json":
+                    prog.emit("metric_failed", key=m.key, error=f"{type(e).__name__}: {str(e)[:200]}")
+                else:
+                    print(f"  ✗ {m.key}: {e}", flush=True)
     if failed:
-        print(f"失败指标: {failed} —— 本批次不发布,active 指针不动(残留 {run_dir} 供排查)", file=sys.stderr)
+        print(t_(f"失败指标: {failed} —— 本批次不发布,active 指针不动(残留 {run_dir} 供排查)",
+                 f"failed metrics: {failed} — batch not published, active pointer untouched "
+                 f"(residue kept at {run_dir} for inspection)"), file=sys.stderr)
         return 1
     # --only 时从当前 active 批次补齐其余卡,保证每个发布批次都是完整集合
     if only:
         src = store.active_dir()
         if src is None:
-            print("--only 需要已有 active 批次来补齐其余卡;请先跑一次全量", file=sys.stderr)
+            print(t_("--only 需要已有 active 批次来补齐其余卡;请先跑一次全量",
+                     "--only needs an existing active batch to backfill the other cards; "
+                     "run a full synth first"), file=sys.stderr)
             return 1
         for f in src.glob("*.json"):
             if f.name != "index.json" and not (run_dir / f.name).exists():
@@ -720,8 +840,12 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
     # 发布前完整性断言:批次卡片集合必须与配置指标集合一致(缺失或多余都不发布)
     want = {m.key for m in cfg.metrics}
     if set(cards) != want:
-        print(f"批次不完整,不发布: 缺 {sorted(want - set(cards))} 多 {sorted(set(cards) - want)}"
-              + ("(--only 补齐依赖的 active 批次与当前配置不一致,请先跑一次全量)" if only else ""),
+        print(t_(f"批次不完整,不发布: 缺 {sorted(want - set(cards))} 多 {sorted(set(cards) - want)}"
+                 + ("(--only 补齐依赖的 active 批次与当前配置不一致,请先跑一次全量)" if only else ""),
+                 f"incomplete batch, not publishing: missing {sorted(want - set(cards))} "
+                 f"unexpected {sorted(set(cards) - want)}"
+                 + (" (the active batch used by --only backfill no longer matches the config; "
+                    "run a full synth first)" if only else "")),
               file=sys.stderr)
         return 1
     at = datetime.now().isoformat(timespec="seconds")
@@ -735,9 +859,19 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
     (run_dir / "index.json").write_text(json.dumps(idx, ensure_ascii=False, indent=1))
     store.activate(run_id, {"at": at})
     store.prune(keep=3, protect=run_id)
-    print("双写赛马: " + "  ".join(f"{k}={v}" for k, v in sorted(race_counts.items()))
-          + (f"  ← 分歧卡: {sorted(disagree_keys)}" if disagree_keys else "")
-          + (f"  ← 组合器未覆盖: {sorted(unsup_keys)}" if unsup_keys else ""))
-    print("发布状态: " + "  ".join(f"{k}={v}" for k, v in sorted(pub_counts.items())))
-    print(f"\nstore: {len(results)}/{len(todo)} 张生成,批次 {run_id} 已发布并激活 → {run_dir}")
+    if prog.mode == "json":
+        prog.emit("batch_published", run_id=run_id, generated=len(results), requested=len(todo),
+                  race=race_counts, publication=pub_counts, run_dir=str(run_dir))
+        return 0
+    print(t_("双写赛马: ", "dual-write race: ")
+          + "  ".join(f"{k}={v}" for k, v in sorted(race_counts.items()))
+          + (t_(f"  ← 分歧卡: {sorted(disagree_keys)}",
+                f"  ← disagreeing cards: {sorted(disagree_keys)}") if disagree_keys else "")
+          + (t_(f"  ← 组合器未覆盖: {sorted(unsup_keys)}",
+                f"  ← composer unsupported: {sorted(unsup_keys)}") if unsup_keys else ""))
+    print(t_("发布状态: ", "publication: ")
+          + "  ".join(f"{k}={v}" for k, v in sorted(pub_counts.items())))
+    print(t_(f"\nstore: {len(results)}/{len(todo)} 张生成,批次 {run_id} 已发布并激活 → {run_dir}",
+             f"\nstore: {len(results)}/{len(todo)} cards generated, batch {run_id} published "
+             f"and activated → {run_dir}"))
     return 0

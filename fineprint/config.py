@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from fineprint.i18n import t
+
 # key 直接用作批次目录内的文件名:限定字符集,杜绝路径分隔符与 ../ 逃逸
 KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 # target 两段 model.column;短名跨包歧义时用三段 package.model.column 消歧
@@ -22,7 +24,9 @@ def _internal_packages_of(raw: dict) -> tuple:
     if v is None:
         return ()
     if not isinstance(v, list) or not all(isinstance(x, str) and x for x in v):
-        raise ValueError(f"internal_packages 须为字符串列表(dbt 包名),实得 {v!r}")
+        raise ValueError(t(f"internal_packages 须为字符串列表(dbt 包名),实得 {v!r}",
+                           f"internal_packages must be a list of strings (dbt package names), "
+                           f"got {v!r}"))
     return tuple(v)
 
 
@@ -61,6 +65,35 @@ governance:
   max_llm_pairs: 40     # B 档 LLM 仲裁的候选上限(超出截断并提示,控制成本)
 """
 
+EXAMPLE_EN = """\
+# FinePrint config (place at the dbt project root)
+language: en            # caliber card language: zh | en
+metrics:                # dashboard metrics to synthesize cards for (model.column)
+  - key: revenue
+    title: Revenue
+    target: fct_orders_daily.revenue
+  # - key: refund_rate
+  #   title: Refund rate
+  #   target: mart_refunds.refund_rate
+  #   extra_targets: [mart_refunds.channel]   # optional: related columns traced together
+  #   query_filter: "channel = 'live'"        # optional: query-layer filter note
+lexicon: {}             # optional: business glossary (term → meaning) cited by business calibers
+# internal_packages: [shared_models]  # optional: extra dbt packages parsed as first-party code;
+#                     all other third-party packages (Fivetran/dbt_utils/…) are treated as
+#                     data-source boundaries — their SQL is not parsed, lineage stops at
+#                     their materialized tables
+governance:
+  scan_layers: []       # layer allowlist for the duplicate fingerprint scan; empty = all models
+  base_suffixes: [_total, _14d, _1d, _7d, _30d]   # suffixes stripped for "same base name"
+  skip_columns: []      # column names skipped by the scan
+  skip_suffixes: [_id, _date, _time, _key]
+  max_llm_pairs: 40     # cap on LLM-arbitrated candidate pairs (truncates with a note)
+"""
+
+
+def example_yml() -> str:
+    return t(EXAMPLE, EXAMPLE_EN)
+
 
 @dataclass
 class MetricDef:
@@ -88,55 +121,79 @@ class MLConfig:
     def load(cls, project_dir: Path) -> "MLConfig":
         f = Path(project_dir) / "fineprint.yml"
         if not f.exists():
-            raise FileNotFoundError(
-                f"未找到 {f}\n请先执行 fineprint init 生成配置,或手工创建(模板见 README)")
+            raise FileNotFoundError(t(
+                f"未找到 {f}\n请先执行 fineprint init 生成配置,或手工创建(模板见 README)",
+                f"{f} not found\nrun fineprint init to generate the config, "
+                f"or create it by hand (template in README)"))
         raw = yaml.safe_load(f.read_text()) or {}
         if not isinstance(raw, dict):
-            raise ValueError(f"{f} 顶层须为映射(language/metrics/…),实得 {type(raw).__name__}")
+            raise ValueError(t(f"{f} 顶层须为映射(language/metrics/…),实得 {type(raw).__name__}",
+                               f"top level of {f} must be a mapping (language/metrics/…), "
+                               f"got {type(raw).__name__}"))
         gov = raw.get("governance") or {}
         if not isinstance(gov, dict):
-            raise ValueError(f"governance 须为映射,实得 {type(gov).__name__}")
+            raise ValueError(t(f"governance 须为映射,实得 {type(gov).__name__}",
+                               f"governance must be a mapping, got {type(gov).__name__}"))
         metrics, seen_keys = [], set()
         for m in raw.get("metrics") or []:
             if not isinstance(m, dict) or not m.get("key") or not m.get("target"):
-                raise ValueError(f"metrics 条目缺少 key/target: {m}")
+                raise ValueError(t(f"metrics 条目缺少 key/target: {m}",
+                                   f"metrics entry missing key/target: {m}"))
             key = str(m["key"])
             if not KEY_RE.match(key):
-                raise ValueError(f"metric key 非法: {key!r}(须匹配 {KEY_RE.pattern},不得含路径分隔符)")
+                raise ValueError(t(f"metric key 非法: {key!r}(须匹配 {KEY_RE.pattern},不得含路径分隔符)",
+                                   f"invalid metric key: {key!r} (must match {KEY_RE.pattern}; "
+                                   f"path separators not allowed)"))
             if key.lower() in RESERVED_KEYS:
-                raise ValueError(f"metric key 为保留名: {key!r}(保留: {sorted(RESERVED_KEYS)})")
+                raise ValueError(t(f"metric key 为保留名: {key!r}(保留: {sorted(RESERVED_KEYS)})",
+                                   f"metric key is a reserved name: {key!r} "
+                                   f"(reserved: {sorted(RESERVED_KEYS)})"))
             # 大小写不敏感文件系统(macOS/Windows 默认)上 GMV.json 与 gmv.json 同文件,
             # NFC + casefold 判重杜绝跨平台互相覆盖
             folded = unicodedata.normalize("NFC", key).casefold()
             if folded in seen_keys:
-                raise ValueError(f"metric key 重复: {key!r}(大小写不敏感文件系统上同批发布会互相覆盖)")
+                raise ValueError(t(f"metric key 重复: {key!r}(大小写不敏感文件系统上同批发布会互相覆盖)",
+                                   f"duplicate metric key: {key!r} (cards in one batch would "
+                                   f"overwrite each other on case-insensitive filesystems)"))
             seen_keys.add(folded)
             targets = [m["target"], *(m.get("extra_targets") or [])]
             for tgt in targets:
                 if not isinstance(tgt, str) or not TARGET_RE.match(tgt):
-                    raise ValueError(f"metric {key!r} 的 target/extra_targets 须为 'model.column'"
-                                     f"(或跨包重名时 'package.model.column'),实得 {tgt!r}")
+                    raise ValueError(t(f"metric {key!r} 的 target/extra_targets 须为 'model.column'"
+                                       f"(或跨包重名时 'package.model.column'),实得 {tgt!r}",
+                                       f"metric {key!r} target/extra_targets must be 'model.column' "
+                                       f"(or 'package.model.column' when short names collide "
+                                       f"across packages), got {tgt!r}"))
             qf = m.get("query_filter")
             if qf is not None and not isinstance(qf, str):
-                raise ValueError(f"metric {key!r} 的 query_filter 须为字符串,实得 {type(qf).__name__}")
+                raise ValueError(t(f"metric {key!r} 的 query_filter 须为字符串,实得 {type(qf).__name__}",
+                                   f"metric {key!r} query_filter must be a string, "
+                                   f"got {type(qf).__name__}"))
             metrics.append(MetricDef(
                 key=key, title=m.get("title", key), target=m["target"],
                 extra_targets=list(m.get("extra_targets") or []), query_filter=qf))
         if not metrics:
-            raise ValueError(f"{f} 的 metrics 为空:至少配置一个 model.column 目标")
+            raise ValueError(t(f"{f} 的 metrics 为空:至少配置一个 model.column 目标",
+                               f"metrics in {f} is empty: configure at least one "
+                               f"model.column target"))
 
         def _strlist(field_name: str, v, default: list) -> list:
             v = v if v is not None else default
             if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
-                raise ValueError(f"governance.{field_name} 须为字符串列表,实得 {v!r}")
+                raise ValueError(t(f"governance.{field_name} 须为字符串列表,实得 {v!r}",
+                                   f"governance.{field_name} must be a list of strings, got {v!r}"))
             return v
 
         pairs = gov.get("max_llm_pairs", cls().max_llm_pairs)
         if not isinstance(pairs, int) or isinstance(pairs, bool) or pairs < 0:
-            raise ValueError(f"governance.max_llm_pairs 须为非负整数,实得 {pairs!r}")
+            raise ValueError(t(f"governance.max_llm_pairs 须为非负整数,实得 {pairs!r}",
+                               f"governance.max_llm_pairs must be a non-negative integer, "
+                               f"got {pairs!r}"))
         lex = raw.get("lexicon") or {}
         if not isinstance(lex, dict):
-            raise ValueError(f"lexicon 须为映射(术语 → 解释),实得 {type(lex).__name__}")
+            raise ValueError(t(f"lexicon 须为映射(术语 → 解释),实得 {type(lex).__name__}",
+                               f"lexicon must be a mapping (term → meaning), "
+                               f"got {type(lex).__name__}"))
         cfg = cls(
             language=raw.get("language", "zh"), metrics=metrics,
             lexicon=lex,
@@ -148,7 +205,10 @@ class MLConfig:
             max_llm_pairs=pairs,
             path=f)
         if cfg.language not in ("zh", "en"):
-            raise ValueError(f"language 须为 zh|en,实得 {cfg.language!r}")
+            raise ValueError(t(f"language 须为 zh|en,实得 {cfg.language!r}",
+                               f"language must be zh|en, got {cfg.language!r}"))
+        from fineprint.i18n import set_lang
+        set_lang(cfg.language)   # 配置是语言的权威来源(env FINEPRINT_LANG 仍可覆盖)
         return cfg
 
     def metric(self, key: str) -> MetricDef | None:

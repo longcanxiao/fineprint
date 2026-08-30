@@ -12,10 +12,14 @@ paid_orders 的过滤同样约束分子行集——只看值路径会把 status=
 """
 from sqlglot import exp, parse_one
 
+from fineprint.i18n import t as _t
 from fineprint.lineage import dialect, table_key
 
-_OPS = {exp.Div: ("÷", "分子", "分母"), exp.Mul: ("×", "左因子", "右因子"),
-        exp.Add: ("+", "左项", "右项"), exp.Sub: ("−", "被减项", "减项")}
+# 分支标签存 (zh, en) 双语对,展示时经 _t 按当前语言取值
+_OPS = {exp.Div: ("÷", ("分子", "numerator"), ("分母", "denominator")),
+        exp.Mul: ("×", ("左因子", "left factor"), ("右因子", "right factor")),
+        exp.Add: ("+", ("左项", "left term"), ("右项", "right term")),
+        exp.Sub: ("−", ("被减项", "minuend"), ("减项", "subtrahend"))}
 
 
 def _clean(sql: str) -> str:
@@ -165,7 +169,8 @@ def caliber_tree(project, graph, uid: str, column: str, t: dict) -> dict | None:
     top_in, raw_in = _unwrap(top), _unwrap(raw)
     op = type(top_in)
     if op in _OPS and isinstance(raw_in, op):
-        sym, lname, rname = _OPS[op]
+        sym, lpair, rpair = _OPS[op]
+        lname, rname = _t(*lpair), _t(*rpair)
         parts = [(lname, top_in.this, raw_in.this),
                  (rname, top_in.expression, raw_in.expression)]
         skeleton = top.copy()
@@ -174,7 +179,7 @@ def caliber_tree(project, graph, uid: str, column: str, t: dict) -> dict | None:
         sk.set("expression", exp.column("B"))
         skeleton_sql = _clean(skeleton.sql(dialect=dialect()))
     else:
-        sym, parts, skeleton_sql = None, [("整体", top_in, raw_in)], None
+        sym, parts, skeleton_sql = None, [(_t("整体", "whole"), top_in, raw_in)], None
 
     defs_by_name = {d["name"]: d for d in c.get("defs") or []}
     model_name = graph["models"][uid]["name"]
@@ -248,13 +253,15 @@ def _cond_line(cond: dict) -> str:
 def render_tree(tr: dict) -> str:
     head = f"◎ {tr['target']}"
     if tr.get("defined_in"):
-        head += f"   (直通列,口径定义于 {tr['defined_in']})"
+        head += _t(f"   (直通列,口径定义于 {tr['defined_in']})",
+                   f"   (pass-through column; caliber defined in {tr['defined_in']})")
     L = [head]
     if tr["dims"]:
         dd = [f"{d} = {tr['dim_exprs'][d]}" if d in tr["dim_exprs"] else d for d in tr["dims"]]
-        L.append(f"│  输出维度: {' , '.join(dd)}")
+        L.append(_t(f"│  输出维度: {' , '.join(dd)}", f"│  output dimensions: {' , '.join(dd)}"))
     if tr["op"]:
-        L.append(f"│  公式: {tr.get('skeleton') or ('A ' + tr['op'] + ' B')}")
+        sk = tr.get("skeleton") or ("A " + tr["op"] + " B")
+        L.append(_t(f"│  公式: {sk}", f"│  formula: {sk}"))
     n = len(tr["branches"])
     for i, b in enumerate(tr["branches"]):
         tag = f"{chr(65 + i)} {b['label']}" if tr["op"] else b["label"]
@@ -262,25 +269,29 @@ def render_tree(tr: dict) -> str:
         L.append(f"├─ {tag}  {b['formula']}")
         rows = []
         for d in b["defs"]:
-            g = f" 按 {','.join(d['grain'])} 聚合" if d.get("grain") else ""
-            j = "(经 join)" if d.get("join_context") else ""
-            rows.append(f"其中 {d['name']} = {_clean(d['expr'])}{g}{j}")
-        rows += [f"口径: {_cond_line(c)}" for c in b["conds"]]
+            g = (_t(f" 按 {','.join(d['grain'])} 聚合",
+                    f" aggregated by {','.join(d['grain'])}") if d.get("grain") else "")
+            j = _t("(经 join)", " (via join)") if d.get("join_context") else ""
+            rows.append(_t(f"其中 {d['name']} = {_clean(d['expr'])}{g}{j}",
+                           f"where {d['name']} = {_clean(d['expr'])}{g}{j}"))
+        rows += [_t(f"口径: {_cond_line(c)}", f"caliber: {_cond_line(c)}") for c in b["conds"]]
         if b["chain"]:
             # 按深度分层:同层多模型是平行路径,用「、」并列;层间才是流向
             by_depth: dict = {}
             for e in b["chain"]:
                 by_depth.setdefault(e["depth"], set()).add(e["model"])
-            hops = " → ".join("、".join(sorted(by_depth[d]))
+            hops = " → ".join(_t("、", ", ").join(sorted(by_depth[d]))
                               for d in sorted(by_depth, reverse=True))
-            rows.append(f"链路: {hops} → 本层")
+            rows.append(_t(f"链路: {hops} → 本层", f"chain: {hops} → this layer"))
         elif b["leaves"]:
-            rows.append(f"链路: {' → '.join(b['leaves'])} → 本层")
+            rows.append(_t(f"链路: {' → '.join(b['leaves'])} → 本层",
+                           f"chain: {' → '.join(b['leaves'])} → this layer"))
         for k, r in enumerate(rows):
             L.append(f"│  {'└─' if k == len(rows) - 1 else '├─'} {r}")
     if tr["common"]:
         L.append("│")
-        head = "两侧共同口径" if n > 1 else "口径条件"
+        head = (_t("两侧共同口径", "caliber shared by both sides") if n > 1
+                else _t("口径条件", "caliber conditions"))
         L.append(f"└─ {head}")
         for k, c in enumerate(tr["common"]):
             L.append(f"   {'└─' if k == len(tr['common']) - 1 else '├─'} {_cond_line(c)}")

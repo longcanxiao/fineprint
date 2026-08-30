@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fineprint.config import MLConfig
+from fineprint.i18n import t
 from fineprint.project import DbtProject
 from fineprint.synth import merged_trace
 
@@ -124,10 +125,10 @@ def diff_metric(key: str, old: dict, new: dict) -> list:
         add("condition_added", "high", {"fp": fp, **nc[fp]})
     osem = {tuple(x) for x in old["semantics"]}
     nsem = {tuple(x) for x in new["semantics"]}
-    for t, m, sql in sorted(osem - nsem):
-        add("semantic_removed", "high", {"type": t, "model": m, "sql": sql})
-    for t, m, sql in sorted(nsem - osem):
-        add("semantic_added", "high", {"type": t, "model": m, "sql": sql})
+    for typ, m, sql in sorted(osem - nsem):
+        add("semantic_removed", "high", {"type": typ, "model": m, "sql": sql})
+    for typ, m, sql in sorted(nsem - osem):
+        add("semantic_added", "high", {"type": typ, "model": m, "sql": sql})
     oe, ne = old["exprs"], new["exprs"]
     for col in sorted(set(oe) & set(ne)):
         if oe[col] != ne[col]:
@@ -218,7 +219,9 @@ def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True
     if prev is None:
         if save:
             save_snapshot(project, cur)
-        print(f"基线快照已建立({len(cur['metrics'])} 个指标),无对比对象")
+        print(t(f"基线快照已建立({len(cur['metrics'])} 个指标),无对比对象",
+                f"baseline snapshot established ({len(cur['metrics'])} metrics); "
+                f"nothing to compare against"))
         return []
     events = diff_snapshots(prev, cur)
     annotate_exposures(events, cfg, graph)
@@ -228,19 +231,25 @@ def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True
             append_events(project, events, prev["taken_at"], cur["taken_at"])
         save_snapshot(project, cur)
     if blocked:
-        print("⛔ strict 门禁: high 级漂移,基线与事件日志均不推进;"
-              "确认为预期变更后去掉 --strict 运行一次以提交新基线", file=sys.stderr)
+        print(t("⛔ strict 门禁: high 级漂移,基线与事件日志均不推进;"
+                "确认为预期变更后去掉 --strict 运行一次以提交新基线",
+                "⛔ strict gate: high-severity drift — neither the baseline nor the event log "
+                "advances; once confirmed as intended, run once without --strict to commit "
+                "the new baseline"), file=sys.stderr)
     return events
 
 
 def print_events(events: list):
     if not events:
-        print("口径漂移检测: 无变化")
+        print(t("口径漂移检测: 无变化", "caliber drift check: no changes"))
         return
-    print(f"口径漂移检测: {len(events)} 个事件\n")
+    print(t(f"口径漂移检测: {len(events)} 个事件\n",
+            f"caliber drift check: {len(events)} events\n"))
     for e in events:
         mark = {"high": "⚠", "medium": "·", "info": "i"}[e["severity"]]
         d = e["detail"]
         brief = d.get("sql") or d.get("source") or d.get("column") or ""
-        tail = f"  ⇒ 消费方: {', '.join(e['exposures'][:3])}" if e.get("exposures") else ""
+        tail = (t(f"  ⇒ 消费方: {', '.join(e['exposures'][:3])}",
+                  f"  ⇒ consumers: {', '.join(e['exposures'][:3])}")
+                if e.get("exposures") else "")
         print(f"  {mark} [{e['severity']:<6}] {e['metric_key']:<26} {e['kind']:<18} {brief[:70]}{tail}")

@@ -15,6 +15,7 @@ import html
 import json
 from pathlib import Path
 
+from fineprint.i18n import t
 from fineprint.project import DbtProject
 from fineprint.store import CaliberStore
 
@@ -78,13 +79,23 @@ function _openEv(){var el=location.hash&&document.getElementById(location.hash.s
 addEventListener('hashchange',_openEv);addEventListener('DOMContentLoaded',_openEv);
 """
 
+# 徽标/判定释义存 (zh, en) 双语对,渲染时经 t() 按当前语言取值
 PUB_CHIP = {
-    "VERIFIED": ("VERIFIED", "good"),
-    "TECHNICAL_ONLY": ("TECHNICAL_ONLY · 叙述待审", "warn"),
-    "REVIEW_REQUIRED": ("REVIEW_REQUIRED · 未过发布门禁", "bad"),
+    "VERIFIED": ("VERIFIED", "VERIFIED", "good"),
+    "TECHNICAL_ONLY": ("TECHNICAL_ONLY · 叙述待审",
+                       "TECHNICAL_ONLY · narrative pending review", "warn"),
+    "REVIEW_REQUIRED": ("REVIEW_REQUIRED · 未过发布门禁",
+                        "REVIEW_REQUIRED · failed the publishing gate", "bad"),
 }
-RACE_ZH = {"agree": "结构一致", "consistent": "无矛盾", "prose": "散文公式",
-           "disagree": "存在分歧", "renderer_unsupported": "组合器未覆盖"}
+RACE_DESC = {"agree": ("结构一致", "structures agree"),
+             "consistent": ("无矛盾", "no contradiction"),
+             "prose": ("散文公式", "prose formula"),
+             "disagree": ("存在分歧", "channels disagree"),
+             "renderer_unsupported": ("组合器未覆盖", "not covered by the composer")}
+
+
+def _race_desc(verdict) -> str:
+    return t(*RACE_DESC.get(verdict, ("", "")))
 
 
 def _esc(s) -> str:
@@ -96,7 +107,7 @@ def _fmt_clean(sql) -> str:
 
 
 def _keys(v) -> str:
-    return "、".join(str(x) for x in v) if isinstance(v, (list, tuple)) else str(v or "")
+    return t("、", ", ").join(str(x) for x in v) if isinstance(v, (list, tuple)) else str(v or "")
 
 
 def _biz_body(biz: dict, badge) -> str:
@@ -114,22 +125,25 @@ def _machine_formula(ff: dict) -> str:
     defs = ff.get("defs") or []
     top = ff.get("top") or ""
     parts = []
+    def def_meta(d) -> str:
+        return (t(f'定义于 {_esc(d.get("model"))} · 粒度 {_esc(_keys(d.get("grain")))}',
+                  f'defined in {_esc(d.get("model"))} · grain {_esc(_keys(d.get("grain")))}')
+                + (t(" · 聚合跨 join", " · aggregate across join") if d.get("join_context") else ""))
+
     if len(defs) == 1 and defs[0].get("name") == top:
         d = defs[0]
         parts.append(f'<pre>{_esc(_fmt_clean(d.get("expr")))}</pre>')
-        parts.append(f'<p class="meta">定义于 {_esc(d.get("model"))} · 粒度 {_esc(_keys(d.get("grain")))}'
-                     + (" · 聚合跨 join" if d.get("join_context") else "") + "</p>")
+        parts.append(f'<p class="meta">{def_meta(d)}</p>')
     else:
         parts.append(f"<pre>{_esc(_fmt_clean(top))}</pre>")
         for d in defs:
             parts.append(
                 f'<div class="defrow"><pre>{_esc(d.get("name"))} = {_esc(_fmt_clean(d.get("expr")))}</pre>'
-                f'<p class="meta">定义于 {_esc(d.get("model"))} · 粒度 {_esc(_keys(d.get("grain")))}'
-                + (" · 聚合跨 join" if d.get("join_context") else "") + "</p></div>")
+                f'<p class="meta">{def_meta(d)}</p></div>')
     inline = ff.get("inline")
     shown = {str(d.get("expr")) for d in defs} | {str(top)}
     if inline and str(inline) not in shown:
-        parts.append(f'<details class="evd"><summary>完全内联展开</summary>'
+        parts.append(f'<details class="evd"><summary>{t("完全内联展开", "fully inlined expansion")}</summary>'
                      f'<pre>{_esc(_fmt_clean(inline))}</pre></details>')
     return "".join(parts)
 
@@ -145,10 +159,12 @@ def _machine_facts(tf: dict, badge) -> str:
                      f' <span class="evl">{loc}</span>{ev}</li>')
     for w in (tf.get("window") or {}).get("items") or []:
         loc = f'{_esc(w.get("model"))}' + (f' L{w["line"]}' if w.get("line") else "")
-        items.append(f'<li>窗口/{_esc(w.get("idiom"))}: <code>{_esc(_fmt_clean(w.get("sql")))}</code>'
+        items.append(f'<li>{t("窗口", "window")}/{_esc(w.get("idiom"))}: '
+                     f'<code>{_esc(_fmt_clean(w.get("sql")))}</code>'
                      f' <span class="evl">{loc}</span></li>')
     grain = tf.get("grain") or {}
-    tail = (f'<p class="meta">输出粒度 {_esc(_keys(grain.get("keys")))} @ {_esc(grain.get("model"))}</p>'
+    tail = (f'<p class="meta">{t("输出粒度", "output grain")} '
+            f'{_esc(_keys(grain.get("keys")))} @ {_esc(grain.get("model"))}</p>'
             if grain.get("keys") else "")
     if not items and not tail:
         return ""
@@ -165,12 +181,15 @@ def _evidence_details(c: dict, files: dict, badge_ids_only=False) -> str:
         model = e.get("model") or ""
         src = files.get(model, "")
         loc = _esc(model) + (f'<br><span class="evl">{_esc(src)}</span>' if src else "")
-        line = f'<span class="evl">编译行 L{e["line"]}</span>' if e.get("line") else ""
+        line = (f'<span class="evl">{t("编译行", "compiled line")} L{e["line"]}</span>'
+                if e.get("line") else "")
         rows.append(f'<tr id="ev-{key}-{_esc(e["id"])}"><td class="evk">{_esc(e["id"])}</td>'
                     f'<td>{_esc(e.get("kind"))}</td><td>{loc} {line}</td>'
                     f'<td><code>{_esc(e.get("text"))}</code></td></tr>')
-    return (f'<details class="evd"><summary>证据原文({len(evs)} 条,条款编号可点击跳转)</summary>'
-            f'<table>{"".join(rows)}</table></details>')
+    return ('<details class="evd"><summary>'
+            + t(f"证据原文({len(evs)} 条,条款编号可点击跳转)",
+                f"evidence texts ({len(evs)}; clause ids click through)")
+            + f'</summary><table>{"".join(rows)}</table></details>')
 
 
 def card_html(c: dict, files: dict | None = None) -> str:
@@ -186,8 +205,11 @@ def card_html(c: dict, files: dict | None = None) -> str:
 
     if c.get("status") == "review":
         return (f'<div class="card"><h2>{_esc(c["title"])} <span class="tgt">{_esc(c["target"])}</span>'
-                f'<span class="conf c-review">审核中</span></h2>'
-                f'<p class="meta">双通道互验低置信,内容待人工审核后展示。</p></div>')
+                f'<span class="conf c-review">{t("审核中", "under review")}</span></h2>'
+                f'<p class="meta">'
+                + t("双通道互验低置信,内容待人工审核后展示。",
+                    "low dual-channel cross-validation confidence; content withheld until human review.")
+                + "</p></div>")
 
     pub = c.get("publication_status")
     tf = c.get("technical_facts") or {}
@@ -197,81 +219,109 @@ def card_html(c: dict, files: dict | None = None) -> str:
     v = c.get("validation", {})
     race = c.get("race") or {}
 
-    chip = (f'<span class="conf c-{PUB_CHIP[pub][1]}">{PUB_CHIP[pub][0]}</span>' if pub in PUB_CHIP
+    chip = (f'<span class="conf c-{PUB_CHIP[pub][2]}">{t(*PUB_CHIP[pub][:2])}</span>' if pub in PUB_CHIP
             else f'<span class="conf c-{conf}">{conf}</span>')   # 旧批次卡回退置信徽标
     head = (f'<h2>{_esc(c["title"])} <span class="tgt">{_esc(c["target"])}</span>{chip}</h2>')
-    meta_line = (f'<p class="meta">生成于 {_esc(c.get("generated_at"))} · {_esc(c.get("llm_model"))}'
+    meta_line = (f'<p class="meta">{t("生成于", "generated at")} {_esc(c.get("generated_at"))}'
+                 f' · {_esc(c.get("llm_model"))}'
                  f' · run {_esc(c.get("run_id"))}'
-                 f' · 图 {_esc(str(c.get("graph_md5") or "")[:12])}</p>')
+                 f' · {t("图", "graph")} {_esc(str(c.get("graph_md5") or "")[:12])}</p>')
 
     # ── REVIEW_REQUIRED:不进正式正文,只出问题摘要(证据表保留供评审溯源)──
     if pub == "REVIEW_REQUIRED":
         why = []
         if race.get("verdict"):
             note = (race.get("detail") or {}).get("note") or ""
-            why.append(f'赛马判定 {_esc(race["verdict"])}({RACE_ZH.get(race["verdict"], "")})'
-                       + (f":{_esc(note)}" if note else ""))
-        why += [f"组合器:{_esc(r)}" for r in ff.get("reasons") or []]
+            why.append(t(f'赛马判定 {_esc(race["verdict"])}({_race_desc(race["verdict"])})',
+                         f'race verdict {_esc(race["verdict"])} ({_race_desc(race["verdict"])})')
+                       + (t(f":{_esc(note)}", f": {_esc(note)}") if note else ""))
+        why += [t(f"组合器:{_esc(r)}", f"composer: {_esc(r)}") for r in ff.get("reasons") or []]
         if ff.get("rt_failed"):
-            why.append("round-trip 校验失败(组合公式未能与通道一对账)")
+            why.append(t("round-trip 校验失败(组合公式未能与通道一对账)",
+                         "round-trip check failed (the composed formula did not reconcile "
+                         "with channel one)"))
         if v.get("freetext_unverified"):
-            why.append(f'叙述引用词表外 token:{_esc(v["freetext_unverified"])}')
+            why.append(t(f'叙述引用词表外 token:{_esc(v["freetext_unverified"])}',
+                         f'narrative cites out-of-vocabulary tokens: {_esc(v["freetext_unverified"])}'))
         if v.get("unverified_clauses"):
-            why.append(f'{v["unverified_clauses"]} 条业务条款未绑定证据')
-        rows = "".join(f"<li>{w}</li>" for w in why) or "<li>见批次日志</li>"
+            why.append(t(f'{v["unverified_clauses"]} 条业务条款未绑定证据',
+                         f'{v["unverified_clauses"]} business clauses not bound to evidence'))
+        rows = ("".join(f"<li>{w}</li>" for w in why)
+                or f'<li>{t("见批次日志", "see the batch log")}</li>')
         return (f'<div class="card">{head}'
-                f'<div class="review-why">未通过发布门禁,口径内容不在报告中展示;待人工评审。'
-                f'<ul>{rows}</ul></div>'
+                f'<div class="review-why">'
+                + t("未通过发布门禁,口径内容不在报告中展示;待人工评审。",
+                    "failed the publishing gate; caliber content is withheld from the report, "
+                    "pending human review.")
+                + f'<ul>{rows}</ul></div>'
                 f'{_evidence_details(c, files)}{meta_line}</div>')
 
     # ── 业务口径:VERIFIED 正式展示;TECHNICAL_ONLY 折叠为待审草稿 ──
     if pub == "TECHNICAL_ONLY":
         unv = v.get("freetext_unverified")
-        why = (f'——未过验字段 {_esc(json.dumps(unv, ensure_ascii=False))}' if unv else "")
-        biz_html = (f'<details class="draft"><summary>业务叙述 · 待审草稿'
-                    f'(叙述层未过互验{why},勿作口径依据)</summary>'
-                    f'<div class="body">{_biz_body(biz, badge)}</div></details>')
+        why = t(f'——未过验字段 {_esc(json.dumps(unv, ensure_ascii=False))}' if unv else "",
+                f' — unverified fields {_esc(json.dumps(unv, ensure_ascii=False))}' if unv else "")
+        biz_html = ('<details class="draft"><summary>'
+                    + t(f'业务叙述 · 待审草稿(叙述层未过互验{why},勿作口径依据)',
+                        f'business narrative · draft pending review (the narrative failed '
+                        f'cross-validation{why}; do not rely on it as caliber)')
+                    + f'</summary><div class="body">{_biz_body(biz, badge)}</div></details>')
     else:
-        biz_html = f"<h3>业务口径</h3>{_biz_body(biz, badge)}"
+        biz_html = f'<h3>{t("业务口径", "business caliber")}</h3>{_biz_body(biz, badge)}'
 
     # ── 技术口径:按公式权威渲染 ──
     if authority == "machine":
         llm_f = tech.get("formula")
-        llm_alt = (f'<p class="llm-alt">LLM 简化写法(解释与叙述,非发布口径):'
-                   f'<code>{_esc(llm_f)}</code></p>' if llm_f else "")
-        tech_html = (f'<h3>技术口径 · 组合器(发布权威)</h3>{_machine_formula(ff)}'
+        llm_alt = ('<p class="llm-alt">'
+                   + t("LLM 简化写法(解释与叙述,非发布口径):",
+                       "LLM simplified form (explanation & narrative, not the published caliber): ")
+                   + f'<code>{_esc(llm_f)}</code></p>' if llm_f else "")
+        tech_html = (f'<h3>{t("技术口径 · 组合器(发布权威)", "technical caliber · composer (publishing authority)")}</h3>'
+                     f'{_machine_formula(ff)}'
                      f'{_machine_facts(tf, badge)}{llm_alt}')
     elif authority == "llm_fallback":
-        reasons = ";".join(str(r) for r in ff.get("reasons") or []) or "未给出机器原因"
-        tech_html = (f'<h3>技术口径 · LLM 兜底</h3>'
-                     f'<div class="fallback">组合器未覆盖({_esc(reasons)}),'
-                     f'当前公式为 LLM 生成,经双通道互验但非机器证明。</div>'
+        reasons = (t(";", "; ").join(str(r) for r in ff.get("reasons") or [])
+                   or t("未给出机器原因", "no machine reason given"))
+        tech_html = (f'<h3>{t("技术口径 · LLM 兜底", "technical caliber · LLM fallback")}</h3>'
+                     f'<div class="fallback">'
+                     + t(f'组合器未覆盖({_esc(reasons)}),当前公式为 LLM 生成,经双通道互验但非机器证明。',
+                         f'not covered by the composer ({_esc(reasons)}); this formula is LLM-generated, '
+                         f'cross-validated across both channels but not machine-proven.')
+                     + '</div>'
                      f'<pre>{_esc(tech.get("formula"))}</pre>'
                      f'{_machine_facts(tf, badge)}')
     else:                                       # 旧批次卡:无权威字段,按旧视图回退
-        tech_html = (f'<h3>技术口径</h3><pre>{_esc(tech.get("formula"))}</pre>'
-                     + (f'<p class="meta">时间窗: {_esc(tech.get("window"))}</p>'
+        tech_html = (f'<h3>{t("技术口径", "technical caliber")}</h3><pre>{_esc(tech.get("formula"))}</pre>'
+                     + (f'<p class="meta">{t("时间窗", "time window")}: {_esc(tech.get("window"))}</p>'
                         if tech.get("window") else ""))
 
     # ── 互验区:置信度只是叙述层互验的注脚,不再冒充门面状态 ──
-    verify = (f'源字段{"完全一致" if not v.get("s_missing_by_llm") and not v.get("s_extra_by_llm") else "存在差异"}'
-              f' · 条件覆盖 {v.get("f1_covered", 0) * 100:.0f}%({v.get("f1_total", 0)} 条)'
-              f' · 可疑 {len(v.get("f2_suspect", []))} · 未证条款 {v.get("unverified_clauses", 0)}')
+    s_same = not v.get("s_missing_by_llm") and not v.get("s_extra_by_llm")
+    verify = t(f'源字段{"完全一致" if s_same else "存在差异"}'
+               f' · 条件覆盖 {v.get("f1_covered", 0) * 100:.0f}%({v.get("f1_total", 0)} 条)'
+               f' · 可疑 {len(v.get("f2_suspect", []))} · 未证条款 {v.get("unverified_clauses", 0)}',
+               f'sources {"fully consistent" if s_same else "differ"}'
+               f' · condition coverage {v.get("f1_covered", 0) * 100:.0f}% ({v.get("f1_total", 0)})'
+               f' · suspect {len(v.get("f2_suspect", []))} · unproven clauses {v.get("unverified_clauses", 0)}')
     race_line = ""
     if race.get("verdict"):
         note = (race.get("detail") or {}).get("note") or ""
-        race_line = (f' · 赛马 {_esc(race["verdict"])}({RACE_ZH.get(race["verdict"], "")})'
-                     + (f":{_esc(note)}" if note else ""))
-    verify = f"叙述互验置信度 {conf} · {verify}{race_line}"
+        race_line = (t(f' · 赛马 {_esc(race["verdict"])}({_race_desc(race["verdict"])})',
+                       f' · race {_esc(race["verdict"])} ({_race_desc(race["verdict"])})')
+                     + (t(f":{_esc(note)}", f": {_esc(note)}") if note else ""))
+    verify = t(f"叙述互验置信度 {conf} · {verify}{race_line}",
+               f"narrative cross-validation confidence {conf} · {verify}{race_line}")
 
     gov = c.get("governance", {}).get("duplicates", [])
     gov_html = ""
     if gov:
         rows = "<br>".join(f'<code>{_esc(p["a"])} ≍ {_esc(p["b"])}</code>' for p in gov)
-        gov_html = f'<div class="gov">治理提示 · 同源同构:<br>{rows}</div>'
+        gov_html = ('<div class="gov">'
+                    + t("治理提示 · 同源同构:", "governance hint · same source, same structure:")
+                    + f'<br>{rows}</div>')
 
     return (f'<div class="card">{head}{biz_html}{tech_html}'
-            f'<h3>双通道互验</h3><p class="meta">{verify}</p>'
+            f'<h3>{t("双通道互验", "dual-channel cross-validation")}</h3><p class="meta">{verify}</p>'
             f'{_evidence_details(c, files)}{gov_html}{meta_line}</div>')
 
 
@@ -292,7 +342,8 @@ def export_html(project: DbtProject, out: Path) -> int:
     store = CaliberStore(project.workspace / "store")
     d = store.active_dir()
     if d is None:
-        raise FileNotFoundError("没有已发布的口径批次;请先执行 fineprint synth")
+        raise FileNotFoundError(t("没有已发布的口径批次;请先执行 fineprint synth",
+                                  "no published caliber batch; run fineprint synth first"))
     idx = store.index() or {}
     cards = []
     for f in sorted(d.glob("*.json")):
@@ -302,14 +353,20 @@ def export_html(project: DbtProject, out: Path) -> int:
     body = "".join(card_html(c, files) for c in cards)
     pubs: dict = {}
     for c in cards:
-        k = c.get("publication_status") or ("审核中" if c.get("status") == "review" else "旧版卡")
+        k = c.get("publication_status") or (t("审核中", "under review") if c.get("status") == "review"
+                                            else t("旧版卡", "legacy card"))
         pubs[k] = pubs.get(k, 0) + 1
     pub_line = " · ".join(f"{n} {k}" for k, n in sorted(pubs.items(), reverse=True))
+    title = t("FinePrint 口径卡", "FinePrint Caliber Cards")
+    sub = t(f'批次 {_esc(idx.get("run_id"))} · {_esc(idx.get("at"))} · {len(cards)} 个指标({pub_line})·\n'
+            f'业务/技术双口径由血缘 × LLM 双通道互验生成,发布状态按状态机渲染,条款级证据编号可点击溯源',
+            f'batch {_esc(idx.get("run_id"))} · {_esc(idx.get("at"))} · {len(cards)} metrics ({pub_line}) ·\n'
+            f'business & technical calibers generated by lineage × LLM dual-channel cross-validation; '
+            f'publication status rendered by the state machine; clause-level evidence ids trace to receipts')
     page = f"""<!doctype html><html><head><meta charset="utf-8">
-<title>FinePrint 口径卡</title><style>{CSS}</style><script>{JS}</script></head><body><div class="wrap">
-<h1>FinePrint 口径卡</h1>
-<p class="sub">批次 {_esc(idx.get("run_id"))} · {_esc(idx.get("at"))} · {len(cards)} 个指标({pub_line})·
-业务/技术双口径由血缘 × LLM 双通道互验生成,发布状态按状态机渲染,条款级证据编号可点击溯源</p>
+<title>{title}</title><style>{CSS}</style><script>{JS}</script></head><body><div class="wrap">
+<h1>{title}</h1>
+<p class="sub">{sub}</p>
 {body}</div></body></html>"""
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(page)

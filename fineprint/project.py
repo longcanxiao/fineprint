@@ -12,6 +12,7 @@ from functools import cached_property
 from pathlib import Path
 
 from fineprint.config import read_internal_packages
+from fineprint.i18n import t
 
 ADAPTER_DIALECT = {
     "duckdb": "duckdb", "snowflake": "snowflake", "bigquery": "bigquery",
@@ -46,8 +47,10 @@ class DbtProject:
         self.target_dir = self._resolve_target(target_dir)
         mf = self.target_dir / "manifest.json"
         if not mf.exists():
-            raise FileNotFoundError(
-                f"未找到 {mf}\n请先在 dbt 项目里执行: dbt compile && dbt docs generate")
+            raise FileNotFoundError(t(
+                f"未找到 {mf}\n请先在 dbt 项目里执行: dbt compile && dbt docs generate",
+                f"{mf} not found\nrun inside the dbt project first: "
+                f"dbt compile && dbt docs generate"))
         self.manifest = json.loads(mf.read_text())
         cat = self.target_dir / "catalog.json"
         # catalog 缺席 = 无 catalog 模式:qualify schema 由 manifest yml 声明列 +
@@ -104,8 +107,10 @@ class DbtProject:
     def dialect(self) -> str:
         d = ADAPTER_DIALECT.get(self.adapter_type)
         if d is None:
-            raise ValueError(f"未适配的 dbt adapter: {self.adapter_type}"
-                             f"(已支持: {sorted(ADAPTER_DIALECT)})")
+            raise ValueError(t(f"未适配的 dbt adapter: {self.adapter_type}"
+                               f"(已支持: {sorted(ADAPTER_DIALECT)})",
+                               f"unsupported dbt adapter: {self.adapter_type} "
+                               f"(supported: {sorted(ADAPTER_DIALECT)})"))
         return d
 
     # ---------------- 模型与源表 ----------------
@@ -129,8 +134,10 @@ class DbtProject:
             if f is None or not f.exists():
                 if self.allow_uncompiled:
                     continue      # 数据源边界降级(external_models 收录其物化表)
-                raise FileNotFoundError(
-                    f"模型 {n['name']} 缺少编译产物({cp});请先执行 dbt compile")
+                raise FileNotFoundError(t(
+                    f"模型 {n['name']} 缺少编译产物({cp});请先执行 dbt compile",
+                    f"model {n['name']} is missing compiled output ({cp}); "
+                    f"run dbt compile first"))
             fqn = n.get("fqn") or []
             layer = "/".join(fqn[1:-1]) or n.get("schema") or "default"
             out[uid] = {
@@ -275,9 +282,12 @@ class DbtProject:
         out = {}
         for rel, name in pairs:
             if rel in out and out[rel] != name:
-                raise ValueError(
+                raise ValueError(t(
                     f"{kind}物理落点冲突: {rel} 同时由 {out[rel]} 与 {name} 物化"
-                    f"(dbt 正常编译不会产生;manifest/catalog 可能异常,请重新 dbt compile)")
+                    f"(dbt 正常编译不会产生;manifest/catalog 可能异常,请重新 dbt compile)",
+                    f"{kind} physical relation conflict: {rel} is materialized by both "
+                    f"{out[rel]} and {name} (a normal dbt compile cannot produce this; "
+                    f"manifest/catalog may be corrupt — re-run dbt compile)"))
             out[rel] = name
         return out
 
@@ -285,7 +295,7 @@ class DbtProject:
     def model_by_relation(self) -> dict:
         """'db.schema.alias' → unique_id(血缘 upstream 表 → 模型的反查)。"""
         return self._uniq(((rel3(m["database"], m["schema"], m["alias"]), uid)
-                           for uid, m in self.models.items()), "模型")
+                           for uid, m in self.models.items()), t("模型", "model"))
 
     @cached_property
     def source_by_relation(self) -> dict:
@@ -293,7 +303,7 @@ class DbtProject:
         第三方包模型的物化表并入此表——对血缘而言它们就是数据源。"""
         pairs = [(rel, s["identifier"]) for rel, s in self.sources.items()]
         pairs += [(rel, e["alias"]) for rel, e in self.external_models.items()]
-        return self._uniq(pairs, "源表")
+        return self._uniq(pairs, t("源表", "source-table"))
 
     # ---------------- 物理键补全 ----------------
     @cached_property
@@ -321,8 +331,10 @@ class DbtProject:
             return rel
         db = self._db_of.get(rel)
         if db is _AMBIG:
-            raise ValueError(
-                f"表引用 {rel} 在多个 database 中同名,两段名无法定位;请在 SQL 中写全三段名")
+            raise ValueError(t(
+                f"表引用 {rel} 在多个 database 中同名,两段名无法定位;请在 SQL 中写全三段名",
+                f"table reference {rel} exists under the same name in multiple databases; "
+                f"a two-part name cannot locate it — write the full three-part name in SQL"))
         return f"{db}.{rel}" if db is not None else f".{rel}"
 
     @cached_property
