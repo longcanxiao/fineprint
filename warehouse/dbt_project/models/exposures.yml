@@ -1,0 +1,37 @@
+version: 2
+
+# 项目外消费方声明(dbt exposures):MetricLens 据此做指标候选预填、
+# 卡片消费方标注、漂移告警定向与治理收敛加权。
+exposures:
+  - name: business_overview_board
+    label: 电商大盘看板
+    type: dashboard
+    maturity: high
+    url: http://localhost:5273/
+    description: 管理层每日大盘——GMV/支付/退款/物流/新客全链指标入口。
+    depends_on:
+      - ref('app_business_overview_1d')
+    owner:
+      name: 数据团队
+
+  - name: channel_attribution_board
+    label: 渠道归因分析
+    type: dashboard
+    maturity: medium
+    url: http://localhost:5273/
+    description: 渠道 × 类目 × 省份 × 直播间的归因 GMV 下钻。
+    depends_on:
+      - ref('app_channel_overview_1d')
+    owner:
+      name: 增长团队
+
+  - name: refund_monitor_notebook
+    label: 退款口径监控 notebook
+    type: notebook
+    maturity: low
+    description: 风控周会用的退款率追踪(14 天窗口口径)。
+    depends_on:
+      - ref('app_business_overview_1d')
+      - ref('dm_after_sale_stats_1d')
+    owner:
+      name: 风控团队

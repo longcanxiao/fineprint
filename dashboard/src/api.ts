@@ -22,8 +22,9 @@ export const fetchBreakdown = (s: string, e: string, dim: string, signal?: Abort
 export interface DriftEvent {
   detected_at: string; metric_key: string; kind: string; severity: 'high' | 'medium' | 'info'
   detail: Record<string, string | undefined>
+  exposures?: string[]
 }
-export interface GovPairFull { a: string; b: string; fingerprint: string; tier: 'A' | 'B'; verdict: string; reason?: string; suggestion?: string }
+export interface GovPairFull { a: string; b: string; fingerprint: string; tier: 'A' | 'B'; verdict: string; reason?: string; suggestion?: string; exposures_a?: string[]; exposures_b?: string[] }
 export interface GovSqlQuality {
   model: string; column: string; line?: number | null
   tables: string[]; join_keys: string[]; kind: string; reason: string; suggestion: string
@@ -33,6 +34,7 @@ export interface GovFamily { a: string; b: string; fingerprint: string; grain_a:
 export interface GovRowMismatch {
   a: string; b: string; fingerprint: string; same_base?: boolean
   rowset_only_a: string[]; rowset_only_b: string[]
+  exposures_a?: string[]; exposures_b?: string[]
 }
 export interface GovReport {
   generated_at: string | null; llm_model?: string

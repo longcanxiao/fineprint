@@ -182,6 +182,30 @@ def append_events(project: DbtProject, events: list, from_at: str, to_at: str):
         tmp.replace(f)
 
 
+def annotate_exposures(events: list, cfg: MLConfig, graph: dict) -> None:
+    """漂移告警定向:事件挂上受影响指标目标模型的 dbt exposures(消费方名单)。
+    告警从"哪个指标变了"升级为"哪些看板受影响、找谁"。目标解析失败不阻断
+    (target_changed 类事件本就可能指向已不存在的模型)。"""
+    from metriclens.trace import resolve_model
+    exp_map = graph.get("exposures_by_model") or {}
+    if not exp_map:
+        return
+    by_key = {m.key: m for m in cfg.metrics}
+    for e in events:
+        m = by_key.get(e["metric_key"])
+        if m is None:
+            continue
+        names = []
+        for tc in (m.target, *m.extra_targets):
+            try:
+                uid = resolve_model(graph, tc.rsplit(".", 1)[0])
+            except Exception:
+                continue
+            names += [x["name"] for x in exp_map.get(uid, []) if x["name"] not in names]
+        if names:
+            e["exposures"] = names
+
+
 def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True,
               block_high: bool = False) -> list:
     """基线不存在则建立基线(无事件);否则对比最近快照。
@@ -197,6 +221,7 @@ def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True
         print(f"基线快照已建立({len(cur['metrics'])} 个指标),无对比对象")
         return []
     events = diff_snapshots(prev, cur)
+    annotate_exposures(events, cfg, graph)
     blocked = block_high and any(e["severity"] == "high" for e in events)
     if save and not blocked:
         if events:
@@ -217,4 +242,5 @@ def print_events(events: list):
         mark = {"high": "⚠", "medium": "·", "info": "i"}[e["severity"]]
         d = e["detail"]
         brief = d.get("sql") or d.get("source") or d.get("column") or ""
-        print(f"  {mark} [{e['severity']:<6}] {e['metric_key']:<26} {e['kind']:<18} {brief[:70]}")
+        tail = f"  ⇒ 消费方: {', '.join(e['exposures'][:3])}" if e.get("exposures") else ""
+        print(f"  {mark} [{e['severity']:<6}] {e['metric_key']:<26} {e['kind']:<18} {brief[:70]}{tail}")

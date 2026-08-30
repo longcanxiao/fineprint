@@ -586,8 +586,18 @@ def build_graph(project: DbtProject) -> dict:
         # dbt unique/unique_combination 测试的唯一性声明,折到物理表:
         # 治理/血缘对"join 到真实表"的伙伴做 N:1 判定的声明性证据
         "declared_unique_rels": dict(project.declared_unique_rels),
+        # dbt exposures 反查:模型 uid → 消费方清单(看板/报表/应用);
+        # 卡片消费方标注、漂移告警定向、治理收敛加权都读这里
+        "exposures_by_model": {},
         "models": {},
     }
+    for e in project.exposures.values():
+        meta = {k: e[k] for k in ("name", "label", "type", "url", "maturity", "owner")
+                if e.get(k)}
+        for uid_ in e["models"]:
+            graph["exposures_by_model"].setdefault(uid_, []).append(meta)
+    for uid_ in graph["exposures_by_model"]:
+        graph["exposures_by_model"][uid_].sort(key=lambda x: x["name"])
     decl_uni = project.declared_tests["unique"]
     fk_by_uid: dict = {}
     for e in project.declared_tests["fk"]:

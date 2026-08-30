@@ -30,7 +30,8 @@ def _cat(schema, name, cols):
 
 
 def make_project(tmp_path, nodes, catalog_nodes, sqls, sources=None,
-                 project_name=None, internal_packages=None, adapter="duckdb"):
+                 project_name=None, internal_packages=None, adapter="duckdb",
+                 exposures=None):
     proj = tmp_path / "proj"
     (proj / "target").mkdir(parents=True)
     for rel, text in sqls.items():
@@ -41,7 +42,8 @@ def make_project(tmp_path, nodes, catalog_nodes, sqls, sources=None,
     if project_name:
         meta["project_name"] = project_name   # 缺省不写:root 未知 → 全部按一方包
     (proj / "target" / "manifest.json").write_text(json.dumps({
-        "metadata": meta, "nodes": nodes, "sources": sources or {}}))
+        "metadata": meta, "nodes": nodes, "sources": sources or {},
+        "exposures": exposures or {}}))
     (proj / "target" / "catalog.json").write_text(json.dumps(
         {"nodes": catalog_nodes, "sources": {}}))
     return DbtProject(proj, internal_packages=internal_packages)

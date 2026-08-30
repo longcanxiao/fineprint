@@ -170,6 +170,12 @@ def scan(graph: dict, cfg: MLConfig) -> dict:
                 if b in chains[a] or a in chains[b]:
                     continue          # 血缘直系是引用,不是重复
                 pair = {"fingerprint": fp, "a": f"{disp[a[0]]}.{a[1]}", "b": f"{disp[b[0]]}.{b[1]}"}
+                # 消费方加权(dbt exposures):一侧喂看板一侧没人用,收敛方向不言自明
+                exp_map = graph.get("exposures_by_model") or {}
+                ea = [x["name"] for x in exp_map.get(a[0], [])]
+                eb = [x["name"] for x in exp_map.get(b[0], [])]
+                if ea or eb:
+                    pair["exposures_a"], pair["exposures_b"] = ea, eb
                 # 签名为空 = 证据不可见(聚合藏在模型内 CTE / 全链无分组),不可比:
                 # 只在两侧证据都在场时下确定性结论,缺证一侧一律落到下一级判据;
                 # 已知等价展开形(avg ↔ sum/count)不直判,降入 B 档仲裁

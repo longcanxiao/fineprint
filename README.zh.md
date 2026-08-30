@@ -45,7 +45,9 @@ cd your-dbt-project
 dbt compile && dbt docs generate    # MetricLens 只读 artifacts——不连数据库
 
 metriclens init             # 生成 metriclens.yml——列出你的看板指标(model.column;
-                            # 两个包同名模型时写 package.model.column)
+                            # 两个包同名模型时写 package.model.column)。项目声明过
+                            # dbt exposures 时自动预填注释候选,消费方随之进入
+                            # 口径卡(消费方区)、漂移告警定向与治理收敛加权
 metriclens graph            # 构建字段级血缘图
 metriclens trace mart_orders.refund_rate_14d    # 查看单个指标的 S/F/E 三元组
 

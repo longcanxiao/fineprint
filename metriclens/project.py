@@ -157,6 +157,26 @@ class DbtProject:
         return out
 
     @cached_property
+    def exposures(self) -> dict:
+        """{exposure name: {name, label, type, url, maturity, owner, models}} —
+        dbt exposures = 项目外消费方声明(看板/报表/notebook/应用)。
+        models 只收一方包物化模型 uid:消费方标注挂在指标出口模型上;
+        依赖里的 source/第三方包(数据源边界)不入——那是上游,不是出口。"""
+        out = {}
+        for uid, e in (self.manifest.get("exposures") or {}).items():
+            owner = e.get("owner") or {}
+            name = e.get("name") or uid.split(".")[-1]
+            out[name] = {
+                "name": name, "label": e.get("label") or name,
+                "type": e.get("type"), "url": e.get("url"),
+                "maturity": e.get("maturity"),
+                "owner": {k: owner[k] for k in ("name", "email") if owner.get(k)},
+                "models": [d for d in (e.get("depends_on") or {}).get("nodes") or []
+                           if d in self.models],
+            }
+        return out
+
+    @cached_property
     def declared_tests(self) -> dict:
         """dbt schema 测试的基数声明(声明性证据,dbt 会按数据定期实测):
         {"unique": {被测节点 uid: [[列,...], ...]}, "fk": [{uid, column, to_uid, to_column}]}

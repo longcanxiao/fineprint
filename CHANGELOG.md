@@ -24,6 +24,20 @@ they can't).
   is labeled explanation/narrative (or "published formula (fallback)" with
   the machine reason when the composer can't prove). Demo distribution is
   unchanged (14 VERIFIED + 1 TECHNICAL_ONLY; 14 machine + 1 llm_fallback).
+- **dbt exposures auto-discovery**: exposures (declared downstream consumers —
+  dashboards, notebooks, ML feeds, applications) now flow through the whole
+  product. The graph carries an `exposures_by_model` reverse map (internal
+  models only; source/third-party deps stay out per the data-source-boundary
+  convention). Caliber cards gain `consumers` (the exposures on their target
+  models, rendered as a 消费方 section with type/URL/owner); drift events are
+  targeted — each event lists the affected exposures so an alert names the
+  dashboards and owners it hits; governance pairs carry per-side consumer
+  lists (a duplicate feeding 3 boards vs. one feeding none makes the
+  consolidation direction obvious); and `metriclens init` pre-fills the
+  metrics list with commented candidates from exposure-exposed models'
+  numeric measure columns (exposures are model-level, so final column
+  selection stays human). Demo warehouse declares 3 exposures; parser
+  validated on Cal-ITP's 5 real exposures (99 init candidates).
 - **dbt tests as declared cardinality evidence**: `unique` /
   `dbt_utils.unique_combination_of_columns` / `relationships` schema tests
   now feed the cardinality proof system as declarative evidence (dbt re-tests

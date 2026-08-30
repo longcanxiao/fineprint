@@ -33,14 +33,60 @@ def _graph(project):
     return load_graph(p)
 
 
+def _exposure_candidates(project) -> str:
+    """init 预填:按 dbt exposures 圈出看板出口模型,其数值度量列作为指标候选
+    (注释形态,取消注释即用)。exposure 依赖是模型级,最后一步圈列仍须人工确认。"""
+    NUM = ("INT", "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL", "NUMBER", "HUGE")
+
+    def cols_of(m):
+        for schs in project.schema.values():
+            cols = (schs.get(m["schema"]) or {}).get(m["alias"])
+            if cols:
+                return cols
+        return {}
+
+    lines = []
+    for e in list(project.exposures.values())[:10]:
+        if not e["models"]:
+            continue
+        head = f"# ── exposure {e['name']}({e.get('type') or '-'})"
+        if e.get("url"):
+            head += f"  {e['url']}"
+        lines.append(head)
+        for uid in e["models"]:
+            m = project.models[uid]
+            meas = [c for c, ty in cols_of(m).items()
+                    if any(t in str(ty).upper() for t in NUM)
+                    and not c.lower().endswith(("_id", "_key")) and c.lower() != "id"]
+            for c in meas[:8]:
+                lines += [f"#   - key: {m['name']}_{c}",
+                          f"#     title: {m['name']}.{c}",
+                          f"#     target: {m['name']}.{c}"]
+            if len(meas) > 8:
+                lines.append(f"#   …… {m['name']} 另有 {len(meas) - 8} 个数值列")
+    if not lines:
+        return ""
+    return ("\n# 指标候选(自动发现自 dbt exposures 声明的看板出口模型;\n"
+            "# 挪进上方 metrics 列表并取消注释即生效)\n" + "\n".join(lines) + "\n")
+
+
 def cmd_init(args):
     from metriclens.config import EXAMPLE
     f = Path(args.project) / "metriclens.yml"
     if f.exists() and not args.force:
         print(f"{f} 已存在(--force 覆盖)")
         return
-    f.write_text(EXAMPLE)
-    print(f"已生成 {f}\n下一步:填入 metrics(model.column),设置 LLM 环境变量(见 README),然后 metriclens graph")
+    text, tip = EXAMPLE, ""
+    try:
+        block = _exposure_candidates(_project(args))
+        if block:
+            text += block
+            tip = ";已按 dbt exposures 预填指标候选(文件尾部注释)"
+    except Exception:
+        pass          # artifacts 尚未编译时 init 仍可用,只出模板
+    f.write_text(text)
+    print(f"已生成 {f}\n下一步:填入 metrics(model.column){tip},"
+          f"设置 LLM 环境变量(见 README),然后 metriclens graph")
 
 
 def cmd_graph(args):

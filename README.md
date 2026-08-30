@@ -45,7 +45,9 @@ cd your-dbt-project
 dbt compile && dbt docs generate    # MetricLens reads artifacts only — no DB connection
 
 metriclens init             # writes metriclens.yml — list your dashboard metrics (model.column;
-                            # package.model.column when two packages share a model name)
+                            # package.model.column when two packages share a model name).
+                            # dbt exposures, when declared, pre-fill a commented candidate list,
+                            # and flow onto cards (consumers), drift alerts and governance weighting
 metriclens graph            # build the column-level lineage graph
 metriclens trace mart_orders.refund_rate_14d    # inspect one metric's S/F/E triple
 

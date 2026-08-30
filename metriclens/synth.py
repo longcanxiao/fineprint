@@ -400,6 +400,18 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set,
 
 
 # ---------------- 单指标流水线 ----------------
+def target_exposures(graph: dict, target_uids) -> list:
+    """指标的消费方 = 挂在其目标模型(出口层)上的 dbt exposures。
+    只看目标模型不看途经模型:exposure 消费的是被依赖的那张物化表,
+    上游模型的指标不因下游被看板引用而蹭消费方。"""
+    out = []
+    for uid in target_uids:
+        for e in (graph.get("exposures_by_model") or {}).get(uid, []):
+            if e not in out:
+                out.append(e)
+    return out
+
+
 def merged_trace(graph: dict, m: MetricDef) -> dict:
     model, col = m.target.rsplit(".", 1)
     t = trace(graph, model, col)
@@ -619,6 +631,7 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
         "confidence": val["confidence"],
         "status": "published" if val["confidence"] in ("high", "medium") else "review",
         "publication_status": pub_status,
+        "consumers": target_exposures(graph, [uid for uid, _ in targets]),
         "validation": val, "technical": technical, "business": business,
         "technical_facts": facts, "race": race,
         "evidence": evidence,

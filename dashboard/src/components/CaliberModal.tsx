@@ -38,6 +38,7 @@ interface Caliber {
   technical_facts?: TechnicalFacts
   race?: Race
   publication_status?: string
+  consumers?: { name: string; label?: string; type?: string; url?: string; owner?: { name?: string; email?: string } }[]
   trace?: {
     depth: number; models_visited: string[]
     sources: { table: string; column: string }[]
@@ -202,6 +203,22 @@ export default function CaliberModal({ metricKey, title, tokens, onClose }: { me
                 <div className="caveat">⚠ {(card.business.caveats ?? []).join(' ')}</div>
               )}
             </section>
+            {(card.consumers ?? []).length > 0 && (
+              <section>
+                <h3>消费方 <span className="m-target">dbt exposures 声明 · 此指标喂 {(card.consumers ?? []).length} 个下游</span></h3>
+                <ul className="refs">
+                  {(card.consumers ?? []).map((e, i) => (
+                    <li key={i}>
+                      <span>
+                        <span className="ev-tag">{e.type ?? 'exposure'}</span>
+                        {e.url ? <a href={e.url} target="_blank" rel="noreferrer">{e.label ?? e.name}</a> : (e.label ?? e.name)}
+                      </span>
+                      <span className="ref-loc">{e.owner?.name ?? e.owner?.email ?? ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             {card.technical_facts && (
               <section>
                 <h3>机器口径 <span className="m-target">确定性组合器合成 · {fAuth === 'machine' ? '发布权威' : '不可证,公式由下方 LLM 兜底'}</span></h3>
@@ -313,7 +330,7 @@ export default function CaliberModal({ metricKey, title, tokens, onClose }: { me
                           <code className="gov-code">{e.detail.sql ?? e.detail.source ?? e.detail.column}</code>
                         )}
                       </span>
-                      <span className="ref-loc">{e.detected_at.replace('T', ' ')}</span>
+                      <span className="ref-loc">{(e.exposures ?? []).length > 0 && `影响 ${(e.exposures ?? []).join('、')} · `}{e.detected_at.replace('T', ' ')}</span>
                     </li>
                   ))}
                 </ul>
