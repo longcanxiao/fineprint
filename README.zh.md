@@ -2,7 +2,9 @@
 
 [English](README.md) | **中文**
 
-**问问你的看板:这个指标到底是什么口径?**
+**Read the fine print of your metrics——读懂指标的小字条款;A decompiler for your dashboards——给看板的反编译器。**
+
+问问你的看板:这个指标到底是什么口径?
 
 MetricLens 从 dbt 项目里已有的 SQL 出发,反向还原每个看板指标的业务与技术定义(口径)——无须预先注册语义层,无须手工写文档。它回答的是这样的问题:
 

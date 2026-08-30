@@ -2,7 +2,9 @@
 
 **English** | [中文](README.zh.md)
 
-**Ask your dashboard what a metric *actually* means.**
+**Read the fine print of your metrics. A decompiler for your dashboards.**
+
+Ask your dashboard what a metric *actually* means.
 
 MetricLens reverse-engineers the business & technical definition ("caliber") of every dashboard metric from the SQL that already exists in your dbt project — no upfront semantic-layer registration, no manual documentation. It answers questions like:
 

@@ -1,7 +1,9 @@
 # fineprint
 
-**The fine print of your metrics.** 从 dbt 项目的编译产物(manifest / catalog /
-compiled SQL)逆向合成每个指标的完整技术口径——零数据库连接。
+**Read the fine print of your metrics. A decompiler for your dashboards.**
+
+从 dbt 项目的编译产物(manifest / catalog / compiled SQL)逆向合成每个指标的
+完整技术口径——零数据库连接。读懂指标的小字条款,给看板的反编译器。
 
 Reverse-engineers the full technical caliber of every metric from your dbt
 artifacts (manifest / catalog / compiled SQL) — zero database connection.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1 (2026-08-30)
+
+Docs-only: the two taglines land in every introduction — *Read the fine
+print of your metrics. A decompiler for your dashboards.* (PyPI summary,
+PyPI readme, both repo READMEs). No code changes.
+
 ## 0.8.0 (2026-08-30)
 
 First PyPI release, published as **`fineprint`** — the fine print of your
