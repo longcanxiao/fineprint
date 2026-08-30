@@ -113,7 +113,11 @@ class TestCaliberTree:
         assert "分子" in txt and "两侧共同口径" in txt
         out = render(t, tree=txt)
         assert "表达式链 E" not in out and "分子" in out       # 树替代 E 块
-        assert "源字段 S" not in out and "--full" in out       # 默认收敛:明细归 --full
-        full = render(t, tree=txt, full=True)
-        assert "源字段 S" in full and "过滤条件 F" in full     # --full 树下附完整出处
+        assert "源字段 S" not in out and "--full" in out       # 默认收敛:锚点归 --full
+        full_txt = render_tree(tr, full=True)
+        assert "源:" in full_txt and " L" in full_txt          # 源字段与出处锚点长在树上
+        assert "models/" in full_txt                            # 条件行带源文件路径
+        full = render(t, tree=full_txt, full=True)
+        assert "源字段 S" not in full and "过滤条件 F" not in full   # 平铺块不再重复
         assert "表达式链 E" in render(t)                        # 无树时平铺视图不变
+        assert "源字段 S" in render(t, full=True)               # 无树回退仍有完整明细

@@ -237,17 +237,19 @@ def trace(graph: dict, model: str, column: str) -> dict:
 
 
 def render(t: dict, tree: str | None = None, full: bool = False) -> str:
-    # 有树时默认只出树 + 警示类信息(归因不明/结构语义点),树已覆盖源、条件与
-    # 公式拆分,再平铺一遍 S/F/E 是观感冲突;--full 在树下附逐条出处(带编译行号)。
-    detail = full or not tree
+    # 有树时默认只出树 + 警示类信息(归因不明/结构语义点);--full 的出处锚点
+    # (源文件/编译行)与分支源字段由树自己携带(tree.py render_tree(full=True)),
+    # 不再平铺 S/F 块重复一遍——树外只留树装不下的:归因不明与结构语义点。
+    detail = not tree
     L = []
     if tree:
         L.append(tree)
-        tail = (_t("以下为出处明细", "receipts below") if detail
-                else _t("fineprint trace --full 查看表达式链与逐条出处",
-                        "run fineprint trace --full for the expression chain and per-item receipts"))
-        L.append(_t(f"\n(链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型;{tail})",
-                    f"\n(chain {t['depth']} levels deep across {len(t['models_visited'])} models; {tail})"))
+        tail = ("" if full
+                else _t(";fineprint trace --full 在树上附源字段与出处锚点(源文件·编译行)",
+                        "; run fineprint trace --full to annotate the tree with sources "
+                        "and receipt anchors (source file · compiled line)"))
+        L.append(_t(f"\n(链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型{tail})",
+                    f"\n(chain {t['depth']} levels deep across {len(t['models_visited'])} models{tail})"))
     else:
         L.append(_t(f"◎ 目标: {t['target']}   (链路 {t['depth']} 层,经过 {len(t['models_visited'])} 个模型)",
                     f"◎ target: {t['target']}   (chain {t['depth']} levels deep across "

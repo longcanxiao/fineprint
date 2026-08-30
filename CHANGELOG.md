@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.10 (2026-08-30)
+
+`trace --full` no longer duplicates the tree (field feedback: the per-branch
+caliber lines and the flat F block said the same things twice). The receipts
+now live **on** the tree instead of below it:
+
+- every caliber condition line carries its anchor — kind, source file,
+  compiled line (`… (stg_refunds · where · models/staging/stg_refunds.sql L13)`);
+- each branch lists its own leaf source columns (`源:` / `sources:`);
+- sources no branch covers (third-party boundary tables, `COUNT(*)` row-set
+  `*` sources) get their own "boundary sources" group, so dropping the flat
+  S block loses nothing;
+- the flat S/F blocks are gone in tree mode; structural semantics and
+  ambiguous attributions (the tree can't carry those) stay below. The flat
+  view for non-tree-able columns is unchanged and keeps full receipts.
+
 ## 0.8.9 (2026-08-30)
 
 Upgrade-experience fixes for the 0.8.4 rename, from field feedback:

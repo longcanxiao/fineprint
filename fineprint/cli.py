@@ -196,7 +196,7 @@ def cmd_trace(args):
         from fineprint.tree import caliber_tree, render_tree
         tr = caliber_tree(project, graph, resolve_model(graph, model), col, t)
         if tr:
-            tree_txt = render_tree(tr)
+            tree_txt = render_tree(tr, full=args.full)
     except Exception:
         tree_txt = None
     print(render(t, tree=tree_txt, full=args.full))
@@ -312,8 +312,9 @@ def main(argv=None):
                                               "caliber tree for one column (--full adds receipts)")))
     p.add_argument("target", help="model.column")
     p.add_argument("--full", action="store_true",
-                   help=t("在口径树下附完整出处明细(表达式链 E / 源字段 S / 逐条过滤条件 F)",
-                          "append full receipts under the tree (expression chain E / sources S / filters F)"))
+                   help=t("树上附源字段与出处锚点(条件的源文件·编译行;无树时回退平铺明细)",
+                          "annotate the tree with sources and receipt anchors (source file · "
+                          "compiled line per condition; falls back to flat receipts without a tree)"))
     p.set_defaults(fn=cmd_trace)
     p = common(sub.add_parser("synth", help=t("双通道口径合成(LLM)",
                                               "dual-channel caliber synthesis (LLM)")))

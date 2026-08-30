@@ -241,16 +241,40 @@ def caliber_tree(project, graph, uid: str, column: str, t: dict) -> dict | None:
             "common": common, "dims": dims, "dim_exprs": dim_exprs,
             "skeleton": skeleton_sql,
             "defined_in": model_name if uid != root_uid else None,
-            "status": c.get("status")}
+            "status": c.get("status"),
+            # --full 树内嵌源字段用:分支 leaves 之外的源(第三方包边界、行集 * 源)
+            "sources": t.get("sources") or []}
 
 
-def _cond_line(cond: dict) -> str:
+def _cond_line(cond: dict, full: bool = False) -> str:
     where = cond["model"] if cond["scope"] in ("main", "") else f"{cond['model']}.{cond['scope']}"
     jt = f",{cond.get('join_type', '')} join {cond.get('join_table')}" if cond["kind"] == "join_on" else ""
-    return f"{_clean(cond['sql'])}   ({where}{jt})"
+    anchor = ""
+    if full:                              # --full:出处锚点长在条件行上,替代平铺 F 块
+        kind = "" if cond["kind"] == "join_on" else f"{cond['kind']} · "
+        anchor = f" · {kind}{cond.get('src_path', '')} L{cond.get('line', '?')}"
+    return f"{_clean(cond['sql'])}   ({where}{jt}{anchor})"
 
 
-def render_tree(tr: dict) -> str:
+def _extra_sources(tr: dict) -> list:
+    """S 集里未被任何分支 leaves 覆盖的源(第三方包边界表、COUNT(*) 的 * 源):
+    --full 树必须无信息损失地替代平铺 S 块,这些单独补一行。"""
+    covered = set()
+    for b in tr["branches"]:
+        covered.update(x.lower() for x in b["leaves"])
+    out = []
+    for s in tr.get("sources") or []:
+        label = f"{s['table']}.{s['column']}"
+        if label.lower() in covered and not s.get("package"):
+            continue
+        if s.get("package"):
+            label += _t(f"(⟵ 第三方包 {s['package']},数据源边界)",
+                        f" (⟵ third-party package {s['package']}, data-source boundary)")
+        out.append(label)
+    return out
+
+
+def render_tree(tr: dict, full: bool = False) -> str:
     head = f"◎ {tr['target']}"
     if tr.get("defined_in"):
         head += _t(f"   (直通列,口径定义于 {tr['defined_in']})",
@@ -274,7 +298,11 @@ def render_tree(tr: dict) -> str:
             j = _t("(经 join)", " (via join)") if d.get("join_context") else ""
             rows.append(_t(f"其中 {d['name']} = {_clean(d['expr'])}{g}{j}",
                            f"where {d['name']} = {_clean(d['expr'])}{g}{j}"))
-        rows += [_t(f"口径: {_cond_line(c)}", f"caliber: {_cond_line(c)}") for c in b["conds"]]
+        if full and b["leaves"]:
+            rows.append(_t(f"源: {_t('、', ', ').join(b['leaves'])}",
+                           f"sources: {', '.join(b['leaves'])}"))
+        rows += [_t(f"口径: {_cond_line(c, full)}", f"caliber: {_cond_line(c, full)}")
+                 for c in b["conds"]]
         if b["chain"]:
             # 按深度分层:同层多模型是平行路径,用「、」并列;层间才是流向
             by_depth: dict = {}
@@ -288,11 +316,18 @@ def render_tree(tr: dict) -> str:
                            f"chain: {' → '.join(b['leaves'])} → this layer"))
         for k, r in enumerate(rows):
             L.append(f"│  {'└─' if k == len(rows) - 1 else '├─'} {r}")
+    extras = _extra_sources(tr) if full else []
     if tr["common"]:
         L.append("│")
         head = (_t("两侧共同口径", "caliber shared by both sides") if n > 1
                 else _t("口径条件", "caliber conditions"))
-        L.append(f"└─ {head}")
+        L.append(f"{'├─' if extras else '└─'} {head}")
+        pad = "│  " if extras else "   "
         for k, c in enumerate(tr["common"]):
-            L.append(f"   {'└─' if k == len(tr['common']) - 1 else '├─'} {_cond_line(c)}")
+            L.append(f"{pad}{'└─' if k == len(tr['common']) - 1 else '├─'} {_cond_line(c, full)}")
+    if extras:                            # 分支 leaves 未覆盖的源:边界表/行集 * 源
+        L.append("│")
+        L.append(_t("└─ 边界源(值链之外/第三方)", "└─ boundary sources (outside value chains / third-party)"))
+        for k, x in enumerate(extras):
+            L.append(f"   {'└─' if k == len(extras) - 1 else '├─'} {x}")
     return "\n".join(L)
