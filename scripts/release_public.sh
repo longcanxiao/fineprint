@@ -52,7 +52,7 @@ subprocess.run(["uv", "pip", "install", "-q", "--python", os.path.join(d, "bin",
 r = subprocess.run([os.path.join(d, "bin", "python"), "-c",
     "import metriclens.synth as s; assert s.governance_scan is None; "
     "import metriclens.cli, metriclens.drift, metriclens.render; print('smoke ok')"],
-    capture_output=True, text=True)
+    capture_output=True, text=True, cwd=d)  # cwd 必须离开仓库根:-c 会把 cwd 注入 sys.path
 print(r.stdout.strip() or r.stderr.strip()); sys.exit(r.returncode)
 PYEOF
 echo "公开发行版就绪: $TAR $WHL"
