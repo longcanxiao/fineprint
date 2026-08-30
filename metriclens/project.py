@@ -34,8 +34,11 @@ class DbtProject:
     """已编译 dbt 项目的只读视图:模型、源表、schema、注释、方言。"""
 
     def __init__(self, project_dir: str | os.PathLike, target_dir: str | None = None,
-                 internal_packages: tuple | None = None):
+                 internal_packages: tuple | None = None, allow_uncompiled: bool = False):
         self.project_dir = Path(project_dir).resolve()
+        # 无法离线编译的模型(内省宏需连库):allow_uncompiled=True 时按数据源
+        # 边界降级(血缘/组合器在其物化表截止),其 yml 声明列进开放世界 schema
+        self.allow_uncompiled = allow_uncompiled
         # 一方包名单:主项目自身 + 显式声明的内部共享包;其余包按数据源边界处理
         self.internal_packages = frozenset(
             internal_packages if internal_packages is not None
@@ -47,10 +50,12 @@ class DbtProject:
                 f"未找到 {mf}\n请先在 dbt 项目里执行: dbt compile && dbt docs generate")
         self.manifest = json.loads(mf.read_text())
         cat = self.target_dir / "catalog.json"
-        if not cat.exists():
-            raise FileNotFoundError(
-                f"未找到 {cat}(血缘解析需要列级 schema)\n请执行: dbt docs generate")
-        self.catalog = json.loads(cat.read_text())
+        # catalog 缺席 = 无 catalog 模式:qualify schema 由 manifest yml 声明列 +
+        # 编译 SQL 拓扑推断补全(_infer_missing_model_schema)。能跑
+        # dbt docs generate 仍是首选——实测列集与真实类型强于推断。
+        self.catalog_missing = not cat.exists()
+        self.catalog = ({"nodes": {}, "sources": {}} if self.catalog_missing
+                        else json.loads(cat.read_text()))
 
     def _resolve_target(self, target_dir: str | None) -> Path:
         """target 目录优先级:显式参数 → DBT_TARGET_PATH → dbt_project.yml 的 target-path → target。"""
@@ -122,6 +127,8 @@ class DbtProject:
             cp = n.get("compiled_path")
             f = self.project_dir / cp if cp else None
             if f is None or not f.exists():
+                if self.allow_uncompiled:
+                    continue      # 数据源边界降级(external_models 收录其物化表)
                 raise FileNotFoundError(
                     f"模型 {n['name']} 缺少编译产物({cp});请先执行 dbt compile")
             fqn = n.get("fqn") or []
@@ -148,8 +155,13 @@ class DbtProject:
                 continue
             if (n.get("config") or {}).get("materialized") == "ephemeral":
                 continue
-            if self._is_internal(n.get("package_name")):
+            internal = self._is_internal(n.get("package_name"))
+            if internal and not self.allow_uncompiled:
                 continue
+            if internal:
+                cp = n.get("compiled_path")
+                if cp and (self.project_dir / cp).exists():
+                    continue      # 有编译产物的一方模型正常解析,不入边界
             alias = n.get("alias") or n["name"]
             out[rel3(n.get("database"), n.get("schema"), alias)] = {
                 "name": n["name"], "alias": alias, "schema": n.get("schema"),
@@ -313,6 +325,18 @@ class DbtProject:
                 f"表引用 {rel} 在多个 database 中同名,两段名无法定位;请在 SQL 中写全三段名")
         return f"{db}.{rel}" if db is not None else f".{rel}"
 
+    @cached_property
+    def catalog_rels(self) -> set:
+        """catalog 实测过的物理表集(闭世界):星号担保对这些表严格(缺列=拒绝);
+        yml 声明列 / 拓扑推断是开放世界(文档常只写子集),不据以否定一方 SQL
+        的显式列引用。"""
+        out = set()
+        for coll in (self.catalog.get("nodes", {}), self.catalog.get("sources", {})):
+            for entry in coll.values():
+                md = entry["metadata"]
+                out.add(rel3(md.get("database") or "", md["schema"], md["name"]))
+        return out
+
     # ---------------- schema(供 sqlglot qualify)----------------
     @cached_property
     def schema(self) -> dict:
@@ -336,7 +360,75 @@ class DbtProject:
                     for c in (s.get("columns") or {}).values() if c.get("name")}
             if cols and tbl and sch:
                 schema.setdefault(db, {}).setdefault(sch, {}).setdefault(tbl, cols)
+        # 边界模型(第三方包/未编译降级,不在 self.models)无编译 SQL 可推断,
+        # 其 yml 声明列回落进 schema——列名是结构元数据,供 qualify 展开与裸列
+        # 归属。仅限边界:可推断的一方模型 yml 常是部分声明,进 schema 会挡住
+        # 整表推断(缺列比错列更诚实,但能推就推)。ephemeral 无物理表,不入。
+        inferable = self.models
+        for uid, n in self.manifest.get("nodes", {}).items():
+            if (n.get("resource_type") != "model" or uid in inferable
+                    or (n.get("config") or {}).get("materialized") == "ephemeral"):
+                continue
+            db, sch = n.get("database") or "", n.get("schema")
+            tbl = n.get("alias") or n.get("name")
+            cols = {c["name"]: (c.get("data_type") or "unknown")
+                    for c in (n.get("columns") or {}).values() if c.get("name")}
+            if cols and tbl and sch:
+                schema.setdefault(db, {}).setdefault(sch, {}).setdefault(tbl, cols)
+        self._infer_missing_model_schema(schema)
         return schema
+
+    def _infer_missing_model_schema(self, schema: dict) -> None:
+        """无 catalog 模式:catalog 缺席的模型按依赖拓扑序从编译 SQL 推断输出列,
+        补进 qualify schema(类型置 UNKNOWN)。catalog 永远优先,只填缺——有
+        catalog 的项目在此零行为。星号未能展开的输出名不入(诚实缺列,下游按
+        既有边界语义退化)。建图与组合器共用本属性,"同一 qualify"不变量在
+        无 catalog 语料(可编译但连不上库的 GitLab 类仓库)上保持成立。"""
+        missing = {}
+        for uid, m in self.models.items():
+            t = (schema.get(m["database"] or "", {}) or {}).get(m["schema"] or "", {})
+            if not (t or {}).get(m["alias"]):
+                missing[uid] = m
+        if not missing:
+            return
+        import sqlglot
+        from sqlglot.optimizer.qualify import qualify as sg_qualify
+        deps = {}
+        for uid in self.models:
+            n = self.manifest["nodes"].get(uid) or {}
+            deps[uid] = [d for d in (n.get("depends_on") or {}).get("nodes") or []
+                         if d in self.models]
+        order, seen = [], set()
+        stack = [(u, False) for u in reversed(list(self.models))]
+        while stack:                      # 迭代后序遍历(深链不爆栈;dbt DAG 无环)
+            u, done = stack.pop()
+            if done:
+                order.append(u)
+                continue
+            if u in seen:
+                continue
+            seen.add(u)
+            stack.append((u, True))
+            stack.extend((d, False) for d in reversed(deps.get(u, [])))
+        for uid in order:
+            m = missing.get(uid)
+            if m is None:
+                continue
+            try:
+                ast = sqlglot.parse_one(m["sql"], read=self.dialect)
+                try:
+                    q = sg_qualify(ast.copy(), schema=schema, dialect=self.dialect)
+                except Exception:
+                    q = sg_qualify(ast.copy(), schema=schema, dialect=self.dialect,
+                                   validate_qualify_columns=False,
+                                   allow_partial_qualification=True)
+                cols = [c for c in q.named_selects if c and c != "*"]
+            except Exception:
+                continue                  # 解析不动:该模型缺列,下游诚实退化
+            if cols:
+                schema.setdefault(m["database"] or "", {}) \
+                      .setdefault(m["schema"] or "", {})[m["alias"]] = \
+                    {c: "UNKNOWN" for c in cols}
 
     # ---------------- 业务注释(供口径合成)----------------
     @cached_property

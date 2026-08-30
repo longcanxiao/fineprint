@@ -117,6 +117,34 @@ they can't).
   residue is 6 rule-book columns over the defs cap and 4 by-design
   scalar-subquery ambiguities), lifting the three-corpus total to
   **25402/25412 = 99.96% proven**.
+- **Fourth corpus: Mattermost data warehouse — no catalog, no DB, offline
+  compile** (two real Snowflake projects from `mattermost/mattermost-data-warehouse`,
+  compiled against a fake connector so introspective models degrade instead
+  of the repo demanding a live warehouse). This corpus forced the open-world
+  machinery: `catalog.json` becomes optional (qualify schema = manifest yml
+  declarations + topological inference from compiled SQL, catalog always
+  wins); `DbtProject(allow_uncompiled=True)` degrades uncompiled first-party
+  models to data-source boundaries (their yml columns backfill the open-world
+  schema so downstream attribution keeps its claims); qualify's lenient
+  retry allows partial qualification for open-world models only (a boundary
+  table's partial yml can't veto the SQL's own explicit `t.col` — while
+  closed-world models still fail loudly on ghost columns, drift stays
+  honest); and bare-column attribution in multi-source scopes gains two
+  sound rules grounded in runtime uniqueness (SQL rejects ambiguous bare
+  columns, so a query that runs in production has exactly one owner):
+  **corpus claims** (any attributed lineage edge anywhere in the project is
+  evidence that table has that column) and its dual — when every
+  complete-inventory source denies the column, the single remaining
+  open-world source must own it. Lateral table functions
+  (FLATTEN / SPLIT_TO_TABLE) claim their VALUE element column and never
+  deny others. mattermost-analytics: **144 models / 3907 columns / 99.9%
+  proven** (residue: 3 scalar subqueries); snowflake-dbt (legacy, 655
+  sources with zero column declarations): **214 models / 5180 columns /
+  98.4% proven** (residue: 50 bare Salesforce/metering columns whose owner
+  is world knowledge — the LLM-fallback lane by design — plus 31 scalar
+  subqueries). Probe `--skip-uncompiled` now maps to `allow_uncompiled`
+  instead of rewriting the manifest.
+- **Dashboard**: the caliber modal gains a
   `publication_status` badge, a "machine caliber" section (per-fact status
   chips, composed top formula, named subexpressions with defining grain /
   join-context / union branches, output grain) alongside the LLM technical

@@ -23,7 +23,7 @@ from sqlglot import exp, parse_one
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.scope import build_scope
 
-from metriclens.lineage import dialect, table_key
+from metriclens.lineage import dialect, open_world_tables, table_key
 
 MAX_HOPS = 512      # 纯兜底护栏:环由模型级/作用域级 in_progress 显式防护;
                     # 真实深度可观(Fivetran ad_reporting 跨源 rollup 实测 257 层,
@@ -41,6 +41,12 @@ class Unsup(Exception):
     def __init__(self, reason: str):
         super().__init__(reason)
         self.reason = reason
+
+
+def _flatten_types() -> tuple:
+    """FLATTEN 族伪来源节点类型(TableFromRows 仅新版 sqlglot 有)。"""
+    t = getattr(exp, "TableFromRows", None)
+    return (t,) if t else ()
 
 
 def _display(ast: exp.Expression) -> str:
@@ -87,7 +93,24 @@ class _Composer:
             n = m.get("name")
             self._name_dup[n] = self._name_dup.get(n, 0) + 1
         self.root_memo: dict = {}       # uid → 根作用域(解析+qualify 每模型一次)
+        self._corpus_claims: dict | None = None   # rel(小写) → 语料担保列集,惰性挖掘
         self._reset()
+
+    def _corpus_claim(self, rel: str, col: str) -> bool:
+        """语料限定声明:项目中任何已归属的 (表,列) 血缘边都是该表有该列的证据
+        (显式 T.col 或单源作用域,均由 SQL 语义担保)。多源裸列若语料声明者唯一
+        即可归属——这些 SQL 在生产运行,而 SQL 对多来源同名裸列报 ambiguous 错,
+        查询能跑本身就证明作用域内恰有一张表有该列。"""
+        if self._corpus_claims is None:
+            cc: dict = {}
+            for m in self.graph["models"].values():
+                for c in (m.get("columns") or {}).values():
+                    for u in c.get("upstreams") or []:
+                        t, cn = u.get("table"), (u.get("column") or "").lower()
+                        if t and cn:
+                            cc.setdefault(t.lower(), set()).add(cn)
+            self._corpus_claims = cc
+        return col.lower() in self._corpus_claims.get(rel.lower(), ())
 
     def _reset(self):
         self.defs, self.def_by_key = [], {}
@@ -112,16 +135,27 @@ class _Composer:
                 ast = parse_one(sql, read=dialect())
             except Exception as e:
                 raise Unsup(f"模型 {self._disp(uid)} parse 失败: {str(e)[:80]}")
+            # qualify 的星号展开会按 schema 重写投影;先在原始 AST 上记住哪些
+            # SELECT 真的写过星号——开放世界直通规则只对"星号被展开吃掉"的
+            # 作用域放行,显式投影缺列仍严格拒绝
+            for sel in ast.find_all(exp.Select):
+                if any(isinstance(p, exp.Star)
+                       or (isinstance(p, exp.Column) and isinstance(p.this, exp.Star))
+                       for p in sel.expressions):
+                    sel.meta["had_star"] = True
             try:
                 qast = qualify(ast.copy(), schema=self.project.schema, dialect=dialect())
             except Unsup:
                 raise
             except Exception:
                 # 与建图同策略:退部分限定,定不了的列留裸名,由展开期
-                # 「缺少限定名」逐列诚实报错——不因一列废整模型
+                # 「缺少限定名」逐列诚实报错——不因一列废整模型;开放世界
+                # 模型再放开已限定列的列集校验(见 open_world_tables)
                 try:
                     qast = qualify(ast.copy(), schema=self.project.schema,
-                                   dialect=dialect(), validate_qualify_columns=False)
+                                   dialect=dialect(), validate_qualify_columns=False,
+                                   allow_partial_qualification=open_world_tables(
+                                       ast, self.project))
                 except Exception as e:
                     raise Unsup(f"模型 {self._disp(uid)} qualify 失败: {str(e)[:80]}")
             self.root_memo[uid] = build_scope(qast)
@@ -219,6 +253,18 @@ class _Composer:
             if (scope.expression.find(exp.Pivot) is not None
                     or (parent is not None and parent.args.get("pivots"))):
                 raise Unsup(f"PIVOT 输出列展开未支持(列 {col},非常规形态)")
+            # 开放世界表:qualify 用 yml 部分声明展开并吃掉了星号(原始 SQL 确
+            # 有星号,meta 为证),未声明列在展开后的投影里自然缺席。单源真实表
+            # 且不在 catalog(闭世界实测)时,一方 SQL 的显式引用不因文档只写了
+            # 子集而拒——按裸列降级解析(与通道一 lenient 语义一致);catalog
+            # 编目过的表与显式投影仍严格拒绝。
+            osrcs = list((scope.sources or {}).values())
+            if ((getattr(e, "_meta", None) or {}).get("had_star")
+                    and len(osrcs) == 1 and isinstance(osrcs[0], exp.Table)
+                    and self.project.complete_rel(table_key(osrcs[0]))
+                    not in self.project.catalog_rels):
+                return (self._expand(scope, exp.column(col), depth, False),
+                        self._scope_grain(scope))
             raise Unsup(f"作用域投影中找不到列 {col}(星号未展开或动态列)")
         return self._expand_proj(scope, proj, col, depth)
 
@@ -292,7 +338,16 @@ class _Composer:
                     # USING 列双侧等值,SQL 语义取最左;两侧 schema 未知时同样成立
                     alias = claimants[0] if claimants else next(iter(srcs))
                 else:
-                    raise Unsup(f"列 {node.name} 缺少限定名且作用域有多个来源,无法归属")
+                    # 运行时唯一归属的对偶:列清单完备的来源均可否认该列,
+                    # 若否认后只剩一个开放世界来源,列必出自它(SQL 对多来源
+                    # 同名裸列报 ambiguous 错,能跑的查询恰有一个真主)
+                    opens = [a for a in srcs
+                             if not self._complete_cols(scope.sources.get(a))]
+                    if not claimants and len(opens) == 1:
+                        alias = opens[0]
+                    else:
+                        raise Unsup(
+                            f"列 {node.name} 缺少限定名且作用域有多个来源,无法归属")
         src = scope.sources.get(alias)
         if src is None:
             hit = self._pivot_of(scope, alias)
@@ -410,6 +465,30 @@ class _Composer:
             pass
         return self._consume(body, None, col, scope, in_agg, grain)
 
+    def _complete_cols(self, src) -> bool:
+        """来源的列清单是否完备(可据以否认未列出的列):图内非降级模型的输出列
+        完备;catalog 实测过的物理表完备。开放世界物理表(yml 部分声明/拓扑
+        推断)、降级模型、表函数与含未展开星号的作用域都不完备——不完备者
+        不能否认,只能作为运行时唯一归属的候选。"""
+        if isinstance(src, exp.Table):
+            try:
+                rel = self._rel(src)
+            except Unsup:
+                return False
+            up = self.rel_models.get(rel)
+            if up and up in self.graph["models"]:
+                return not (self.graph["models"][up].get("error"))
+            return rel in self.project.catalog_rels
+        if src is None or not hasattr(src, "expression"):
+            return False
+        e = src.expression
+        if isinstance(e, (exp.Lateral, exp.Unnest) + _flatten_types()):
+            return False    # 表函数伪作用域:输出列因函数而异,不据以否认
+        return not any(
+            isinstance(p, exp.Star)
+            or (isinstance(p, exp.Column) and isinstance(p.this, exp.Star))
+            for s in e.find_all(exp.Select) for p in s.expressions)
+
     def _claims(self, src, col: str, _seen: set | None = None) -> bool:
         """来源是否担保列 col:Scope 看投影(星号按 except 递归其来源);模型表看
         图列;源表查 qualify schema;未知 schema 的物理表不担保(单源规则兜底)。"""
@@ -425,7 +504,12 @@ class _Composer:
             node = self.project.schema
             for p in rel.split("."):
                 node = node.get(p) if isinstance(node, dict) else None
-            return isinstance(node, dict) and low in {c.lower() for c in node}
+            if isinstance(node, dict) and low in {c.lower() for c in node}:
+                return True
+            # 开放世界表(catalog 未实测)再问语料限定声明;封闭世界仍以
+            # catalog 列集为准,不让语料边为不存在的列背书
+            return (rel not in self.project.catalog_rels
+                    and self._corpus_claim(rel, col))
         if src is None or not hasattr(src, "expression"):
             return False
         seen = _seen or set()
@@ -433,6 +517,10 @@ class _Composer:
             return False
         seen.add(id(src))
         e = src.expression
+        if isinstance(e, (exp.Lateral, exp.Unnest) + _flatten_types()):
+            # 表函数伪作用域只担保元素值列(FLATTEN/SPLIT_TO_TABLE 族的 VALUE;
+            # 展开分支同此约定,非值伪列拒绝组合声明)
+            return low == "value"
         if isinstance(e, exp.Unnest):
             return False
         if isinstance(e, _SETOP):

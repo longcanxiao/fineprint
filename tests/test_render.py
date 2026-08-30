@@ -268,6 +268,55 @@ class TestPublicationStatus:
         assert formula_authority(self._facts("ambiguous")) == "llm_fallback"
 
 
+class TestOpenWorldStar:
+    """Mattermost 探针固化:qualify 用 yml 部分声明展开并吃掉星号后,未声明列
+    在投影里缺席。开放世界(非 catalog 实测)单源表 + 原始 SQL 确有星号 → 按
+    裸列降级解析;catalog 编目表与显式投影仍严格拒绝。"""
+
+    SRC = {"source.p.raw": {"database": "", "schema": "main", "identifier": "raw",
+                            "name": "raw",
+                            "columns": {"a": {"name": "a", "data_type": "INT"}}}}
+    SQL = "with s as (select * from main.raw) select a, b from s"
+
+    def test_yml_partial_star_passthrough(self, tmp_path):
+        """组合器按开放世界直通解析到 raw.b(不再 unsupported);本形态通道一
+        列级血缘诚实报错(空源),round-trip 叶子互证如实记录分歧 → ambiguous
+        + rt_failed——两通道对可解性意见不一致时送人工,是设计行为。"""
+        proj, graph = mk_src(tmp_path, self.SQL, self.SRC, catalog_raw=False)
+        t = trace(graph, "fct", "b")
+        f = facts_of(proj, graph, [("model.p.fct", "b")], t)["formula"]
+        assert f["status"] == "ambiguous" and f["rt_failed"]
+        assert f["top"] == "raw.b"
+        assert any("组合器多出" in r for r in f["reasons"])
+
+    def test_catalog_closed_still_refuses(self, tmp_path):
+        proj, graph = mk_src(tmp_path, self.SQL, self.SRC, catalog_raw=True)
+        t = trace(graph, "fct", "b")
+        facts = facts_of(proj, graph, [("model.p.fct", "b")], t)
+        assert facts["formula"]["status"] == "unsupported"
+        assert any("找不到列" in r for r in facts["formula"]["reasons"])
+
+    def test_explicit_projection_no_star_refuses(self, tmp_path):
+        sql = "with s as (select a from main.raw) select a, b from s"
+        proj, graph = mk_src(tmp_path, sql, self.SRC, catalog_raw=False)
+        t = trace(graph, "fct", "b")
+        facts = facts_of(proj, graph, [("model.p.fct", "b")], t)
+        assert facts["formula"]["status"] == "unsupported"
+
+
+def mk_src(tmp_path, sql, sources, catalog_raw):
+    """单模型 + dbt source 声明(yml 列子集);catalog_raw 控制 raw 是否入 catalog。"""
+    cats = {"model.p.fct": _cat("main", "fct", {"a": "INT", "b": "INT"})}
+    if catalog_raw:
+        cats["source.p.raw"] = _cat("main", "raw", {"a": "INT"})
+    proj = make_project(
+        tmp_path,
+        nodes={"model.p.fct": _node("fct", "compiled/fct.sql")},
+        catalog_nodes=cats, sources=sources,
+        sqls={"compiled/fct.sql": sql})
+    return proj, build_graph(proj)
+
+
 class TestBigQueryConstructs:
     """Cal-ITP 探针固化:UNNEST 横向源与结构体字段访问的确定性组合。"""
 

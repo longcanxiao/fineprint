@@ -74,17 +74,31 @@ def main(argv=None):
                     help="manifest 内所有模型包按一方包解析(包类项目探测)")
     ap.add_argument("--limit", type=int, default=0, help="最多组合多少列(0=全部)")
     ap.add_argument("--rebuild-graph", action="store_true", help="忽略图缓存强制重建")
+    ap.add_argument("--skip-uncompiled", action="store_true",
+                    help="无编译产物的一方模型按数据源边界降级(allow_uncompiled 模式),"
+                         "不再报错:离线编译时被排除的内省模型场景")
     ap.add_argument("--out", default="", help="JSON 报告输出路径")
     args = ap.parse_args(argv)
 
     pdir = Path(args.artifacts)
-    manifest = json.loads((pdir / "target" / "manifest.json").read_text())
+    mani_path = pdir / "target" / "manifest.json"
+    manifest = json.loads(mani_path.read_text())
     wrote = materialize_compiled(pdir, manifest)
     internal = None
     if args.all_packages:
         internal = sorted({n.get("package_name") for n in manifest["nodes"].values()
                            if n.get("resource_type") == "model" and n.get("package_name")})
-    proj = DbtProject(pdir, internal_packages=internal)
+    proj = DbtProject(pdir, internal_packages=internal,
+                      allow_uncompiled=args.skip_uncompiled)
+    if args.skip_uncompiled:
+        skipped = [uid.split(".")[-1] for uid, n in manifest["nodes"].items()
+                   if n.get("resource_type") == "model"
+                   and proj._is_internal(n.get("package_name"))
+                   and (n.get("config") or {}).get("materialized") != "ephemeral"
+                   and uid not in proj.models]
+        if skipped:
+            print(f"skip-uncompiled: {len(skipped)} 个无编译产物模型按数据源边界降级,"
+                  f"如 {skipped[:4]}")
     print(f"adapter={proj.adapter_type}  物化编译文件 {wrote} 个"
           f"  internal_packages={'ALL(' + str(len(internal)) + ')' if internal else '默认(root)'}")
 

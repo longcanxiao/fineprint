@@ -92,6 +92,10 @@ def cmd_init(args):
 def cmd_graph(args):
     from metriclens.lineage import build_graph, save_graph
     project = _project(args)
+    if project.catalog_missing:
+        print("⚠ 未找到 catalog.json,进入无 catalog 模式:列 schema 由 yml 声明 + "
+              "编译 SQL 拓扑推断补全;能执行 dbt docs generate 时仍建议补上(实测列集更强)",
+              file=sys.stderr)
     graph = build_graph(project)
     ncols = sum(len(m["columns"]) for m in graph["models"].values())
     nconds = sum(len(m["conditions"]) for m in graph["models"].values())

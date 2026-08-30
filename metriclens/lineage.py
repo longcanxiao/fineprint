@@ -38,6 +38,25 @@ def table_key(e: exp.Table) -> str:
     return f"{e.db}.{e.name}" if e.db else e.name
 
 
+def open_world_tables(ast: exp.Expression, project) -> bool:
+    """模型是否引用了 catalog 未实测的物理表(开放世界:列集只有 yml 部分声明
+    或拓扑推断)。是 → qualify 校验降级为部分限定,声明缺席不否定 SQL 自身的
+    显式限定;否(封闭世界)→ 保持严格,引用不存在的列=真漂移,诚实报错。"""
+    ctes = {c.alias_or_name for c in ast.find_all(exp.CTE)}
+    for t in ast.find_all(exp.Table):
+        if not isinstance(t.this, exp.Identifier):
+            continue                       # 表函数(UNNEST/LATERAL 等)非物理表
+        if not t.db and t.name in ctes:
+            continue                       # CTE 自引用
+        try:
+            rel = project.complete_rel(table_key(t))
+        except ValueError:
+            return True                    # 两段名歧义:按开放世界保守放行
+        if rel not in project.catalog_rels:
+            return True
+    return False
+
+
 # ---------------- 归一化 ----------------
 def normalize_condition(cond: exp.Expression) -> str:
     """AST 级归一化:常量折叠、比较方向标准化、去限定名,输出规范文本。"""
@@ -627,14 +646,17 @@ def build_graph(project: DbtProject) -> dict:
                 "semantics": [],
             }
             continue
+        open_world = open_world_tables(raw, project)
         try:
             qast = qualify(raw.copy(), schema=project.schema, dialect=_DIALECT)
         except Exception:
             # 列无法定位(catalog/声明缺表列)→ 退部分限定:能定的定,定不了的
-            # 留裸名,由逐列血缘的严格 qualify 决定哪些列诚实报错
+            # 留裸名,由逐列血缘的严格 qualify 决定哪些列诚实报错。
+            # 开放世界模型再放开已限定列的列集校验(见 open_world_tables)
             try:
                 qast = qualify(raw.copy(), schema=project.schema, dialect=_DIALECT,
-                               validate_qualify_columns=False)
+                               validate_qualify_columns=False,
+                               allow_partial_qualification=open_world)
             except Exception as e:
                 graph["models"][uid] = {
                     "name": m["name"], "package": m["package"], "layer": m["layer"],
@@ -665,7 +687,8 @@ def build_graph(project: DbtProject) -> dict:
         col_edges = {}
         for col in out_cols:
             try:
-                node = sg_lineage(col, qast, schema=project.schema, dialect=_DIALECT)
+                node = sg_lineage(col, qast, schema=project.schema, dialect=_DIALECT,
+                                  allow_partial_qualification=open_world)
             except Exception as e:
                 col_edges[col] = {"error": str(e)[:120], "upstreams": [], "expr": None}
                 continue

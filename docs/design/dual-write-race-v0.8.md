@@ -175,6 +175,36 @@ demo 实测(批次 2a844fb0):14 machine + 1 llm_fallback(live_gmv 多目标组�
 后续若出现规则无法识别/解决的新场景类,兜底路径已就位;组合器每补一类语义,
 authority 自动从 llm_fallback 翻到 machine,无需迁移。
 
+## 第四语料:Mattermost 数仓与开放世界机制(2026-08-30)
+
+GitLab 文档站关站后选 Mattermost 公开数仓(`mattermost/mattermost-data-warehouse`,
+两个真实 Snowflake 项目)作 GitLab 类替身。该语料没有 catalog、连不上库、含大量
+编译期内省模型(run_query/describe),倒逼出一整层「开放世界」机制:
+
+- **离线编译工具链**(scratchpad,不入库):假 Snowflake 连接器让会话引导通过、
+  对 `show objects/user functions` 走 dbt 官方的"schema 不存在"空路径、其余内省
+  一律诚实拒绝(空结果会静默编出错 SQL);排除循环迭代收敛。
+- **无 catalog 模式**:`catalog.json` 可缺席,qualify schema = manifest yml 声明列
+  + 编译 SQL 按依赖拓扑推断(catalog 永远优先,只填缺)。
+- **allow_uncompiled**:无编译产物的一方模型按数据源边界降级(血缘/组合器在其
+  物化表截止),其 yml 声明列回落进开放世界 schema——下游裸列归属的声明源。
+- **开放世界 qualify**:宽松重试仅对引用了 catalog 未实测表的模型放开
+  `allow_partial_qualification`——边界表的部分 yml 不得否定 SQL 自身的显式限定;
+  封闭世界模型引用不存在列仍模型级诚实报错(真漂移不被担保)。
+- **运行时唯一归属**(多源裸列的两条可靠规则,根据同一硬逻辑:SQL 对多来源同名
+  裸列报 ambiguous 错,生产在跑的查询恰有一个真主):**语料声明**——项目中任何
+  已归属的 (表,列) 血缘边都是该表有该列的证据,声明者唯一即归属(仅开放世界表,
+  catalog 列集不被语料边扩充);**对偶规则**——列清单完备的来源(图内非降级模型、
+  catalog 表)均可否认,否认后仅剩一个开放世界来源时列必出自它。FLATTEN/
+  SPLIT_TO_TABLE 伪作用域只担保 VALUE 元素列、不否认其他列。
+
+实测:mattermost-analytics 144 模型/3907 列 **99.9% proven**(余 3 例标量子查询);
+snowflake-dbt(legacy,655 个 source 全零列声明)214 模型/5180 列 **98.4% proven**
+(余 50 例裸列归属需要世界知识——ForecastCategoryName 属于哪张 Salesforce 表不在
+工件里,正是 LLM 兜底通道的名分场景;另 31 例标量子查询)。五语料累计
+34405/34499 = **99.7% proven**,其中前三语料(有 catalog)在新规则下零回归——
+对偶规则在封闭世界自然惰性。
+
 ## 已知余量(诚实清单)
 
 - def 的 grain 标注是展示层 best-effort,不进判定。

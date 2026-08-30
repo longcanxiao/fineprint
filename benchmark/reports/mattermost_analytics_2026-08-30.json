@@ -1,0 +1,30 @@
+{
+ "artifacts": "/private/tmp/claude-501/-Users-qiyi-projects-index-sys/bd34750a-729e-4e0f-b55b-2585954ca2fb/scratchpad/mattermost/transform/mattermost-analytics",
+ "adapter": "snowflake",
+ "models": 144,
+ "columns": 3907,
+ "lineage_col_errors": 0,
+ "model_errors": {},
+ "graph_seconds": 70.6,
+ "compose_seconds": 2.7,
+ "composed": 3907,
+ "status": {
+  "proven": 3904,
+  "ambiguous": 3
+ },
+ "reasons": {
+  "scalar_subquery": 3
+ },
+ "reason_samples": {
+  "scalar_subquery": "model.mattermost_analytics.fct_cloud_trial_requests.IS_BLACKLISTED_EMAIL: 标量子查询保留原文未展开(其内部口径不做组合声明)"
+ },
+ "notes": {
+  "scalar_subquery": 3
+ },
+ "by_package": {
+  "mattermost_analytics": {
+   "proven": 3904,
+   "ambiguous": 3
+  }
+ }
+}

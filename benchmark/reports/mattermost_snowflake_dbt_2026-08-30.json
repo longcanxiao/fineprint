@@ -1,0 +1,34 @@
+{
+ "artifacts": "/private/tmp/claude-501/-Users-qiyi-projects-index-sys/bd34750a-729e-4e0f-b55b-2585954ca2fb/scratchpad/mattermost/transform/snowflake-dbt",
+ "adapter": "snowflake",
+ "models": 214,
+ "columns": 5180,
+ "lineage_col_errors": 0,
+ "model_errors": {},
+ "graph_seconds": 0.0,
+ "compose_seconds": 8.3,
+ "composed": 5180,
+ "status": {
+  "proven": 5099,
+  "ambiguous": 31,
+  "unsupported": 50
+ },
+ "reasons": {
+  "scalar_subquery": 31,
+  "unqualified_multi_source": 50
+ },
+ "reason_samples": {
+  "scalar_subquery": "model.mm_snowflake.account_daily_arr_deltas.ACCOUNT_NEW_ARR: 标量子查询保留原文未展开(其内部口径不做组合声明)",
+  "unqualified_multi_source": "model.mm_snowflake.funnel_opportunity.STAGE_CHANGED: 列 STAGE_CHANGE_DATE__C 缺少限定名且作用域有多个来源,无法归属"
+ },
+ "notes": {
+  "scalar_subquery": 31
+ },
+ "by_package": {
+  "mm_snowflake": {
+   "proven": 5099,
+   "ambiguous": 31,
+   "unsupported": 50
+  }
+ }
+}
