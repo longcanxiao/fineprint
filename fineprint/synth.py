@@ -94,6 +94,8 @@ def build_vocab(t: dict, title: str, query_filter, lexicon: dict, graph: dict | 
     parts += [f"{e['model']} {e['column']} {e.get('expr') or ''}" for e in t["expr_chain"]]
     parts += [f"{s.get('schema', '')} {s['table']} {s['column']}" for s in t["sources"]]
     parts += [c["sql"] for c in t["conditions"]]
+    # CTE 作用域名是通道一自己的产物(条件 scope 标签),散文引用它不是幻觉
+    parts += [c.get("scope") or "" for c in t["conditions"]]
     parts += [str(s.get("sql") or "") for s in t["semantics"]]
     parts += list(t["models_visited"])
     parts += [f"{k} {v}" for k, v in (lexicon or {}).items()]

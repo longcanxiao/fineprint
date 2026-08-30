@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.5 (2026-08-30)
+
+CTE scope names (the condition scope labels channel 1 itself produces,
+e.g. `refund_14d`) join the free-text lexicon: prose citing a real CTE
+from the metric's own chain is not a hallucination and no longer demotes
+the card. Removes a cold-cache variance where a fresh quickstart run
+could land TECHNICAL_ONLY on a perfectly agreeing card.
+
 ## 0.8.4 (2026-08-30)
 
 **Unified naming: everything is `fineprint` now.** `import fineprint` works —
