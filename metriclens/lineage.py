@@ -223,11 +223,14 @@ def _node_unique_keys(node) -> list:
     return _select_grain(sel) or _select_dedup_keys(sel)
 
 
-def output_unique_on(ast: exp.Expression) -> list:
+def output_unique_on(ast: exp.Expression, declared_rels: dict | None = None,
+                     complete=None) -> list:
     """输出唯一键(窗口去重证据):沿 main → FROM 主链找去重 SELECT 的 partition 键,
     供治理把"join 到本模型且键覆盖 unique_on"判为 N:1 安全。
     先遇 group-by 由 grain 承担唯一性(返回 []);途中任一 join 若不能就地证明
-    N:1(伙伴唯一键被 join 键覆盖),行可能被复制,唯一性主张作废。"""
+    N:1(伙伴唯一键被 join 键覆盖),行可能被复制,唯一性主张作废。
+    伙伴是真实表时本函数看不见其内部——declared_rels({物理三段名: [唯一键集]},
+    来自 dbt unique/unique_combination 测试的声明性证据)可就地补证。"""
     ids = scope_ids(ast)
     cte_def = {c.alias: c for c in ast.find_all(exp.CTE)}
     sel_by_scope: dict = {}
@@ -244,7 +247,13 @@ def output_unique_on(ast: exp.Expression) -> list:
             node = cte_def.get(t.name) if isinstance(t, exp.Table) and t.name in cte_def \
                 else (t if isinstance(t, exp.Subquery) else None)
             u = _node_unique_keys(node) if node is not None else []
-            if not (u and set(u) <= set(_partner_keys(j))):
+            pk = set(_partner_keys(j))
+            if node is None and declared_rels and isinstance(t, exp.Table):
+                rel = table_key(t)
+                dus = declared_rels.get(complete(rel) if complete else rel) or []
+                if any(d and set(d) <= pk for d in dus):
+                    continue          # 真实表伙伴:唯一性声明被 join 键覆盖 → N:1
+            if not (u and set(u) <= pk):
                 return []
         keys = _select_dedup_keys(sel)
         if keys:
@@ -574,8 +583,17 @@ def build_graph(project: DbtProject) -> dict:
                       # 第三方包模型 = 数据源边界:血缘在此截止,只记名字与归属包
                       "external": {rel: {"name": e["name"], "package": e["package"]}
                                    for rel, e in project.external_models.items()}},
+        # dbt unique/unique_combination 测试的唯一性声明,折到物理表:
+        # 治理/血缘对"join 到真实表"的伙伴做 N:1 判定的声明性证据
+        "declared_unique_rels": dict(project.declared_unique_rels),
         "models": {},
     }
+    decl_uni = project.declared_tests["unique"]
+    fk_by_uid: dict = {}
+    for e in project.declared_tests["fk"]:
+        fk_by_uid.setdefault(e["uid"], []).append(
+            {"column": e["column"], "to_rel": project.rel_of_uid(e["to_uid"]),
+             "to_column": e["to_column"]})
     # 短名重名计数:conditions/semantics 的 model 字段是展示标签(漂移快照按它比对),
     # 与 trace.display_name 同规则——唯一用短名,重名用 pkg:name
     name_count: dict = {}
@@ -594,7 +612,8 @@ def build_graph(project: DbtProject) -> dict:
                 "compiled_path": m["compiled_path"], "src_path": m["src_path"],
                 "error": f"parse: {str(e)[:160]}",
                 "row_set_tables": [], "row_risk_joins": [], "agg_fns": [],
-                "grain": [], "unique_on": [], "columns": {}, "conditions": [],
+                "grain": [], "unique_on": [], "declared_unique": [], "declared_fk": [],
+                "columns": {}, "conditions": [],
                 "semantics": [],
             }
             continue
@@ -613,7 +632,8 @@ def build_graph(project: DbtProject) -> dict:
                     "compiled_path": m["compiled_path"], "src_path": m["src_path"],
                     "error": f"qualify: {str(e)[:160]}",
                     "row_set_tables": [], "row_risk_joins": [], "agg_fns": [],
-                    "grain": [], "unique_on": [], "columns": {}, "conditions": [],
+                    "grain": [], "unique_on": [], "declared_unique": [], "declared_fk": [],
+                "columns": {}, "conditions": [],
                     "semantics": [],
                 }
                 continue
@@ -669,7 +689,10 @@ def build_graph(project: DbtProject) -> dict:
             "compiled_path": m["compiled_path"], "src_path": m["src_path"],
             "row_set_tables": rowset, "row_risk_joins": risk_joins,
             "agg_fns": agg_fns, "grain": output_grain(raw),
-            "unique_on": output_unique_on(raw),
+            "unique_on": output_unique_on(raw, graph["declared_unique_rels"],
+                                          project.complete_rel),
+            "declared_unique": decl_uni.get(uid, []),
+            "declared_fk": fk_by_uid.get(uid, []),
             "columns": col_edges, "conditions": conds, "semantics": semantics,
         }
     return graph

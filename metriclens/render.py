@@ -731,6 +731,13 @@ def build_facts(project, graph: dict, t: dict, targets: list,
                    "unique_on": {comp._disp(mo): graph["models"][mo]["unique_on"]
                                  for mo in t["models_visited"]
                                  if graph["models"].get(mo, {}).get("unique_on")},
+                   # dbt unique/relationships 测试 = 基数的声明性证据(dbt 实测)
+                   "declared_unique": {comp._disp(mo): graph["models"][mo]["declared_unique"]
+                                       for mo in t["models_visited"]
+                                       if graph["models"].get(mo, {}).get("declared_unique")},
+                   "declared_fk": {comp._disp(mo): graph["models"][mo]["declared_fk"]
+                                   for mo in t["models_visited"]
+                                   if graph["models"].get(mo, {}).get("declared_fk")},
                    "reasons": []},
         "grain": _grain_fact(graph, t),
     }

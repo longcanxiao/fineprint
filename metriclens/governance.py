@@ -82,14 +82,23 @@ def _leaf_rowset(graph: dict, uid: str, memo: dict) -> frozenset:
     return memo[uid]
 
 
+def _declared_covered(keysets: list, keys: set) -> bool:
+    """某个声明唯一键集被 join 键覆盖 → 伙伴对键唯一(dbt unique/unique_combination
+    测试的声明性证据,dbt 按数据定期实测;与 SQL 结构证据同一覆盖规则)。"""
+    return any(ks and {str(x).lower() for x in ks} <= keys for ks in keysets or [])
+
+
 def _risk_rows(graph: dict, uid: str, rmemo: dict, lmemo: dict) -> frozenset:
     """模型的行基数风险集:未证 N:1 的 join 伙伴(展开到叶子表)。
-    伙伴是上游模型且 join 键覆盖其 grain(分组键)→ 对键唯一,可证安全,不入集;
-    真实表 / grain 不可知 / 键不覆盖 → 保守入集。这是"值来源之外"的第二类血缘。"""
+    伙伴是上游模型且 join 键覆盖其 grain(分组键)/ unique_on(窗口去重键)/
+    declared_unique(dbt 唯一性声明)→ 对键唯一,可证安全,不入集;
+    真实表凭 declared_unique_rels 声明可证,其余保守入集。
+    这是"值来源之外"的第二类血缘。"""
     if uid in rmemo:
         return rmemo[uid]
     rmemo[uid] = frozenset()
     rel_models = graph.get("relations", {}).get("models", {})
+    decl_rels = graph.get("declared_unique_rels") or {}
     out = set()
     for e in graph["models"].get(uid, {}).get("row_risk_joins") or []:
         up = rel_models.get(e["rel"])
@@ -97,9 +106,12 @@ def _risk_rows(graph: dict, uid: str, rmemo: dict, lmemo: dict) -> frozenset:
         if up and up in graph["models"]:
             g = {str(x).lower() for x in graph["models"][up].get("grain") or []}
             u = {str(x).lower() for x in graph["models"][up].get("unique_on") or []}
-            if (g and g <= keys) or (u and u <= keys):
-                continue          # 分组键或去重键被 join 键覆盖 → 对键唯一,N:1 可证
+            if (g and g <= keys) or (u and u <= keys) \
+                    or _declared_covered(graph["models"][up].get("declared_unique"), keys):
+                continue          # 分组键/去重键/唯一性声明被 join 键覆盖 → N:1 可证
             out |= _leaf_rowset(graph, up, lmemo)
+        elif _declared_covered(decl_rels.get(e["rel"]), keys):
+            continue              # 真实表伙伴(source 等):唯一性声明就地证明 N:1
         else:
             out.add(e["rel"])
     rmemo[uid] = frozenset(out)
@@ -189,14 +201,21 @@ def scan(graph: dict, cfg: MLConfig) -> dict:
             continue
         for s in m.get("semantics", []):
             if s.get("type") == "join_count":
-                sql_quality.append({
+                item = {
                     "model": disp.get(uid) or display_name(graph, uid),
                     "column": s.get("column"), "line": s.get("line"),
                     "tables": s.get("tables") or [], "join_keys": s.get("join_keys") or [],
                     "kind": "join_count",
                     "reason": "行数型聚合(count(*)/sum(1))跨 join:计数对象依赖 join 基数与数据覆盖性,SQL 未自证",
                     "suggestion": "改为 count(distinct <主键>) 或 count(<明确列>),使计数对象自证并对 join 结构免疫",
-                })
+                }
+                # 缓解证据:本模型全部风险 join 已证 N:1(分组键/去重键/dbt 唯一性
+                # 声明)→ 计数不受 join 放大,剩余关注点收窄为数据覆盖(行是否被
+                # join 过滤)。立项保留(覆盖性仍未自证),但降低人工排查优先级。
+                if not _risk_rows(graph, uid, risk_memo, leaf_memo):
+                    item["n1_proven"] = True
+                    item["mitigation"] = "行集全部 join 已证 N:1(分组键/去重键/唯一性声明),计数不受 join 放大;剩余风险仅数据覆盖性"
+                sql_quality.append(item)
     return {"duplicates": dup_pairs, "candidates": cand_pairs,
             "families": families, "agg_distinct": agg_distinct,
             "row_mismatch": row_mismatch,

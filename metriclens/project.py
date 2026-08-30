@@ -7,6 +7,7 @@
 """
 import json
 import os
+import re
 from functools import cached_property
 from pathlib import Path
 
@@ -153,6 +154,74 @@ class DbtProject:
             out[rel3(n.get("database"), n.get("schema"), alias)] = {
                 "name": n["name"], "alias": alias, "schema": n.get("schema"),
                 "database": n.get("database"), "package": n.get("package_name")}
+        return out
+
+    @cached_property
+    def declared_tests(self) -> dict:
+        """dbt schema 测试的基数声明(声明性证据,dbt 会按数据定期实测):
+        {"unique": {被测节点 uid: [[列,...], ...]}, "fk": [{uid, column, to_uid, to_column}]}
+        unique / dbt_utils.unique_combination_of_columns → 唯一键集;
+        relationships → 外键声明(column 的值必存在于 to.field)。
+        归属优先 attached_node,缺失时回落 depends_on(unique 类单依赖直取;
+        relationships 以 to 的 ref/source 名剔除对端)。列名统一 lower 参与集合判定。"""
+        uni: dict = {}
+        fk: list = []
+        for n in self.manifest["nodes"].values():
+            if n.get("resource_type") != "test":
+                continue
+            tm = n.get("test_metadata") or {}
+            kw = tm.get("kwargs") or {}
+            deps = list((n.get("depends_on") or {}).get("nodes") or [])
+            att = n.get("attached_node")
+            if tm.get("name") == "unique":
+                col = kw.get("column_name")
+                owner = att or (deps[0] if len(deps) == 1 else None)
+                if col and owner:
+                    ks = [str(col).lower()]
+                    uni.setdefault(owner, [])
+                    if ks not in uni[owner]:
+                        uni[owner].append(ks)
+            elif tm.get("name") == "unique_combination_of_columns":
+                cols = kw.get("combination_of_columns") or []
+                owner = att or (deps[0] if len(deps) == 1 else None)
+                if cols and owner:
+                    ks = sorted(str(c).lower() for c in cols)
+                    uni.setdefault(owner, [])
+                    if ks not in uni[owner]:
+                        uni[owner].append(ks)
+            elif tm.get("name") == "relationships":
+                col, field = kw.get("column_name"), kw.get("field")
+                m = re.findall(r"'([^']+)'", str(kw.get("to") or ""))
+                to_name = m[-1] if m else None
+                to_uid = next((d for d in deps
+                               if to_name and d.split(".")[-1] == to_name), None)
+                owner = att or next((d for d in deps if d != to_uid), None)
+                if col and field and owner and to_uid:
+                    fk.append({"uid": owner, "column": str(col).lower(),
+                               "to_uid": to_uid, "to_column": str(field).lower()})
+        return {"unique": uni, "fk": fk}
+
+    def rel_of_uid(self, uid: str) -> str | None:
+        """manifest 节点/源 uid → 物理三段名(model 取 alias,source 取 identifier)。"""
+        n = self.manifest["nodes"].get(uid) or (self.manifest.get("sources") or {}).get(uid)
+        if not n:
+            return None
+        ident = n.get("alias") or n.get("identifier") or n.get("name")
+        return rel3(n.get("database"), n.get("schema"), ident)
+
+    @cached_property
+    def declared_unique_rels(self) -> dict:
+        """{物理三段名: [唯一键集,...]} — 唯一性声明折到物理表(模型与 source 都覆盖):
+        血缘/治理据此对"join 到真实表"的伙伴做 N:1 判定。"""
+        out: dict = {}
+        for uid, sets in self.declared_tests["unique"].items():
+            r = self.rel_of_uid(uid)
+            if not r:
+                continue
+            out.setdefault(r, [])
+            for s in sets:
+                if s not in out[r]:
+                    out[r].append(s)
         return out
 
     @cached_property
