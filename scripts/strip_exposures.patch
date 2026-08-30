@@ -1,0 +1,367 @@
+diff --git a/fineprint/cli.py b/fineprint/cli.py
+index 0ef423c..39e423f 100644
+--- a/fineprint/cli.py
++++ b/fineprint/cli.py
+@@ -33,60 +33,14 @@ def _graph(project):
+     return load_graph(p)
+ 
+ 
+-def _exposure_candidates(project) -> str:
+-    """init 预填:按 dbt exposures 圈出看板出口模型,其数值度量列作为指标候选
+-    (注释形态,取消注释即用)。exposure 依赖是模型级,最后一步圈列仍须人工确认。"""
+-    NUM = ("INT", "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL", "NUMBER", "HUGE")
+-
+-    def cols_of(m):
+-        for schs in project.schema.values():
+-            cols = (schs.get(m["schema"]) or {}).get(m["alias"])
+-            if cols:
+-                return cols
+-        return {}
+-
+-    lines = []
+-    for e in list(project.exposures.values())[:10]:
+-        if not e["models"]:
+-            continue
+-        head = f"# ── exposure {e['name']}({e.get('type') or '-'})"
+-        if e.get("url"):
+-            head += f"  {e['url']}"
+-        lines.append(head)
+-        for uid in e["models"]:
+-            m = project.models[uid]
+-            meas = [c for c, ty in cols_of(m).items()
+-                    if any(t in str(ty).upper() for t in NUM)
+-                    and not c.lower().endswith(("_id", "_key")) and c.lower() != "id"]
+-            for c in meas[:8]:
+-                lines += [f"#   - key: {m['name']}_{c}",
+-                          f"#     title: {m['name']}.{c}",
+-                          f"#     target: {m['name']}.{c}"]
+-            if len(meas) > 8:
+-                lines.append(f"#   …… {m['name']} 另有 {len(meas) - 8} 个数值列")
+-    if not lines:
+-        return ""
+-    return ("\n# 指标候选(自动发现自 dbt exposures 声明的看板出口模型;\n"
+-            "# 挪进上方 metrics 列表并取消注释即生效)\n" + "\n".join(lines) + "\n")
+-
+-
+ def cmd_init(args):
+     from fineprint.config import EXAMPLE
+     f = Path(args.project) / "fineprint.yml"
+     if f.exists() and not args.force:
+         print(f"{f} 已存在(--force 覆盖)")
+         return
+-    text, tip = EXAMPLE, ""
+-    try:
+-        block = _exposure_candidates(_project(args))
+-        if block:
+-            text += block
+-            tip = ";已按 dbt exposures 预填指标候选(文件尾部注释)"
+-    except Exception:
+-        pass          # artifacts 尚未编译时 init 仍可用,只出模板
+-    f.write_text(text)
+-    print(f"已生成 {f}\n下一步:填入 metrics(model.column){tip},"
+-          f"设置 LLM 环境变量(见 README),然后 fineprint graph")
++    f.write_text(EXAMPLE)
++    print(f"已生成 {f}\n下一步:填入 metrics(model.column),设置 LLM 环境变量(见 README),然后 fineprint graph")
+ 
+ 
+ def cmd_graph(args):
+diff --git a/fineprint/drift.py b/fineprint/drift.py
+index 0918bd5..a1e9e15 100644
+--- a/fineprint/drift.py
++++ b/fineprint/drift.py
+@@ -182,30 +182,6 @@ def append_events(project: DbtProject, events: list, from_at: str, to_at: str):
+         tmp.replace(f)
+ 
+ 
+-def annotate_exposures(events: list, cfg: MLConfig, graph: dict) -> None:
+-    """漂移告警定向:事件挂上受影响指标目标模型的 dbt exposures(消费方名单)。
+-    告警从"哪个指标变了"升级为"哪些看板受影响、找谁"。目标解析失败不阻断
+-    (target_changed 类事件本就可能指向已不存在的模型)。"""
+-    from fineprint.trace import resolve_model
+-    exp_map = graph.get("exposures_by_model") or {}
+-    if not exp_map:
+-        return
+-    by_key = {m.key: m for m in cfg.metrics}
+-    for e in events:
+-        m = by_key.get(e["metric_key"])
+-        if m is None:
+-            continue
+-        names = []
+-        for tc in (m.target, *m.extra_targets):
+-            try:
+-                uid = resolve_model(graph, tc.rsplit(".", 1)[0])
+-            except Exception:
+-                continue
+-            names += [x["name"] for x in exp_map.get(uid, []) if x["name"] not in names]
+-        if names:
+-            e["exposures"] = names
+-
+-
+ def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True,
+               block_high: bool = False) -> list:
+     """基线不存在则建立基线(无事件);否则对比最近快照。
+@@ -221,7 +197,6 @@ def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True
+         print(f"基线快照已建立({len(cur['metrics'])} 个指标),无对比对象")
+         return []
+     events = diff_snapshots(prev, cur)
+-    annotate_exposures(events, cfg, graph)
+     blocked = block_high and any(e["severity"] == "high" for e in events)
+     if save and not blocked:
+         if events:
+@@ -242,5 +217,4 @@ def print_events(events: list):
+         mark = {"high": "⚠", "medium": "·", "info": "i"}[e["severity"]]
+         d = e["detail"]
+         brief = d.get("sql") or d.get("source") or d.get("column") or ""
+-        tail = f"  ⇒ 消费方: {', '.join(e['exposures'][:3])}" if e.get("exposures") else ""
+-        print(f"  {mark} [{e['severity']:<6}] {e['metric_key']:<26} {e['kind']:<18} {brief[:70]}{tail}")
++        print(f"  {mark} [{e['severity']:<6}] {e['metric_key']:<26} {e['kind']:<18} {brief[:70]}")
+diff --git a/fineprint/governance.py b/fineprint/governance.py
+index 76cb208..6e20fba 100644
+--- a/fineprint/governance.py
++++ b/fineprint/governance.py
+@@ -144,12 +144,6 @@ def scan(graph: dict, cfg: MLConfig) -> dict:
+                 if b in chains[a] or a in chains[b]:
+                     continue          # 血缘直系是引用,不是重复
+                 pair = {"fingerprint": fp, "a": f"{disp[a[0]]}.{a[1]}", "b": f"{disp[b[0]]}.{b[1]}"}
+-                # 消费方加权(dbt exposures):一侧喂看板一侧没人用,收敛方向不言自明
+-                exp_map = graph.get("exposures_by_model") or {}
+-                ea = [x["name"] for x in exp_map.get(a[0], [])]
+-                eb = [x["name"] for x in exp_map.get(b[0], [])]
+-                if ea or eb:
+-                    pair["exposures_a"], pair["exposures_b"] = ea, eb
+                 # 签名为空 = 证据不可见(聚合藏在模型内 CTE / 全链无分组),不可比:
+                 # 只在两侧证据都在场时下确定性结论,缺证一侧一律落到下一级判据;
+                 # 已知等价展开形(avg ↔ sum/count)不直判,降入 B 档仲裁
+diff --git a/fineprint/lineage.py b/fineprint/lineage.py
+index cd8bc5a..fcdf46e 100644
+--- a/fineprint/lineage.py
++++ b/fineprint/lineage.py
+@@ -605,18 +605,8 @@ def build_graph(project: DbtProject) -> dict:
+         # dbt unique/unique_combination 测试的唯一性声明,折到物理表:
+         # 治理/血缘对"join 到真实表"的伙伴做 N:1 判定的声明性证据
+         "declared_unique_rels": dict(project.declared_unique_rels),
+-        # dbt exposures 反查:模型 uid → 消费方清单(看板/报表/应用);
+-        # 卡片消费方标注、漂移告警定向、治理收敛加权都读这里
+-        "exposures_by_model": {},
+         "models": {},
+     }
+-    for e in project.exposures.values():
+-        meta = {k: e[k] for k in ("name", "label", "type", "url", "maturity", "owner")
+-                if e.get(k)}
+-        for uid_ in e["models"]:
+-            graph["exposures_by_model"].setdefault(uid_, []).append(meta)
+-    for uid_ in graph["exposures_by_model"]:
+-        graph["exposures_by_model"][uid_].sort(key=lambda x: x["name"])
+     decl_uni = project.declared_tests["unique"]
+     fk_by_uid: dict = {}
+     for e in project.declared_tests["fk"]:
+diff --git a/fineprint/project.py b/fineprint/project.py
+index 452baf2..3a601ea 100644
+--- a/fineprint/project.py
++++ b/fineprint/project.py
+@@ -168,26 +168,6 @@ class DbtProject:
+                 "database": n.get("database"), "package": n.get("package_name")}
+         return out
+ 
+-    @cached_property
+-    def exposures(self) -> dict:
+-        """{exposure name: {name, label, type, url, maturity, owner, models}} —
+-        dbt exposures = 项目外消费方声明(看板/报表/notebook/应用)。
+-        models 只收一方包物化模型 uid:消费方标注挂在指标出口模型上;
+-        依赖里的 source/第三方包(数据源边界)不入——那是上游,不是出口。"""
+-        out = {}
+-        for uid, e in (self.manifest.get("exposures") or {}).items():
+-            owner = e.get("owner") or {}
+-            name = e.get("name") or uid.split(".")[-1]
+-            out[name] = {
+-                "name": name, "label": e.get("label") or name,
+-                "type": e.get("type"), "url": e.get("url"),
+-                "maturity": e.get("maturity"),
+-                "owner": {k: owner[k] for k in ("name", "email") if owner.get(k)},
+-                "models": [d for d in (e.get("depends_on") or {}).get("nodes") or []
+-                           if d in self.models],
+-            }
+-        return out
+-
+     @cached_property
+     def declared_tests(self) -> dict:
+         """dbt schema 测试的基数声明(声明性证据,dbt 会按数据定期实测):
+diff --git a/fineprint/synth.py b/fineprint/synth.py
+index 2f6544b..8648a2c 100644
+--- a/fineprint/synth.py
++++ b/fineprint/synth.py
+@@ -404,18 +404,6 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set,
+ 
+ 
+ # ---------------- 单指标流水线 ----------------
+-def target_exposures(graph: dict, target_uids) -> list:
+-    """指标的消费方 = 挂在其目标模型(出口层)上的 dbt exposures。
+-    只看目标模型不看途经模型:exposure 消费的是被依赖的那张物化表,
+-    上游模型的指标不因下游被看板引用而蹭消费方。"""
+-    out = []
+-    for uid in target_uids:
+-        for e in (graph.get("exposures_by_model") or {}).get(uid, []):
+-            if e not in out:
+-                out.append(e)
+-    return out
+-
+-
+ def merged_trace(graph: dict, m: MetricDef) -> dict:
+     model, col = m.target.rsplit(".", 1)
+     t = trace(graph, model, col)
+@@ -635,7 +623,6 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
+         "confidence": val["confidence"],
+         "status": "published" if val["confidence"] in ("high", "medium") else "review",
+         "publication_status": pub_status,
+-        "consumers": target_exposures(graph, [uid for uid, _ in targets]),
+         "validation": val, "technical": technical, "business": business,
+         "technical_facts": facts, "race": race,
+         "evidence": evidence,
+diff --git a/tests/test_exposures.py b/tests/test_exposures.py
+deleted file mode 100644
+index 95de443..0000000
+--- a/tests/test_exposures.py
++++ /dev/null
+@@ -1,118 +0,0 @@
+-# -*- coding: utf-8 -*-
+-"""dbt exposures 自动发现:消费方声明进入卡片/漂移/治理/init 预填。
+-
+-exposure 依赖是模型级——消费方标注挂在指标出口模型上;source/第三方依赖
+-不入(数据源边界)。漂移事件带受影响看板名单;治理结对带两侧消费方加权;
+-init 从 exposures 圈出口模型的数值度量列为注释候选(最后圈列仍须人工)。
+-"""
+-import sys
+-from pathlib import Path
+-from types import SimpleNamespace
+-
+-ROOT = Path(__file__).resolve().parent.parent
+-sys.path.insert(0, str(ROOT))
+-
+-from fineprint.cli import _exposure_candidates  # noqa: E402
+-from fineprint.config import MLConfig  # noqa: E402
+-from fineprint.drift import annotate_exposures  # noqa: E402
+-from fineprint.governance import scan  # noqa: E402
+-from fineprint.lineage import build_graph  # noqa: E402
+-from fineprint.synth import target_exposures  # noqa: E402
+-from tests.test_generalize import _cat, _node, make_project  # noqa: E402
+-
+-EXPO = {
+-    "exposure.p.weekly_board": {
+-        "name": "weekly_board", "label": "大盘周报", "type": "dashboard",
+-        "url": "https://bi.example.com/42", "maturity": "high",
+-        "owner": {"name": "数据团队", "email": None},
+-        "depends_on": {"nodes": ["model.p.m1", "source.p.raw.orders"]}},
+-    "exposure.p.ml_feed": {
+-        "name": "ml_feed", "type": "ml",
+-        "owner": {"email": "ml@example.com"},
+-        "depends_on": {"nodes": ["model.p.m1", "model.p.m2"]}},
+-}
+-
+-
+-def _proj(tmp_path):
+-    return make_project(
+-        tmp_path,
+-        nodes={"model.p.m1": _node("m1", "compiled/m1.sql"),
+-               "model.p.m2": _node("m2", "compiled/m2.sql")},
+-        catalog_nodes={"model.p.m1": _cat("main", "m1", {"revenue": "HUGEINT", "user_id": "INT", "dt": "DATE"}),
+-                       "model.p.m2": _cat("main", "m2", {"revenue": "HUGEINT"}),
+-                       "seed.p.a": _cat("main", "a", {"amount": "INT"})},
+-        sqls={"compiled/m1.sql": "select sum(a.amount) as revenue, 1 as user_id, current_date as dt from main.a a",
+-              "compiled/m2.sql": "select sum(a.amount) as revenue from main.a a"},
+-        exposures=EXPO)
+-
+-
+-class TestExposureParsing:
+-    def test_deps_filtered_to_internal_models(self, tmp_path):
+-        p = _proj(tmp_path)
+-        ex = p.exposures
+-        assert ex["weekly_board"]["models"] == ["model.p.m1"]   # source 依赖不入
+-        assert ex["weekly_board"]["owner"] == {"name": "数据团队"}
+-        assert ex["weekly_board"]["label"] == "大盘周报"
+-        assert ex["ml_feed"]["label"] == "ml_feed"              # 无 label 回落 name
+-        assert ex["ml_feed"]["models"] == ["model.p.m1", "model.p.m2"]
+-
+-    def test_graph_reverse_map(self, tmp_path):
+-        g = build_graph(_proj(tmp_path))
+-        by = g["exposures_by_model"]
+-        assert [e["name"] for e in by["model.p.m1"]] == ["ml_feed", "weekly_board"]
+-        assert [e["name"] for e in by["model.p.m2"]] == ["ml_feed"]
+-
+-
+-class TestCardConsumers:
+-    def test_target_exposures_dedup(self, tmp_path):
+-        g = build_graph(_proj(tmp_path))
+-        got = target_exposures(g, ["model.p.m1", "model.p.m2"])
+-        assert [e["name"] for e in got] == ["ml_feed", "weekly_board"]
+-
+-    def test_no_exposures_empty(self, tmp_path):
+-        g = build_graph(_proj(tmp_path))
+-        assert target_exposures(g, ["model.p.nope"]) == []
+-
+-
+-class TestGovernanceWeighting:
+-    def test_pair_carries_consumer_names(self, tmp_path):
+-        r = scan(build_graph(_proj(tmp_path)), MLConfig(metrics=[1]))
+-        assert len(r["duplicates"]) == 1
+-        pair = r["duplicates"][0]
+-        # m1 喂两个下游,m2 喂一个——收敛方向可读
+-        sides = {pair["a"].split(".")[0]: pair.get("exposures_a"),
+-                 pair["b"].split(".")[0]: pair.get("exposures_b")}
+-        assert sides["m1"] == ["ml_feed", "weekly_board"]
+-        assert sides["m2"] == ["ml_feed"]
+-
+-
+-class TestDriftTargeting:
+-    def test_events_annotated(self, tmp_path):
+-        g = build_graph(_proj(tmp_path))
+-        cfg = SimpleNamespace(metrics=[
+-            SimpleNamespace(key="rev", target="m1.revenue", extra_targets=[])])
+-        events = [{"metric_key": "rev", "kind": "condition_added",
+-                   "severity": "high", "detail": {}},
+-                  {"metric_key": "ghost", "kind": "metric_added",
+-                   "severity": "info", "detail": {}}]
+-        annotate_exposures(events, cfg, g)
+-        assert events[0]["exposures"] == ["ml_feed", "weekly_board"]
+-        assert "exposures" not in events[1]           # 未知指标不阻断不误标
+-
+-
+-class TestInitCandidates:
+-    def test_numeric_columns_prefilled(self, tmp_path):
+-        block = _exposure_candidates(_proj(tmp_path))
+-        assert "weekly_board" in block and "dashboard" in block
+-        assert "#     target: m1.revenue" in block
+-        assert "user_id" not in block                 # id 类列不进候选
+-        assert "dt" not in block.replace("dbt", "")   # 非数值列不进候选
+-
+-    def test_no_exposures_no_block(self, tmp_path):
+-        p = make_project(
+-            tmp_path,
+-            nodes={"model.p.m1": _node("m1", "compiled/m1.sql")},
+-            catalog_nodes={"model.p.m1": _cat("main", "m1", {"x": "INT"}),
+-                           "seed.p.a": _cat("main", "a", {"amount": "INT"})},
+-            sqls={"compiled/m1.sql": "select sum(a.amount) as x from main.a a"})
+-        assert _exposure_candidates(p) == ""
+diff --git a/tests/test_generalize.py b/tests/test_generalize.py
+index 270b316..a01ea66 100644
+--- a/tests/test_generalize.py
++++ b/tests/test_generalize.py
+@@ -30,8 +30,7 @@ def _cat(schema, name, cols):
+ 
+ 
+ def make_project(tmp_path, nodes, catalog_nodes, sqls, sources=None,
+-                 project_name=None, internal_packages=None, adapter="duckdb",
+-                 exposures=None):
++                 project_name=None, internal_packages=None, adapter="duckdb"):
+     proj = tmp_path / "proj"
+     (proj / "target").mkdir(parents=True)
+     for rel, text in sqls.items():
+@@ -42,8 +41,7 @@ def make_project(tmp_path, nodes, catalog_nodes, sqls, sources=None,
+     if project_name:
+         meta["project_name"] = project_name   # 缺省不写:root 未知 → 全部按一方包
+     (proj / "target" / "manifest.json").write_text(json.dumps({
+-        "metadata": meta, "nodes": nodes, "sources": sources or {},
+-        "exposures": exposures or {}}))
++        "metadata": meta, "nodes": nodes, "sources": sources or {}}))
+     (proj / "target" / "catalog.json").write_text(json.dumps(
+         {"nodes": catalog_nodes, "sources": {}}))
+     return DbtProject(proj, internal_packages=internal_packages)

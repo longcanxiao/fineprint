@@ -7,12 +7,14 @@
 #   - 治理组件:fineprint/governance.py + fineprint/arbitrate.py 整文件删除
 #     (synth 对 governance 是可选导入,缺席时卡片治理提示区为空;
 #      cli govern 缺席时给出友好提示;仲裁提示词与 arbitrate 同居一并缺席)
-#   - exposures 功能:git revert exposures 提交(EXPOSURES_COMMIT)
+#   - exposures 功能:git apply scripts/strip_exposures.patch(固化补丁——
+#     曾用 git revert 跨历史反做,0.8.4 模块整体改名后旧提交词汇对不上,
+#     改为在当日树上解净一次后固化;将来打不上说明周边代码演进了,脚本
+#     响亮失败,重新生成补丁即可)
 # sdist 本就只含 fineprint/ + README.pypi.md + LICENSE(见 pyproject sdist 配置),
 # demo 数仓/看板/benchmark/设计文档/测试不随包发布。
 set -euo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
-EXPOSURES_COMMIT=e504bd8
 STAGE=$(mktemp -d /tmp/fineprint_release.XXXXXX)
 trap 'git -C "$REPO" worktree remove --force "$STAGE" 2>/dev/null || true; rm -rf "$STAGE"' EXIT
 
@@ -21,7 +23,8 @@ cd "$REPO"
 
 git worktree add --detach "$STAGE" HEAD >/dev/null
 cd "$STAGE"
-git revert --no-commit "$EXPOSURES_COMMIT" || { echo "revert 冲突:exposures 摘除需人工处理"; exit 1; }
+git apply --index "$REPO/scripts/strip_exposures.patch" \
+  || { echo "strip_exposures.patch 打不上:周边代码已演进,请重新生成补丁"; exit 1; }
 rm fineprint/governance.py fineprint/arbitrate.py
 
 # 摘除后自检 1:被删符号不得残留于发行包
