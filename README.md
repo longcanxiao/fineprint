@@ -1,5 +1,7 @@
 # MetricLens
 
+**English** | [中文](README.zh.md)
+
 **Ask your dashboard what a metric *actually* means.**
 
 MetricLens reverse-engineers the business & technical definition ("caliber") of every dashboard metric from the SQL that already exists in your dbt project — no upfront semantic-layer registration, no manual documentation. It answers questions like:
@@ -25,6 +27,7 @@ dbt artifacts ──────► │  sources / filters / expression chain (s
 - **Channel 1** traces every metric column back to source tables: source columns, every filter that shapes the row set (WHERE / JOIN ON / QUALIFY / HAVING, with scope analysis), window-dedup idioms, CASE WHEN attribution, COALESCE fallbacks, stat-date assignment — all with file/line anchors.
 - **Channel 2** has an LLM read each model's SQL independently. Every claimed filter must carry a **verbatim quote** that is machine-checked against the source — fabricated citations are structurally impossible.
 - The two channels are fingerprint-matched condition by condition. Only cross-validated filters enter the merged technical caliber. Business clauses must cite numbered deterministic evidence (`E`/`S`/`X`/`Q` ids); an unbound clause — or an empty clause list — caps the card's confidence. (The one-line definition and caveats are LLM prose over that evidence, not themselves machine-verified.)
+- **Deterministic formula composer** (0.8): a third writer expands each metric's compiled SQL scope by scope into a provable formula — named sub-expressions at aggregation/window boundaries carry their defining grain, UNION branches and PIVOT columns expand deterministically, and the result must round-trip against channel 1's leaf sources plus the same lexicon/anchor validators the LLM faces. **The composer is the publishing authority for formulas; the LLM explains and narrates, and backstops only where the composer cannot prove** (multi-target combinations, scalar subqueries — each refusal carries a named machine reason). Calibrated on three public corpora across three dialects (Fivetran ad_reporting / postgres, Snowplow web / snowflake, Cal-ITP warehouse / bigquery): **25,402 of 25,412 real-world columns (99.96%) composed and proven**, every residual named.
 - Low-confidence cards go to a review queue instead of being published. Batches publish atomically — consumers never see a half-updated state.
 
 Beyond caliber cards, MetricLens ships two governance tools built on the same lineage:
