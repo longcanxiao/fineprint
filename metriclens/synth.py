@@ -354,6 +354,33 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set,
     extra_all = sorted(s2 - s1)
     extra = [e for e in extra_all if e.rsplit(".", 1)[-1] not in cond_text]
     cond_cols = [e for e in extra_all if e not in extra]
+
+    # 上下文豁免:引用落在 join/分组上下文表(通道一第二类视野)= 解释口径的
+    # 合法引用而非值源幻觉,单独记账不惩罚。模型上下文带列清单,列不存在不豁免
+    # (幻觉信号保留);真实表上下文列不可知,按表身份豁免(段级宽容同 resolve)。
+    def _ctx_hit(entry: str) -> bool:
+        tb, col = entry.rsplit(".", 1)
+        parts = tb.replace('"', "").split(".")
+        d = parts[-3] if len(parts) >= 3 else None
+        sch = parts[-2] if len(parts) >= 2 else None
+        tail = parts[-1]
+        for c in t.get("context_tables") or []:
+            crel = str(c["table"])
+            cd, csch, ctail = crel.split(".", 2) if crel.count(".") >= 2 else ("", "", crel)
+            if tail not in (ctail, c.get("model")):
+                continue
+            if d is not None and cd not in ("", d):
+                continue
+            if sch is not None and csch not in ("", sch):
+                continue
+            cols = c.get("columns")
+            if cols is not None and col.lower() not in cols:
+                continue
+            return True
+        return False
+
+    ctx_cols = [e for e in extra if _ctx_hit(e)]
+    extra = [e for e in extra if e not in ctx_cols]
     quote_fail, f2_suspect = cls["quote_fail"], cls["suspect"]
     if not missing and not extra and covered >= 0.999 and quote_fail == 0 and not f2_suspect:
         conf = "high"
@@ -364,7 +391,7 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set,
     return {
         "confidence": conf,
         "s_missing_by_llm": missing, "s_extra_by_llm": extra,
-        "s_condition_cols_by_llm": cond_cols,
+        "s_condition_cols_by_llm": cond_cols, "s_context_by_llm": ctx_cols,
         "f1_total": len(f1_fps), "f1_covered": round(covered, 3),
         "f1_uncovered": [f1_fps[fp]["sql"][:80] for fp in f1_fps if fp not in f2_fps],
         "f2_out_of_scope": cls["out_of_scope"][:6], "f2_unparsed": cls["unparsed"][:6],
@@ -386,6 +413,9 @@ def merged_trace(graph: dict, m: MetricDef) -> dict:
         t["sources"] += [s for s in t2["sources"] if s not in t["sources"]]
         t["scope_ambiguous"] += [x for x in t2.get("scope_ambiguous", [])
                                  if x not in t["scope_ambiguous"]]
+        seen_ctx = {c["table"] for c in t.get("context_tables") or []}
+        t["context_tables"] = (t.get("context_tables") or []) + [
+            c for c in t2.get("context_tables") or [] if c["table"] not in seen_ctx]
         for vm in t2["models_visited"]:
             if vm not in t["models_visited"]:
                 t["models_visited"].append(vm)
@@ -594,7 +624,7 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
         "evidence": evidence,
         "governance": {"duplicates": gov_dups[:4]},
         "trace": {k: t[k] for k in ("depth", "models_visited", "sources", "conditions",
-                                    "semantics", "scope_ambiguous")},
+                                    "semantics", "scope_ambiguous", "context_tables")},
         "per_hop": hops_seq,
     }
 

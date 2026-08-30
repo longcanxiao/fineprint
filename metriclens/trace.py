@@ -85,8 +85,10 @@ def trace(graph: dict, model: str, column: str) -> dict:
     sources, chain, visited = [], [], set()
     visited_models = []
     model_scopes: dict[str, set] = {}
+    source_rels: set = set()          # 值链源表的原始 rel(上下文计算按 rel 排除)
 
     def add_source(rel: str, col: str):
+        source_rels.add(rel)
         # table 保留裸名(展示/LLM 互验/文档匹配用);schema/database 单独携带,
         # 供治理指纹与漂移快照区分跨 schema/跨库同名源表(erp.orders vs crm.orders)
         parts = rel.split(".")
@@ -183,12 +185,37 @@ def trace(graph: dict, model: str, column: str) -> dict:
                 continue
             sems.append({**s, "src_path": models[m]["src_path"]})
 
+    # join/分组上下文表(通道一的第二类视野):途经模型行集与全向 join 闭包内的
+    # 表,去掉值链源表、链上模型自身及其物化表——它们不供值,但塑造行集与粒度
+    # (分组维表、join 伙伴)。通道二解释口径时引用它们是合法上下文而非幻觉;
+    # 互验据此把这类引用与值源分开记账(s_context_by_llm),模型上下文携带列清单
+    # 供列存在性校验。仅作可见化,不进指纹/漂移快照。
+    own_tables = {models[m]["table"] for m in visited_models if m in models}
+    ctx: dict = {}
+    for m in visited_models:
+        info = models.get(m) or {}
+        rels = list(info.get("row_set_tables") or []) \
+            + [e["rel"] for e in info.get("row_risk_joins") or []]
+        for rel in rels:
+            if rel in source_rels or rel in own_tables or rel in ctx:
+                continue
+            up = model_rel.get(rel)
+            if up and up in models:
+                if up in visited_models:
+                    continue          # 链上模型:已在值链视野,非上下文
+                ctx[rel] = {"table": rel, "model": disp(up), "model_uid": up,
+                            "columns": sorted(c.lower() for c in models[up].get("columns") or {})}
+            else:
+                pkg = (external.get(rel) or {}).get("package")
+                ctx[rel] = {"table": rel, **({"package": pkg} if pkg else {})}
+
     return {
         "target": f"{models[model]['layer']}.{disp(model)}.{column}",
         "depth": 1 + max((e["depth"] for e in chain), default=0),
         # models_visited 存 uid(graph["models"] 的机器可用键);展示走 expr_chain 的 model 字段
         "models_visited": visited_models,
         "sources": sorted(sources, key=lambda x: (x["table"], x["column"], x.get("schema", ""))),
+        "context_tables": [ctx[k] for k in sorted(ctx)],
         "expr_chain": chain,
         "conditions": conds,
         "semantics": sems,

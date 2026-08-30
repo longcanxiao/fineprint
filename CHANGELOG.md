@@ -24,6 +24,30 @@ they can't).
   is labeled explanation/narrative (or "published formula (fallback)" with
   the machine reason when the composer can't prove). Demo distribution is
   unchanged (14 VERIFIED + 1 TECHNICAL_ONLY; 14 machine + 1 llm_fallback).
+- **dbt tests as declared cardinality evidence**: `unique` /
+  `dbt_utils.unique_combination_of_columns` / `relationships` schema tests
+  now feed the cardinality proof system as declarative evidence (dbt re-tests
+  them against data; same coverage rule as SQL-structural proofs). Join keys
+  covering a partner's declared unique key set prove the join N:1 — in the
+  governance row-topology risk set (a suspected-duplicate pair whose only
+  unproven join is declared-unique upgrades from `row_mismatch` to a full
+  duplicate), in `output_unique_on` (a window-dedup uniqueness claim no
+  longer dies on a join to a real table whose declared key is covered), and
+  for real-table partners (sources/seeds) via a graph-level
+  `declared_unique_rels` map. `join_count` SQL-quality items gain an
+  `n1_proven` mitigation note when every risk join of the model is proven
+  (the residual concern narrows to data coverage). Cards' window fact lists
+  declared uniqueness and FK declarations along the visited chain.
+- **Join/group context enters channel 1's vision**: traces carry
+  `context_tables` — the second class of lineage made visible: row-set /
+  join-closure partners of visited models that shape the row set or grain
+  without supplying the value (grouping dims, join partners), with column
+  inventories for model partners. Cross-validation reclassifies LLM source
+  references landing in context from `s_extra_by_llm` (hallucination
+  penalty) to `s_context_by_llm` (legitimate context, no penalty), with
+  column-existence checks on model contexts so an invented column still
+  counts as an extra. Context stays out of fingerprints and drift snapshots;
+  cards and the dashboard cross-check line surface it.
 - **Formula prompt hardened**: the merge prompt now requires `formula` to be a
   single SQL-parseable aggregate expression (no SELECT/FROM/JOIN, prose goes
   to summary, CJK only inside string literals). Demo rerun: prose verdicts

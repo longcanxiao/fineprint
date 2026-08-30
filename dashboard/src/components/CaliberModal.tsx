@@ -27,7 +27,7 @@ interface Caliber {
   generated_at: string; llm_model?: string; confidence: string; status: string
   message?: string
   validation?: {
-    s_missing_by_llm: string[]; s_extra_by_llm: string[]
+    s_missing_by_llm: string[]; s_extra_by_llm: string[]; s_context_by_llm?: string[]
     f1_total: number; f1_covered: number; f1_uncovered: string[]; quote_verify_fail: number
     unverified_clauses?: number
   }
@@ -281,6 +281,7 @@ export default function CaliberModal({ metricKey, title, tokens, onClose }: { me
                   ;关键过滤覆盖 {(card.validation.f1_covered * 100).toFixed(0)}%({card.validation.f1_total} 条)
                   {card.validation.quote_verify_fail > 0 && `;${card.validation.quote_verify_fail} 条引用未过原文校验`}
                   {(card.validation.unverified_clauses ?? 0) > 0 && `;${card.validation.unverified_clauses} 条业务条款未绑定证据`}
+                  {(card.validation.s_context_by_llm ?? []).length > 0 && `;${(card.validation.s_context_by_llm ?? []).length} 处引用落在 join/分组上下文(合法,不计分歧)`}
                 </p>
                 {card.race && (
                   <p className="verify">
