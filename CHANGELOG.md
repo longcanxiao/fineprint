@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.2 (2026-08-30)
+
+Docs-only: the PyPI readme's LLM env-var names were wrong
+(`METRICLENS_LLM_BASE/KEY` → the real `METRICLENS_LLM_BASE_URL` /
+`METRICLENS_LLM_API_KEY`) — following the published 0.8.1 readme would
+fail; also notes that graph/trace/drift need no LLM at all. License was
+audited and is already fully declared (PEP 639 `License-Expression:
+Apache-2.0` + bundled LICENSE; the legacy JSON `license` field is null by
+design). `project.urls` stays off until the repository is public — a
+commented template is ready in pyproject.
+
 ## 0.8.1 (2026-08-30)
 
 Docs-only: the two taglines land in every introduction — *Read the fine

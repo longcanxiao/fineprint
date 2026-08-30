@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fineprint"
-version = "0.8.1"
+version = "0.8.2"
 description = "Read the fine print of your metrics — a decompiler for your dashboards: column-level lineage x LLM over dbt artifacts, evidence-bound caliber cards"
 readme = "README.pypi.md"
 license = "Apache-2.0"
@@ -26,6 +26,13 @@ dependencies = [
   "sqlglot>=30,<32",
   "requests>=2.28",
 ]
+
+# 仓库公开后解开注释并填入真实地址,随下一个版本发布(PyPI 页面即有去处):
+# [project.urls]
+# Homepage = "https://github.com/<org>/<repo>"
+# Repository = "https://github.com/<org>/<repo>"
+# Issues = "https://github.com/<org>/<repo>/issues"
+# Changelog = "https://github.com/<org>/<repo>/blob/main/CHANGELOG.md"
 
 [project.scripts]
 # 发行名 fineprint(指标口径的"小字条款");import 名与既有 CLI 暂保持 metriclens,
