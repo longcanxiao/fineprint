@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.8.7 (2026-08-30)
+
+The HTML report now obeys the publication state machine and formula
+authority instead of bypassing them (P0 field feedback):
+
+- **`publication_status` is the card's face.** VERIFIED renders the full
+  business + authoritative technical caliber; TECHNICAL_ONLY folds the
+  business narrative into a dimmed "待审草稿" block (with the unverified
+  fields named) while machine facts stay official; REVIEW_REQUIRED cards
+  publish no caliber content at all — only a problem summary (race verdict,
+  composer reasons, validation flags) plus the evidence table for review.
+  `confidence` is demoted to a "叙述互验置信度" footnote in the
+  cross-validation line; it no longer masquerades as the final status.
+- **Formulas render by authority.** `machine`: the composer's proven
+  formula with named intermediate defs (each with defining model, grain,
+  join-context), output grain, proven key filters and window idioms — the
+  LLM's simplified formula drops to an "解释与叙述" footnote. `llm_fallback`:
+  an explicit banner naming the machine reason the composer could not
+  prove it. Legacy cards without these fields honestly fall back to the
+  old view.
+- **Evidence is now genuinely traceable.** Clause badges are clickable
+  anchors that jump to (and highlight) the evidence row — id, kind, model,
+  source file, compiled line — with the graph hash stamped on every card
+  and a per-status count in the report header.
+
 ## 0.8.6 (2026-08-30)
 
 CLI usability pass, driven by first-round field feedback:
