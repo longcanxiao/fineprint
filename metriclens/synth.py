@@ -23,7 +23,8 @@ from metriclens.governance import scan as governance_scan
 from metriclens.lineage import dialect, fingerprint, normalize_condition
 from metriclens.llm import chat_json, fast_model, quality_model, set_cache_dir
 from metriclens.project import DbtProject
-from metriclens.render import attach_evidence, build_facts, publication_status, race_formula
+from metriclens.render import (attach_evidence, build_facts, formula_authority,
+                               publication_status, race_formula)
 from metriclens.store import CaliberStore
 from metriclens.trace import display_name, resolve_model, trace
 
@@ -527,9 +528,10 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
         if val["confidence"] == "high":
             val["confidence"] = "medium"
 
-    # 0.8 双写赛马:确定性组合器并行合成技术公式(逐事实 status+证据),与 LLM
-    # 公式规范化比对。赛马期发布权威不切换(仍是 LLM 口径 + 既有置信分级);
-    # 组合器 unsupported 率与逐卡分歧是裁决权威归属的数据。组合器任何失败都
+    # 0.8 双写:确定性组合器合成技术公式(逐事实 status+证据),与 LLM 公式
+    # 规范化比对。赛马已裁决——公式权威=组合器(authority=machine),LLM 退居
+    # 解释与叙述;组合器不可证时 LLM 公式兜底(authority=llm_fallback,按其
+    # 全套互验置信裁决)。race 判定保留为叙述层质检信号。组合器任何失败都
     # 不得影响卡片生成(fail-closed 到 unsupported,不抛)。
     targets = []
     for tc in (m.target, *m.extra_targets):
@@ -550,6 +552,7 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
     race = race_formula(facts, technical.get("formula"),
                         {"formula_aggs": freetext_bad.get("formula_aggs"),
                          "formula_vocab": freetext_bad.get("formula")})
+    facts["formula"]["authority"] = formula_authority(facts)
     pub_status = publication_status(val["confidence"], facts, race)
     # 比较用中间形不入卡(inline_cmp 可能含非法嵌套聚合的纯文本形)
     facts["formula"].pop("inline_cmp", None)
@@ -652,7 +655,9 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
                                   "status": r["status"], "generated_at": r["generated_at"],
                                   "run_id": r.get("run_id"),
                                   "publication_status": r.get("publication_status"),
-                                  "race": (r.get("race") or {}).get("verdict")}
+                                  "race": (r.get("race") or {}).get("verdict"),
+                                  "formula_authority": ((r.get("technical_facts") or {})
+                                                        .get("formula") or {}).get("authority")}
         # --only 补齐的旧批次卡可能没有 race 字段(0.8 前),按缺省计入
         rv = (r.get("race") or {}).get("verdict") or "-"
         race_counts[rv] = race_counts.get(rv, 0) + 1

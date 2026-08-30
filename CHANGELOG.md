@@ -3,7 +3,27 @@
 ## Unreleased (0.8)
 
 Dual-write race: a deterministic formula composer runs alongside the LLM.
+**Race adjudicated (2026-08-30): the composer is now the publishing authority
+for formulas; the LLM demotes to explanation/narrative, and serves as the
+fallback where the composer cannot prove** (rules where rules can, LLM where
+they can't).
 
+- **Authority flip**: cards and the batch index carry
+  `technical_facts.formula.authority` (`machine` when the composed formula is
+  proven; `llm_fallback` otherwise — multi-target combinations, scalar
+  subqueries, and any future unsupported construct). The publication state
+  machine is rules-first: proven ⇒ machine facts publish (VERIFIED when the
+  LLM narrative also passes all cross-checks, TECHNICAL_ONLY otherwise —
+  including `disagree`, which now demotes only the narrative instead of
+  blocking the machine facts); unproven ⇒ the LLM formula publishes as
+  fallback under its full validation battery (high ⇒ VERIFIED, else
+  REVIEW_REQUIRED). `rt_failed` and ambiguous key-filter attribution still
+  hard-block. The planned per-disagree adjudication ledger is retired — it
+  existed to decide this authority question. Dashboard: the machine-caliber
+  section now leads and is labeled the publishing authority; the LLM section
+  is labeled explanation/narrative (or "published formula (fallback)" with
+  the machine reason when the composer can't prove). Demo distribution is
+  unchanged (14 VERIFIED + 1 TECHNICAL_ONLY; 14 machine + 1 llm_fallback).
 - **Formula prompt hardened**: the merge prompt now requires `formula` to be a
   single SQL-parseable aggregate expression (no SELECT/FROM/JOIN, prose goes
   to summary, CJK only inside string literals). Demo rerun: prose verdicts

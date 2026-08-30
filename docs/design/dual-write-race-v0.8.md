@@ -1,6 +1,8 @@
 # 0.8 双写赛马:确定性公式组合器与权威裁决路径
 
-状态:已实现(赛马期)。本文记录设计决策与首批数据,作为切换权威的裁决依据。
+状态:**已裁决(2026-08-30,用户拍板)——公式权威=组合器,LLM 退居解释与兜底**。
+原则:规则可以处理的用规则,规则处理不了的用 LLM 兜底。本文保留赛马期的设计
+决策与数据记录,末节为裁决后的发布语义。
 
 ## 背景与动机
 
@@ -58,7 +60,7 @@ LLM 公式规范化(限定名剥到裸列、小写、count(1)/sum(1)→count(*)�
 多目标指标(如比率跨两列):目标间组合关系由配置/业务声明,非单一 SQL 事实
 → formula 恒 ambiguous,race 至多 consistent。这是诚实而非缺陷。
 
-## 发布状态机(赛马期语义)
+## 发布状态机(赛马期语义,已被下方裁决语义取代)
 
 ```
 disagree / key_filters 归因不明 / rt_failed   → REVIEW_REQUIRED
@@ -68,7 +70,7 @@ disagree / key_filters 归因不明 / rt_failed   → REVIEW_REQUIRED
 (BLOCKED 保留:硬失败当前直接报错不落卡)
 ```
 
-**权威在 0.8 不切换**:发布口径仍是 LLM 归并 + 既有置信分级;publication_status
+赛马期权威不切换:发布口径是 LLM 归并 + 既有置信分级;publication_status
 与 race 是并行标注。renderer_unsupported 不降卡(组合器的覆盖缺口不该罚 LLM)。
 
 ## 首批数据(demo 数仓,15 卡,批次 e373b673)
@@ -141,11 +143,37 @@ LLM 技术口径明确标注「发布权威(赛马期)」;互验区展示公式�
 机器矛盾详情);治理台新增「疑似重复·基数未证」(row_mismatch)档;批次索引逐卡
 携带 publication_status 与 race 判定。
 
-## 切换判据(剩余)
+## 裁决与切换(2026-08-30,用户拍板)
 
-1. 更多真实项目探针(不同方言/写法风格;GitLab 若重新公开仍是首选)。
-2. disagree 逐条人工裁决,记录谁对——赛马战绩公开(demo 当前零 disagree,
-   历史两例均为 LLM 错)。
+**裁决**:公式权威=组合器,LLM 退居解释与叙述;组合器不可证时 LLM 公式兜底。
+原计划的「disagree 逐条人工裁决战绩台」随之取消——它是为"LLM 是否继续当权威"
+积累证据的机制,权威既定即无存在必要;race 判定降级为叙述层质检信号保留。
+
+裁决依据:三语料 25412 列 proven 99.96%(残余全部具名);demo 历史仅有的两例
+disagree 均为 LLM 错;LLM 通道跨运行漂移而组合器逐运行恒定。
+
+**裁决后语义**(`formula_authority`:machine / llm_fallback,入卡入批次索引):
+
+```
+rt_failed / key_filters 归因不明               → REVIEW_REQUIRED(机器互证矛盾,最优先人看)
+组合公式 proven(authority=machine):
+  LLM 叙述过全部互验(high 且无 disagree)     → VERIFIED
+  否则(含 disagree:机器事实照发,叙述待审)  → TECHNICAL_ONLY
+组合器不可证(authority=llm_fallback,发布公式=LLM,带机器原因):
+  LLM 高置信且无实锤矛盾                       → VERIFIED
+  否则                                         → REVIEW_REQUIRED
+```
+
+行为差异仅一处:proven 卡上的 disagree 由 REVIEW_REQUIRED 改 TECHNICAL_ONLY
+——LLM 公式与机器矛盾不再拦机器事实,只把叙述层送审(权威切换的直接体现)。
+demo 实测(批次 2a844fb0):14 machine + 1 llm_fallback(live_gmv 多目标组合,
+跨目标关系由配置声明非单一 SQL 事实——"规则处理不了的用 LLM"的活例),发布
+分布与赛马期完全一致(14 VERIFIED + 1 TECHNICAL_ONLY),门禁 14/14 + 8/8。
+看板:机器口径区居首标「发布权威」,LLM 区标「解释与叙述(公式权威=组合器)」;
+兜底卡两区互指(机器区给不可证原因,LLM 区标「发布公式(兜底)」)。
+
+后续若出现规则无法识别/解决的新场景类,兜底路径已就位;组合器每补一类语义,
+authority 自动从 llm_fallback 翻到 machine,无需迁移。
 
 ## 已知余量(诚实清单)
 

@@ -840,19 +840,29 @@ def race_formula(facts: dict, llm_formula, contradictions: dict | None) -> dict:
                        "renderer": sorted(cands)[0][:120] if cands else None}}
 
 
+def formula_authority(facts: dict) -> str:
+    """公式发布权威:规则可证用规则,规则不可证 LLM 兜底(赛马裁决后语义)。
+    machine       组合器自证成立,发布公式=组合公式
+    llm_fallback  组合器不可证(unsupported/多目标组合/标量子查询等),
+                  发布公式=LLM 归并公式,按其全套互验置信裁决"""
+    return "machine" if facts["formula"]["status"] == "proven" else "llm_fallback"
+
+
 def publication_status(confidence: str, facts: dict, race: dict) -> str:
-    """发布状态机(赛马期语义,置信分级不动):
-    REVIEW_REQUIRED  双通道公式实锤矛盾 / 过滤事实归因不明 / round-trip 自检
-                     失败(机器两条实现互相矛盾)——须人工
-    VERIFIED         互验高置信且无机器矛盾
-    TECHNICAL_ONLY   机器公式自证成立但 LLM 表述未过互验——技术事实可用,叙述待审
+    """发布状态机(赛马已裁决:公式权威=组合器,LLM 退居解释与兜底。
+    裁决依据:三语料 25412 列 proven 99.96% + demo 历史 disagree 全为 LLM 错):
+    REVIEW_REQUIRED  round-trip 自检失败(机器两条实现互相矛盾)/ 过滤事实归因
+                     不明 / 兜底路径上 LLM 未达高置信或被机器实锤——须人工
+    VERIFIED         机器公式自证成立且 LLM 叙述过全部互验;或兜底路径 LLM 高
+                     置信且无机器矛盾(此时卡上 authority=llm_fallback 带原因)
+    TECHNICAL_ONLY   机器公式自证成立但 LLM 叙述未过互验(含 disagree:机器
+                     事实照发,LLM 叙述待审)——技术事实可用,叙述待审
     (BLOCKED 保留:目标不可解析等硬失败当前直接报错,不落卡。)"""
-    if (race.get("verdict") == "disagree"
-            or facts["key_filters"]["status"] == "ambiguous"
+    if (facts["key_filters"]["status"] == "ambiguous"
             or facts["formula"].get("rt_failed")):
         return "REVIEW_REQUIRED"
-    if confidence == "high":
-        return "VERIFIED"
+    narrative_ok = confidence == "high" and race.get("verdict") != "disagree"
     if facts["formula"]["status"] == "proven":
-        return "TECHNICAL_ONLY"
-    return "REVIEW_REQUIRED"
+        return "VERIFIED" if narrative_ok else "TECHNICAL_ONLY"
+    # 兜底路径:发布公式=LLM,须其自身互验高置信且无实锤矛盾才可发
+    return "VERIFIED" if narrative_ok else "REVIEW_REQUIRED"

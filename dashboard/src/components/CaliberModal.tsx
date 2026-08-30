@@ -13,7 +13,7 @@ interface TfDef {
   branches?: { label: string; expr: string }[]
 }
 interface TfTarget { target?: string; status: string; top?: string | null; defs?: TfDef[]; reasons?: string[] }
-interface TfFormula extends TfTarget { inline?: string | null; rt_failed?: boolean; evidence?: string[]; per_target?: TfTarget[] }
+interface TfFormula extends TfTarget { inline?: string | null; rt_failed?: boolean; evidence?: string[]; per_target?: TfTarget[]; authority?: string }
 interface TechnicalFacts {
   formula: TfFormula
   key_filters?: { status: string; items?: unknown[]; ambiguous_items?: unknown[] }
@@ -62,8 +62,8 @@ const RACE_LABEL: Record<string, string> = {
   agree: '组合器公式结构一致',
   consistent: '与组合器无机器矛盾(未达结构一致)',
   prose: 'LLM 公式非可解析 SQL,仅 token 级校验',
-  disagree: '与组合器公式实锤矛盾',
-  renderer_unsupported: '组合器未覆盖此构造',
+  disagree: '与组合器公式实锤矛盾(机器事实照发,叙述待审)',
+  renderer_unsupported: '组合器未覆盖此构造(公式由 LLM 兜底)',
 }
 
 const FACT_LABEL: Record<string, string> = {
@@ -156,6 +156,11 @@ export default function CaliberModal({ metricKey, title, tokens, onClose }: { me
   const [confLabel, confCls] = card ? (CONF_LABEL[card.confidence] ?? ['未知', 'conf-low']) : ['', '']
   const evd = card?.evidence ?? []
   const govDups = card?.governance?.duplicates ?? []
+  // 公式发布权威(0.8 裁决:规则可证用规则,不可证 LLM 兜底);旧批次卡按状态推导
+  const fAuth = card?.technical_facts
+    ? (card.technical_facts.formula.authority
+      ?? (card.technical_facts.formula.status === 'proven' ? 'machine' : 'llm_fallback'))
+    : null
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -197,18 +202,9 @@ export default function CaliberModal({ metricKey, title, tokens, onClose }: { me
                 <div className="caveat">⚠ {(card.business.caveats ?? []).join(' ')}</div>
               )}
             </section>
-            <section>
-              <h3>技术口径 <span className="m-target">LLM 归并 · 发布权威(赛马期)</span></h3>
-              <pre className="formula">{card.technical.formula}</pre>
-              {card.technical.window && <p className="tech-win">时间窗/统计日: {card.technical.window}</p>}
-              {(card.technical.special ?? []).length > 0 && (
-                <div className="chips">{(card.technical.special ?? []).map((s, i) => <span className="chip" key={i}>{s}</span>)}</div>
-              )}
-              {card.query_filter && <p className="tech-win">取数过滤: {card.query_filter}</p>}
-            </section>
             {card.technical_facts && (
               <section>
-                <h3>机器口径 <span className="m-target">确定性组合器合成 · 与上方 LLM 口径双写赛马</span></h3>
+                <h3>机器口径 <span className="m-target">确定性组合器合成 · {fAuth === 'machine' ? '发布权威' : '不可证,公式由下方 LLM 兜底'}</span></h3>
                 <div className="chips">
                   {Object.entries(FACT_LABEL).map(([k, lb]) => {
                     const st = (card.technical_facts as unknown as Record<string, { status?: string } | undefined>)[k]?.status
@@ -216,7 +212,7 @@ export default function CaliberModal({ metricKey, title, tokens, onClose }: { me
                   })}
                   {card.race && (
                     <span className={`conf ${card.race.verdict === 'disagree' ? 'conf-low' : card.race.verdict === 'agree' ? 'conf-high' : 'conf-mid'}`}>
-                      赛马 {card.race.verdict}
+                      互验 {card.race.verdict}
                     </span>
                   )}
                 </div>
@@ -254,6 +250,15 @@ export default function CaliberModal({ metricKey, title, tokens, onClose }: { me
                 )}
               </section>
             )}
+            <section>
+              <h3>技术口径 <span className="m-target">LLM 归并 · {fAuth === 'llm_fallback' ? '发布公式(兜底:组合器不可证)' : fAuth === 'machine' ? '解释与叙述(公式权威=组合器)' : ''}</span></h3>
+              <pre className="formula">{card.technical.formula}</pre>
+              {card.technical.window && <p className="tech-win">时间窗/统计日: {card.technical.window}</p>}
+              {(card.technical.special ?? []).length > 0 && (
+                <div className="chips">{(card.technical.special ?? []).map((s, i) => <span className="chip" key={i}>{s}</span>)}</div>
+              )}
+              {card.query_filter && <p className="tech-win">取数过滤: {card.query_filter}</p>}
+            </section>
             {govDups.length > 0 && (
               <section>
                 <h3>治理提示</h3>
@@ -279,7 +284,7 @@ export default function CaliberModal({ metricKey, title, tokens, onClose }: { me
                 </p>
                 {card.race && (
                   <p className="verify">
-                    公式赛马:<span className={`ev-tag ${card.race.verdict === 'disagree' ? 'ev-warn' : ''}`}>{card.race.verdict}</span>
+                    公式双写互验:<span className={`ev-tag ${card.race.verdict === 'disagree' ? 'ev-warn' : ''}`}>{card.race.verdict}</span>
                     {' '}{RACE_LABEL[card.race.verdict] ?? ''}
                     {card.race.verdict === 'disagree' && card.race.detail != null && (
                       <code className="gov-code">{JSON.stringify(card.race.detail).replace(/"/g, '').slice(0, 160)}</code>

@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""0.8 双写赛马:确定性公式组合器(render)回归。
+"""0.8 双写:确定性公式组合器(render)回归。
 
 组合规则:作用域展开 / 聚合边界(def + grain)/ union 一致性 / fail-closed;
 round-trip:链内词表 + 聚合锚点 + 叶子源集与通道一互证;
 race:agree / consistent / prose / disagree / renderer_unsupported;
-发布状态机:VERIFIED / TECHNICAL_ONLY / REVIEW_REQUIRED 与 rt_failed 阻断。
+发布状态机(权威已裁决):公式权威=组合器,LLM 解释与兜底;
+VERIFIED / TECHNICAL_ONLY / REVIEW_REQUIRED 与 rt_failed 阻断。
 """
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ from metriclens.lineage import build_graph  # noqa: E402
 from metriclens.render import (  # noqa: E402
     _Composer,
     build_facts,
+    formula_authority,
     publication_status,
     race_formula,
 )
@@ -244,14 +246,26 @@ class TestPublicationStatus:
                 "key_filters": {"status": kf_status}}
 
     def test_matrix(self):
+        """权威裁决后语义:proven=机器权威;disagree 只降叙述层不拦机器事实;
+        组合器不可证走 LLM 兜底,须高置信且无实锤才可发。"""
         ok = {"verdict": "agree"}
         assert publication_status("high", self._facts(), ok) == "VERIFIED"
         assert publication_status("medium", self._facts(), ok) == "TECHNICAL_ONLY"
         assert publication_status("medium", self._facts("unsupported"), ok) == "REVIEW_REQUIRED"
-        assert publication_status("high", self._facts(), {"verdict": "disagree"}) == "REVIEW_REQUIRED"
+        # 机器公式可证时,LLM 公式矛盾只影响叙述层——机器事实照发
+        assert publication_status("high", self._facts(), {"verdict": "disagree"}) == "TECHNICAL_ONLY"
         assert publication_status("high", self._facts(kf_status="ambiguous"), ok) == "REVIEW_REQUIRED"
         assert publication_status("high", self._facts(rt=True), ok) == "REVIEW_REQUIRED"
         assert publication_status("high", self._facts(), {"verdict": "renderer_unsupported"}) == "VERIFIED"
+        # 兜底路径:组合器不可证 → 发布公式=LLM,高置信可发,被实锤则人审
+        assert publication_status("high", self._facts("unsupported"), ok) == "VERIFIED"
+        assert publication_status("high", self._facts("ambiguous"),
+                                  {"verdict": "disagree"}) == "REVIEW_REQUIRED"
+
+    def test_formula_authority(self):
+        assert formula_authority(self._facts()) == "machine"
+        assert formula_authority(self._facts("unsupported")) == "llm_fallback"
+        assert formula_authority(self._facts("ambiguous")) == "llm_fallback"
 
 
 class TestBigQueryConstructs:
