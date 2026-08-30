@@ -1,0 +1,6 @@
+fineprint_quickstart:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: fineprint_demo.duckdb

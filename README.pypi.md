@@ -26,8 +26,9 @@ metriclens drift --project DIR              # 漂移检测
 ```
 
 `fineprint` 与 `metriclens` 两个命令等价;import 名为 `metriclens`。
-LLM 端点经环境变量或项目根 `.env` 配置(`METRICLENS_LLM_BASE` /
-`METRICLENS_LLM_KEY` / `METRICLENS_LLM_MODEL`),兼容 OpenAI 风格 API。
+LLM 端点经环境变量或项目根 `.env` 配置(`METRICLENS_LLM_BASE_URL` /
+`METRICLENS_LLM_API_KEY` / `METRICLENS_LLM_MODEL`),兼容 OpenAI 风格 API;
+`graph` / `trace` / `drift` 零 LLM 即可用。
 
 无 catalog 也能跑(列 schema 由 yml 声明 + 编译 SQL 拓扑推断补全);能执行
 `dbt docs generate` 时仍建议补上,实测列集更可靠。

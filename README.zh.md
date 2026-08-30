@@ -41,6 +41,8 @@ dbt artifacts ──────► │  源表 / 过滤条件 / 表达式链(sq
 
 ```bash
 pip install fineprint       # PyPI 包名(import 名为 metriclens;CLI:fineprint / metriclens)
+# 想先上手体验?examples/quickstart/ 是 10 分钟完整走读:内置 dbt 编译产物,
+# 不装 dbt、不连数据库即可体验 graph/trace/synth/drift 全流程
 pip install -e .            # 或从源码装,仅核心 CLI
 pip install -e ".[demo,dev]"   # + 基准数仓 / 看板 / 测试依赖
 

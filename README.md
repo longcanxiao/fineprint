@@ -39,6 +39,10 @@ Beyond caliber cards, MetricLens ships two governance tools built on the same li
 
 ## Quickstart
 
+> Want a hands-on tour first? [`examples/quickstart/`](examples/quickstart/) is a
+> self-contained 10-minute walkthrough — pre-built dbt artifacts included, no
+> dbt install and no database needed.
+
 ```bash
 pip install fineprint       # from PyPI (imports as `metriclens`; CLI: fineprint / metriclens)
 pip install -e .            # or from source, core CLI only

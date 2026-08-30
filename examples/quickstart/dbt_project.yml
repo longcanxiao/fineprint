@@ -1,0 +1,18 @@
+name: fineprint_quickstart
+version: "1.0"
+profile: fineprint_quickstart
+
+models:
+  fineprint_quickstart:
+    +materialized: table
+
+seeds:
+  fineprint_quickstart:
+    raw_orders:
+      +column_types:
+        amount: double
+        paid_at: timestamp
+    raw_refunds:
+      +column_types:
+        refund_amount: double
+        refunded_at: timestamp

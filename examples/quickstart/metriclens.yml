@@ -1,0 +1,9 @@
+# MetricLens 配置:要合成口径卡的看板指标
+language: zh
+metrics:
+  - key: daily_gmv
+    title: 每日GMV
+    target: dm_sales_1d.gmv
+  - key: refund_rate_14d
+    title: 14天退款率
+    target: dm_refund_rate_1d.refund_rate
