@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.6 (2026-08-31)
+
+- Story numbers unified on the real pair: the demo dashboard's 14-day refund
+  rate is 3.93%, and the 30-day caliber computed on the same basis is 4.43%.
+  The PyPI/README opener and the quickstart walkthrough now quote exactly
+  these values, and the quickstart seed data is re-engineered to produce them
+  (393 / 10,000 on Aug 1; the beyond-window refund is 50 yuan on day 19).
+  All example mechanics preserved: dedup via `rn = 1`, test-account and
+  cancelled orders, the 14→30 drift experiment.
+
 ## 0.9.5 (2026-08-31)
 
 Two rounds of fresh-eyes first-run feedback, digested:
