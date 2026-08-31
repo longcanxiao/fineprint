@@ -2,6 +2,8 @@
 
 **English** | [中文](README.zh.md)
 
+![ci](https://github.com/longcanxiao/fineprint/actions/workflows/ci.yml/badge.svg)
+
 **Read the fine print of your metrics. A decompiler for your dashboards.**
 
 Ask your dashboard what a metric *actually* means.

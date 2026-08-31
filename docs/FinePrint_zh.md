@@ -47,6 +47,8 @@ $ fineprint trace --project . dm_refund_rate_1d.refund_rate
 
 这棵口径树由确定性程序直接从 SQL 推导，不依赖 LLM。
 
+想亲手跑一遍？[内置示例工程](https://github.com/longcanxiao/fineprint/tree/main/examples/quickstart) 10 分钟走完全流程——预编译产物已内置，不装 dbt、不建数据库。
+
 ## 核心能力
 
 ### 指标口径追踪
@@ -172,5 +174,7 @@ FinePrint 还原的是：
 它不能自行判断 SQL 是否符合业务最初的设计意图。
 
 当前稳定版本主要面向 dbt 项目。
+
+问题与需求欢迎提 [GitHub Issues](https://github.com/longcanxiao/fineprint/issues)。
 
 License: **Apache-2.0**

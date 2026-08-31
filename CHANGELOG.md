@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.4 (2026-08-31)
+
+**The repository is public: https://github.com/longcanxiao/fineprint**
+
+- PyPI page is now English-only (the convention), with links to the repo,
+  the Chinese docs and the bundled 10-minute example project.
+- `[project.urls]` filled in — Homepage/Repository/Issues/Changelog now show
+  in the PyPI sidebar.
+- New docs set: architecture, accuracy, privacy, configuration reference,
+  Python API, known boundaries.
+- CI: ubuntu 3.10–3.13 + Windows 3.10/3.13, including a narrow-console
+  (cp1252) smoke. CLI output now degrades gracefully (`errors="replace"`)
+  on consoles that cannot encode the tree glyphs or Chinese — previously a
+  potential `UnicodeEncodeError` crash on Windows.
+
+
 ## 0.9.3 (2026-08-31)
 
 Description page: the five example conditions in the Chinese section are now a

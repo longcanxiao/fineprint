@@ -2,6 +2,8 @@
 
 **Read the fine print of your metrics — a decompiler for your dashboards.**
 
+[Source & issues](https://github.com/longcanxiao/fineprint) · [中文文档 (Chinese docs)](https://github.com/longcanxiao/fineprint/blob/main/README.zh.md)
+
 FinePrint recovers, from your dbt project's compiled artifacts, the caliber a
 metric **actually executes** — its true definition, in the small print of the SQL.
 
@@ -48,6 +50,8 @@ $ fineprint trace --project . dm_refund_rate_1d.refund_rate
 ```
 
 This caliber tree is derived from the SQL by a deterministic program — no LLM involved.
+
+Try it yourself in 10 minutes with the [bundled example project](https://github.com/longcanxiao/fineprint/tree/main/examples/quickstart) — pre-built dbt artifacts included, no dbt install and no database needed.
 
 ## Core capabilities
 
@@ -176,5 +180,15 @@ What FinePrint recovers is:
 It cannot judge on its own whether the SQL matches the business's original intent.
 
 The current stable release targets dbt projects.
+
+## Documentation
+
+- [Architecture](https://github.com/longcanxiao/fineprint/blob/main/docs/architecture.md) — the two channels, the composer, the state machine
+- [Accuracy](https://github.com/longcanxiao/fineprint/blob/main/docs/accuracy.md) — the five-project probe and the trap suite, in full
+- [Privacy & data boundaries](https://github.com/longcanxiao/fineprint/blob/main/docs/privacy.md) — what is read, what is sent, what never leaves
+- [Configuration reference](https://github.com/longcanxiao/fineprint/blob/main/docs/configuration.md) — every key, variable and exit code
+- [Python API](https://github.com/longcanxiao/fineprint/blob/main/docs/python-api.md) — the minimal public surface
+- [Known boundaries](https://github.com/longcanxiao/fineprint/blob/main/docs/known-boundaries.md) — what FinePrint knows it cannot do
+- [Stability policy](https://github.com/longcanxiao/fineprint/blob/main/docs/stability.md) — what is frozen, and when
 
 License: **Apache-2.0**
