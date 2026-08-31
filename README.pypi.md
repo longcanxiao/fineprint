@@ -53,6 +53,14 @@ This caliber tree is derived from the SQL by a deterministic program — no LLM 
 
 Try it yourself in 10 minutes with the [bundled example project](https://github.com/longcanxiao/fineprint/tree/main/examples/quickstart) — pre-built dbt artifacts included, no dbt install and no database needed. No checkout needed either: `pip install fineprint && fineprint init --demo`.
 
+On a dashboard, every metric card becomes a caliber entry — one click opens the full caliber card:
+
+![Demo dashboard: every metric card carries a caliber entry](https://raw.githubusercontent.com/longcanxiao/fineprint/main/docs/assets/dashboard.png)
+
+![The caliber card: business clauses pinned to numbered evidence, a machine-proven formula, the lineage canvas and change history](https://raw.githubusercontent.com/longcanxiao/fineprint/main/docs/assets/popup-top.png)
+
+*(Demo dashboard, Chinese sample data; an animated tour lives in the [repository README](https://github.com/longcanxiao/fineprint#readme).)*
+
 ## Core capabilities
 
 ### Metric caliber tracing

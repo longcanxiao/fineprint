@@ -15,6 +15,10 @@ FinePrint reverse-engineers the business & technical definition ("caliber") of e
 
 …by reading your multi-layer pipeline the way a careful analyst would, then proving its answers.
 
+![Click the caliber icon on any dashboard metric to open its full caliber card — business clauses with evidence ids, a machine-proven formula, the lineage canvas and change history](docs/assets/caliber-popup.gif)
+
+*Every metric card carries a caliber entry: one click opens the full caliber card — business clauses each pinned to numbered evidence, the machine-proven formula, the lineage canvas, and the metric's change history. (Demo dashboard; sample data is Chinese.)*
+
 ## How it works
 
 Two independent channels, machine-cross-validated:

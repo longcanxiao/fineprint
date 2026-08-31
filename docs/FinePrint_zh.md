@@ -49,6 +49,14 @@ $ fineprint trace --project . dm_refund_rate_1d.refund_rate
 
 想亲手跑一遍？[内置示例工程](https://github.com/longcanxiao/fineprint/tree/main/examples/quickstart) 10 分钟走完全流程——预编译产物已内置，不装 dbt、不建数据库。不检出仓库也行：`pip install fineprint && fineprint init --demo`。
 
+放到看板上，每张指标卡都是口径卡入口——点开即是完整口径：
+
+![演示看板：每张指标卡都带口径入口](https://raw.githubusercontent.com/longcanxiao/fineprint/main/docs/assets/dashboard.png)
+
+![口径卡：业务条款逐条钉着证据编号，机器口径公式可证，血缘画布与变更历史同屏](https://raw.githubusercontent.com/longcanxiao/fineprint/main/docs/assets/popup-top.png)
+
+*（演示看板；动画演示见[仓库 README](https://github.com/longcanxiao/fineprint/blob/main/README.zh.md)。）*
+
 ## 核心能力
 
 ### 指标口径追踪
