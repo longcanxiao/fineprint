@@ -262,3 +262,52 @@ class TestFirstRunFriction:
         for rel in sorted(tracked):
             assert (demo / rel).read_bytes() == \
                 (ROOT / "examples" / "quickstart" / rel).read_bytes(), rel
+
+
+class TestColumns:
+    """columns=候选发现命令:零 LLM,读图列 model.column;新用户从 init 到 trace 的断链补丁。"""
+
+    def _proj(self, tmp_path):
+        return make_project(
+            tmp_path,
+            nodes={"model.p.stg_pay": _node("stg_pay", "c/s.sql"),
+                   "model.p.dm_rate": _node("dm_rate", "c/d.sql")},
+            catalog_nodes={"model.p.stg_pay": _cat("main", "stg_pay",
+                                                   {"amt": "DOUBLE", "user_id": "INTEGER",
+                                                    "status": "VARCHAR"}),
+                           "model.p.dm_rate": _cat("main", "dm_rate",
+                                                   {"rate": "DOUBLE", "d": "DATE"})},
+            sqls={"c/s.sql": "select 1.0 as amt, 7 as user_id, 'x' as status",
+                  "c/d.sql": "select 0.5 as rate, current_date as d"})
+
+    def test_overview_then_keyword(self, tmp_path, capsys):
+        p = self._proj(tmp_path)
+        main(["graph", "--project", str(p.project_dir)])
+        out = capsys.readouterr().out
+        assert "fineprint columns" in out                 # graph 尾巴指路
+        main(["columns", "--project", str(p.project_dir)])
+        out = capsys.readouterr().out
+        assert "stg_pay" in out and "dm_rate" in out and "3 " in out   # 概览含列数
+        main(["columns", "rate", "--project", str(p.project_dir)])
+        out = capsys.readouterr().out
+        assert "rate" in out and "数值" in out            # 关键词展开+数值标
+        assert "stg_pay" not in out                       # 不匹配的模型不出现
+        assert "fineprint trace dm_rate.rate" in out      # 用法行给出可直接复制的目标
+
+    def test_model_flag_and_id_exclusion(self, tmp_path, capsys):
+        p = self._proj(tmp_path)
+        main(["graph", "--project", str(p.project_dir)])
+        capsys.readouterr()
+        main(["columns", "--model", "stg_pay", "--project", str(p.project_dir)])
+        out = capsys.readouterr().out
+        amt_line = next(ln for ln in out.splitlines() if " amt" in ln)
+        id_line = next(ln for ln in out.splitlines() if "user_id" in ln)
+        assert "数值" in amt_line
+        assert "数值" not in id_line                      # ID 列不标指标候选
+
+    def test_without_graph_points_at_graph(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.delenv("FINEPRINT_DEBUG", raising=False)
+        p = self._proj(tmp_path)
+        rc = main(["columns", "--project", str(p.project_dir)])
+        err = capsys.readouterr().err
+        assert rc == 1 and "fineprint graph" in err and "Traceback" not in err

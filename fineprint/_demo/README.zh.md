@@ -40,6 +40,7 @@ fineprint graph
 
 ```
 graph: 4 models, 15 columns, 7 conditions, 5 semantic points → .fineprint/graph.json  (dialect=duckdb)
+下一步: fineprint columns 查看可分析字段(加关键词过滤)
 ```
 
 ## 2. 追口径:退款率的小字条款

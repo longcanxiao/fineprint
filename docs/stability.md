@@ -25,7 +25,7 @@ internal.
 
 ### 1. CLI
 
-- Command names: `init`, `graph`, `trace`, `synth`, `drift`, `report`.
+- Command names: `init`, `graph`, `columns`, `trace`, `synth`, `drift`, `report`.
 - Documented flags and their meanings (`--project`, `--target-path`,
   `--allow-partial`, `--full`, `--only`, `--strict`, `--dry-run`,
   `--verbose`, `--json`, `-o/--output`, `--force`, `--version`).

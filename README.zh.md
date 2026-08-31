@@ -78,6 +78,7 @@ dbt compile && dbt docs generate    # FinePrint 只读 artifacts——不连数�
 fineprint init             # 生成 fineprint.yml——列出你的看板指标(model.column;
                             # 两个包同名模型时写 package.model.column)
 fineprint graph            # 构建字段级血缘图
+fineprint columns refund   # 发现可分析的 model.column 候选(零 LLM)
 fineprint trace mart_orders.refund_rate_14d    # 单个指标的口径树(--full 附出处明细)
 
 export FINEPRINT_LLM_API_KEY=sk-...            # 任意 OpenAI 兼容端点

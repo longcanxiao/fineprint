@@ -1,5 +1,5 @@
 diff --git a/fineprint/cli.py b/fineprint/cli.py
-index dc6c61f..eef8d79 100644
+index 3b76d3a..8207c2e 100644
 --- a/fineprint/cli.py
 +++ b/fineprint/cli.py
 @@ -45,43 +45,6 @@ def _graph(project):
@@ -46,7 +46,7 @@ index dc6c61f..eef8d79 100644
  def _write_demo(dst_root: Path) -> Path:
      """把包内 _demo(examples/quickstart 的发行拷贝,scripts/sync_demo.py 同步)
      落到 dst_root/fineprint-quickstart——纯 pip 用户零检出即可见效果。"""
-@@ -122,24 +85,15 @@ def cmd_init(args):
+@@ -122,27 +85,18 @@ def cmd_init(args):
                  f"note: no dbt_project.yml found under {Path(args.project).resolve()} — "
                  f"fineprint expects a dbt project root (or point --project at one); "
                  f"writing the template anyway"), file=sys.stderr)
@@ -63,17 +63,20 @@ index dc6c61f..eef8d79 100644
 +    f.write_text(example_yml(), encoding="utf-8")
      # 顺序即成本承诺:graph/trace 零 LLM,凭据只在生成口径卡时才需要——别倒装
      print(t(f"已生成 {f}\n下一步:\n"
--            f"  1. 填入 metrics(model.column){tip}\n"
-+            f"  1. 填入 metrics(model.column)\n"
-             f"  2. fineprint graph   # 建血缘图,零 LLM\n"
-             f"  3. fineprint trace model.column\n"
+             f"  1. fineprint graph   # 建血缘图,零 LLM\n"
+             f"  2. fineprint columns   # 查看可分析字段,挑 model.column\n"
+-            f"  3. 填入 metrics(model.column){tip}\n"
++            f"  3. 填入 metrics(model.column)\n"
+             f"  4. fineprint trace model.column\n"
              f"生成业务口径卡时再配置 LLM 环境变量(见 README):fineprint synth",
              f"wrote {f}\nnext:\n"
--            f"  1. fill in metrics (model.column){tip}\n"
-+            f"  1. fill in metrics (model.column)\n"
-             f"  2. fineprint graph   # build the lineage graph, no LLM involved\n"
-             f"  3. fineprint trace model.column\n"
+             f"  1. fineprint graph   # build the lineage graph, no LLM involved\n"
+             f"  2. fineprint columns   # list traceable columns, pick model.column\n"
+-            f"  3. fill in metrics (model.column){tip}\n"
++            f"  3. fill in metrics (model.column)\n"
+             f"  4. fineprint trace model.column\n"
              f"configure the LLM env vars (see README) only when you generate "
+             f"caliber cards: fineprint synth"))
 diff --git a/fineprint/drift.py b/fineprint/drift.py
 index b468eea..40009e3 100644
 --- a/fineprint/drift.py

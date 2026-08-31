@@ -134,14 +134,16 @@ def cmd_init(args):
     f.write_text(text, encoding="utf-8")
     # 顺序即成本承诺:graph/trace 零 LLM,凭据只在生成口径卡时才需要——别倒装
     print(t(f"已生成 {f}\n下一步:\n"
-            f"  1. 填入 metrics(model.column){tip}\n"
-            f"  2. fineprint graph   # 建血缘图,零 LLM\n"
-            f"  3. fineprint trace model.column\n"
+            f"  1. fineprint graph   # 建血缘图,零 LLM\n"
+            f"  2. fineprint columns   # 查看可分析字段,挑 model.column\n"
+            f"  3. 填入 metrics(model.column){tip}\n"
+            f"  4. fineprint trace model.column\n"
             f"生成业务口径卡时再配置 LLM 环境变量(见 README):fineprint synth",
             f"wrote {f}\nnext:\n"
-            f"  1. fill in metrics (model.column){tip}\n"
-            f"  2. fineprint graph   # build the lineage graph, no LLM involved\n"
-            f"  3. fineprint trace model.column\n"
+            f"  1. fineprint graph   # build the lineage graph, no LLM involved\n"
+            f"  2. fineprint columns   # list traceable columns, pick model.column\n"
+            f"  3. fill in metrics (model.column){tip}\n"
+            f"  4. fineprint trace model.column\n"
             f"configure the LLM env vars (see README) only when you generate "
             f"caliber cards: fineprint synth"))
 
@@ -209,8 +211,76 @@ def cmd_graph(args):
     save_graph(project, graph)
     print(f"graph: {len(graph['models'])} models, {ncols} columns, {nconds} conditions, "
           f"{nsem} semantic points → {project.graph_path()}  (dialect={graph['meta']['dialect']})")
+    print(t("下一步: fineprint columns 查看可分析字段(加关键词过滤)",
+            "next: fineprint columns lists traceable columns (add a keyword to filter)"))
     if errs:
         print(f"column lineage errors ({len(errs)}, --allow-partial):", errs[:8], file=sys.stderr)
+
+
+def cmd_columns(args):
+    """model.column 候选发现:零 LLM,只读已建好的血缘图。
+    新用户断点在"init 让填 model.column,却没有命令能看候选"——这就是那个命令。"""
+    from fineprint.tracing import resolve_model
+    project = _project(args)
+    graph = _graph(project)
+    models = graph["models"]
+    NUM = ("INT", "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL", "NUMBER", "HUGE")
+
+    from collections import Counter
+    dup = {n for n, c in Counter(m["name"] for m in models.values()).items() if c > 1}
+
+    def disp(uid):
+        m = models[uid]
+        return f"{m['package']}:{m['name']}" if m["name"] in dup else m["name"]
+
+    def types_of(uid):
+        m = project.models.get(uid) or {}
+        for schs in project.schema.values():
+            cols = (schs.get(m.get("schema")) or {}).get(m.get("alias"))
+            if cols:
+                return cols
+        return {}
+
+    kw = (args.keyword or "").lower()
+    if args.model:
+        uids = [resolve_model(graph, args.model)]
+    elif kw:
+        uids = [u for u, m in models.items()
+                if kw in m["name"].lower() or any(kw in c.lower() for c in m["columns"])]
+    else:
+        # 概览:模型一层,不展开(大项目不刷屏);展开靠关键词或 --model
+        for u, m in sorted(models.items(), key=lambda kv: (kv[1]["layer"], kv[1]["name"])):
+            print(f"{m['layer']:<12} {disp(u):<40} {len(m['columns'])} " + t("列", "columns"))
+        print(t(f"\n{len(models)} 个模型;fineprint columns <关键词> 或 --model <模型> 展开字段",
+                f"\n{len(models)} models; expand with fineprint columns <keyword> "
+                f"or --model <model>"))
+        return
+
+    if not uids:
+        print(t(f"没有匹配 {args.keyword!r} 的模型或字段;裸跑 fineprint columns 可看全部模型",
+                f"nothing matches {args.keyword!r}; run bare fineprint columns "
+                f"to list all models"))
+        return
+    example = None
+    for u in sorted(uids, key=lambda x: models[x]["name"]):
+        m = models[u]
+        tys = types_of(u)
+        print(f"{disp(u)}   ({m['layer']})")
+        for c in m["columns"]:
+            if args.model and kw and kw not in c.lower():
+                continue
+            ty = str(tys.get(c) or "")
+            # ID/键列虽是数值类型,但不是度量:不标候选(与 init 预填同一排除规则)
+            numeric = (any(x in ty.upper() for x in NUM)
+                       and not c.lower().endswith(("_id", "_key")) and c.lower() != "id")
+            mark = t("  ← 数值,可作指标", "  ← numeric, metric candidate") if numeric else ""
+            print(f"  {c:<26} {ty:<12}{mark}".rstrip())
+            if numeric and example is None:
+                example = f"{m['name']}.{c}"
+    first = models[uids[0]]
+    target = example or (f"{first['name']}.{next(iter(first['columns']))}"
+                         if first["columns"] else "model.column")
+    print(t(f"\n用法: fineprint trace {target}", f"\nusage: fineprint trace {target}"))
 
 
 def cmd_trace(args):
@@ -342,6 +412,16 @@ def main(argv=None):
                    help=t("存在解析失败的列时仍以 0 退出",
                           "exit 0 even when some columns failed to parse"))
     p.set_defaults(fn=cmd_graph)
+    p = common(sub.add_parser("columns",
+                              help=t("列出可分析的模型与字段(零 LLM;trace/metrics 的 model.column 候选)",
+                                     "list traceable models and columns (zero LLM; model.column "
+                                     "candidates for trace and metrics)")))
+    p.add_argument("keyword", nargs="?", default=None,
+                   help=t("关键词:匹配模型名或字段名即展开(不区分大小写)",
+                          "keyword: expand models whose name or columns match (case-insensitive)"))
+    p.add_argument("--model", help=t("展开指定模型(短名/pkg:name/uid 均可)",
+                                     "expand one model (short name, pkg:name or uid)"))
+    p.set_defaults(fn=cmd_columns)
     p = common(sub.add_parser("trace", help=t("口径树回溯(--full 附出处明细)",
                                               "caliber tree for one column (--full adds receipts)")))
     p.add_argument("target", help="model.column")

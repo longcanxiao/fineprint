@@ -80,6 +80,7 @@ dbt compile && dbt docs generate    # FinePrint reads artifacts only — no DB c
 fineprint init             # writes fineprint.yml — list your dashboard metrics (model.column;
                             # package.model.column when two packages share a model name)
 fineprint graph            # build the column-level lineage graph
+fineprint columns refund   # discover traceable model.column candidates (zero LLM)
 fineprint trace mart_orders.refund_rate_14d    # caliber tree for one metric (--full adds receipts)
 
 export FINEPRINT_LLM_API_KEY=sk-...            # any OpenAI-compatible endpoint

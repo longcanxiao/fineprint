@@ -152,6 +152,7 @@ dbt docs generate
 
 fineprint init --project .
 fineprint graph --project .
+fineprint columns --project .
 fineprint trace --project . model.column
 ```
 

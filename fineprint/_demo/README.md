@@ -35,6 +35,7 @@ fineprint graph
 
 ```
 graph: 4 models, 15 columns, 7 conditions, 5 semantic points → .fineprint/graph.json  (dialect=duckdb)
+next: fineprint columns lists traceable columns (add a keyword to filter)
 ```
 
 ## 2. Trace the fine print of the refund rate
