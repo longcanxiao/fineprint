@@ -252,6 +252,14 @@ def main(argv=None):
     # urllib3 在 LibreSSL 环境(macOS 系统 Python)每次 import 都告警一次,
     # 与用户操作无关,按消息精确静默(不整类屏蔽,其余 urllib3 告警照常)
     warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL")
+    # Windows cp1252/GBK 控制台编不出树形字符(│├└◎)与中文:宁可降级成 ?
+    # 也不能让 trace 直接 UnicodeEncodeError 崩掉
+    for _s in (sys.stdout, sys.stderr):
+        if hasattr(_s, "reconfigure"):
+            try:
+                _s.reconfigure(errors="replace")
+            except Exception:
+                pass
     _bootstrap_lang(argv if argv is not None else sys.argv[1:])
     has_govern = importlib.util.find_spec("fineprint.governance") is not None
     doc = t(__doc__, DOC_EN)

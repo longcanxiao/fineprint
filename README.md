@@ -112,6 +112,16 @@ bash jobs/caliber_refresh.sh   # synth + trap-revelation eval (14/14 on current 
 
 We believe this is the first ground-truthed benchmark for *metric-definition extraction from SQL pipelines* — if you're evaluating any "AI documentation" tool, it will happily stress-test that too.
 
+## Documentation
+
+- [Architecture](docs/architecture.md) — the two channels, the formula composer, the publication state machine
+- [Accuracy](docs/accuracy.md) — the five-project probe (34,499 columns) and the 14-trap suite
+- [Privacy & data boundaries](docs/privacy.md) — what is read, what is sent to the LLM, what never leaves
+- [Configuration reference](docs/configuration.md) — every `fineprint.yml` key, environment variable and exit code
+- [Python API](docs/python-api.md) — the minimal public surface (since 0.9)
+- [Known boundaries](docs/known-boundaries.md) — what FinePrint knows it cannot do
+- [Stability policy](docs/stability.md) — what is frozen, and when
+
 ## Status & scope
 
 Works today: dbt projects on 12 adapters (DuckDB, Snowflake, BigQuery, Postgres, Redshift, Databricks, Spark, Trino, Athena, ClickHouse, SQL Server, MySQL) — schema comes from `catalog.json`, dialect from `manifest.json`, no warehouse connection needed. Unlisted adapters fail with a clear error rather than guessing a dialect. Parsing covers what sqlglot can qualify; dbt's compiled, single-`SELECT`-per-model world is exactly that sweet spot.

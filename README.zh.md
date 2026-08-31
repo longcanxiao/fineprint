@@ -110,6 +110,16 @@ bash jobs/caliber_refresh.sh   # 合成 + 陷阱揭示评测(当前运行 14/14)
 
 我们相信这是第一个针对 *从 SQL 加工链提取指标定义* 的带基准答案的 benchmark——如果你在评估任何"AI 文档"工具,拿它来压测同样合适。
 
+## 文档
+
+- [架构](docs/architecture.md) — 双通道、公式组合器、发布状态机(英文)
+- [准确性](docs/accuracy.md) — 五项目探针(34,499 列)与 14 陷阱金集(英文)
+- [隐私与数据边界](docs/privacy.md) — 读什么、发什么、什么永不离开本机(英文)
+- [配置参考](docs/configuration.md) — fineprint.yml 全键、环境变量、退出码(英文)
+- [Python API](docs/python-api.md) — 最小公开面(0.9 起,英文)
+- [已知边界](docs/known-boundaries.md) — 工具明知自己不会什么(英文)
+- [稳定性策略](docs/stability.md) — 什么被冻结、何时冻结(英文)
+
 ## 状态与范围
 
 现在可用:12 种 adapter 上的 dbt 项目(DuckDB、Snowflake、BigQuery、Postgres、Redshift、Databricks、Spark、Trino、Athena、ClickHouse、SQL Server、MySQL)——schema 来自 `catalog.json`,方言来自 `manifest.json`,不需要连接数仓。未列出的 adapter 会明确报错而不是猜方言。解析覆盖 sqlglot 能 qualify 的范围;dbt 编译后"每模型单条 SELECT"的世界恰好是这个甜区。
