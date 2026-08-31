@@ -1,9 +1,9 @@
 diff --git a/fineprint/cli.py b/fineprint/cli.py
-index 33429fd..453b956 100644
+index fef7467..7e575d7 100644
 --- a/fineprint/cli.py
 +++ b/fineprint/cli.py
-@@ -50,62 +50,16 @@ def _graph(project):
-     return load_graph(p)
+@@ -45,62 +45,16 @@ def _graph(project):
+     return _load_graph_or_raise(project)   # 缺图抛 FileNotFoundError,统一出口成文
  
  
 -def _exposure_candidates(project) -> str:
@@ -69,7 +69,7 @@ index 33429fd..453b956 100644
  
  
 diff --git a/fineprint/drift.py b/fineprint/drift.py
-index 9784f55..68b4f8f 100644
+index 40881f3..63fa208 100644
 --- a/fineprint/drift.py
 +++ b/fineprint/drift.py
 @@ -183,30 +183,6 @@ def append_events(project: DbtProject, events: list, from_at: str, to_at: str):
@@ -80,7 +80,7 @@ index 9784f55..68b4f8f 100644
 -    """漂移告警定向:事件挂上受影响指标目标模型的 dbt exposures(消费方名单)。
 -    告警从"哪个指标变了"升级为"哪些看板受影响、找谁"。目标解析失败不阻断
 -    (target_changed 类事件本就可能指向已不存在的模型)。"""
--    from fineprint.trace import resolve_model
+-    from fineprint.tracing import resolve_model
 -    exp_map = graph.get("exposures_by_model") or {}
 -    if not exp_map:
 -        return
@@ -121,7 +121,7 @@ index 9784f55..68b4f8f 100644
 -        print(f"  {mark} [{e['severity']:<6}] {e['metric_key']:<26} {e['kind']:<18} {brief[:70]}{tail}")
 +        print(f"  {mark} [{e['severity']:<6}] {e['metric_key']:<26} {e['kind']:<18} {brief[:70]}")
 diff --git a/fineprint/governance.py b/fineprint/governance.py
-index 76cb208..6e20fba 100644
+index 391290a..37a85bc 100644
 --- a/fineprint/governance.py
 +++ b/fineprint/governance.py
 @@ -144,12 +144,6 @@ def scan(graph: dict, cfg: MLConfig) -> dict:
@@ -138,7 +138,7 @@ index 76cb208..6e20fba 100644
                  # 只在两侧证据都在场时下确定性结论,缺证一侧一律落到下一级判据;
                  # 已知等价展开形(avg ↔ sum/count)不直判,降入 B 档仲裁
 diff --git a/fineprint/lineage.py b/fineprint/lineage.py
-index cd8bc5a..fcdf46e 100644
+index fde5e39..5bb280b 100644
 --- a/fineprint/lineage.py
 +++ b/fineprint/lineage.py
 @@ -605,18 +605,8 @@ def build_graph(project: DbtProject) -> dict:
@@ -192,7 +192,7 @@ index 42e02a5..dd4ccd4 100644
      def declared_tests(self) -> dict:
          """dbt schema 测试的基数声明(声明性证据,dbt 会按数据定期实测):
 diff --git a/fineprint/synth.py b/fineprint/synth.py
-index 3c64768..c3c7916 100644
+index 3df4524..f3a72c7 100644
 --- a/fineprint/synth.py
 +++ b/fineprint/synth.py
 @@ -472,18 +472,6 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set,
@@ -214,7 +214,7 @@ index 3c64768..c3c7916 100644
  def merged_trace(graph: dict, m: MetricDef) -> dict:
      model, col = m.target.rsplit(".", 1)
      t = trace(graph, model, col)
-@@ -712,7 +700,6 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
+@@ -713,7 +701,6 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
          "confidence": val["confidence"],
          "status": "published" if val["confidence"] in ("high", "medium") else "review",
          "publication_status": pub_status,
@@ -347,7 +347,7 @@ index 95de443..0000000
 -            sqls={"compiled/m1.sql": "select sum(a.amount) as x from main.a a"})
 -        assert _exposure_candidates(p) == ""
 diff --git a/tests/test_generalize.py b/tests/test_generalize.py
-index 270b316..a01ea66 100644
+index c199e2c..06c222e 100644
 --- a/tests/test_generalize.py
 +++ b/tests/test_generalize.py
 @@ -30,8 +30,7 @@ def _cat(schema, name, cols):
