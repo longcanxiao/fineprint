@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.7 (2026-08-31)
+
+- English terminology: **"caliber" is retired** — it is a false friend of the
+  Chinese 口径 (in English it means gun bore or talent grade). The English
+  surface now says *definition*: definition cards, definition tree, definition
+  drift check; tree labels read `rule:` and `rules shared by both sides`;
+  prompts and API docstrings follow. Chinese wording is unchanged.
+- The HTML report is now written to `.fineprint/metric_report.html`
+  (previously `caliber_report.html`; the old file is simply left behind on
+  upgrade — `fineprint report` always rewrites its output).
+
 ## 0.9.6 (2026-08-31)
 
 - Story numbers unified on the real pair: the demo dashboard's 14-day refund
