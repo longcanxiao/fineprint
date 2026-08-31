@@ -37,15 +37,15 @@ fineprint trace dm_refund_rate_1d.refund_rate
 ```
 ◎ dm.dm_refund_rate_1d.refund_rate
 │  输出维度: stat_date = CAST(paid_at AS DATE)
-│  公式: A / B
+│  公式: SUM(COALESCE(refund_amount, 0)) / SUM(raw_orders.amount)
 │
-├─ A 分子  SUM(COALESCE(refund_amount, 0))
+├─ 分子  SUM(COALESCE(refund_amount, 0))
 │  ├─ 其中 refund_amount = SUM(raw_refunds.refund_amount) 按 order_id 聚合(经 join)
 │  ├─ 口径: r.refunded_at <= o.paid_at + INTERVAL '14' DAY   (dm_refund_rate_1d.refund_14d)
 │  ├─ 口径: rn = 1   (stg_refunds)
 │  └─ 链路: stg_refunds → 本层
 │
-├─ B 分母  SUM(raw_orders.amount)
+├─ 分母  SUM(raw_orders.amount)
 │  └─ 链路: stg_orders → 本层
 │
 └─ 两侧共同口径

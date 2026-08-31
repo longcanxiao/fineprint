@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1 (2026-08-31)
+
+Caliber tree readability (user feedback): the formula line now shows the real
+top expression instead of the `A / B` skeleton, and branch labels drop the
+letter prefixes — `公式: SUM(COALESCE(refund_amount, 0)) / SUM(raw_orders.amount)`
+with branches labeled `分子`/`分母` (`numerator`/`denominator`) directly.
+Display-only; no stored format changes.
+
 ## 0.9.0 (2026-08-31)
 
 First public **Python API** — the minimal programmable surface (BI plugins,

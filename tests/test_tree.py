@@ -82,7 +82,9 @@ def _tree(p, model, col):
 class TestCaliberTree:
     def test_division_split_and_attribution(self, tmp_path):
         tr, _ = _tree(_proj(tmp_path), "dm_rate", "rate")
-        assert tr["op"] == "÷" and "ROUND(A / B, 6)" == tr["skeleton"]
+        # 公式行给真实表达式,不再用 A/B 骨架(0.9.1)
+        assert tr["op"] == "÷"
+        assert tr["skeleton"] == "ROUND(SUM(COALESCE(refund_amount, 0)) / SUM(raw_o.amount), 6)"
         a, b = tr["branches"]
         assert (a["label"], b["label"]) == ("分子", "分母")
         a_sqls = " ".join(c["sql"] for c in a["conds"])

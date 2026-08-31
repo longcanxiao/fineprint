@@ -173,11 +173,8 @@ def caliber_tree(project, graph, uid: str, column: str, t: dict) -> dict | None:
         lname, rname = _t(*lpair), _t(*rpair)
         parts = [(lname, top_in.this, raw_in.this),
                  (rname, top_in.expression, raw_in.expression)]
-        skeleton = top.copy()
-        sk = _unwrap(skeleton)
-        sk.set("this", exp.column("A"))
-        sk.set("expression", exp.column("B"))
-        skeleton_sql = _clean(skeleton.sql(dialect=dialect()))
+        # 公式行直接给真实表达式(用户反馈:A/B 骨架还要对照下文,不如原式直观)
+        skeleton_sql = _clean(top.sql(dialect=dialect()))
     else:
         sym, parts, skeleton_sql = None, [(_t("整体", "whole"), top_in, raw_in)], None
 
@@ -283,14 +280,12 @@ def render_tree(tr: dict, full: bool = False) -> str:
     if tr["dims"]:
         dd = [f"{d} = {tr['dim_exprs'][d]}" if d in tr["dim_exprs"] else d for d in tr["dims"]]
         L.append(_t(f"│  输出维度: {' , '.join(dd)}", f"│  output dimensions: {' , '.join(dd)}"))
-    if tr["op"]:
-        sk = tr.get("skeleton") or ("A " + tr["op"] + " B")
-        L.append(_t(f"│  公式: {sk}", f"│  formula: {sk}"))
+    if tr["op"] and tr.get("skeleton"):
+        L.append(_t(f"│  公式: {tr['skeleton']}", f"│  formula: {tr['skeleton']}"))
     n = len(tr["branches"])
     for i, b in enumerate(tr["branches"]):
-        tag = f"{chr(65 + i)} {b['label']}" if tr["op"] else b["label"]
         L.append("│")
-        L.append(f"├─ {tag}  {b['formula']}")
+        L.append(f"├─ {b['label']}  {b['formula']}")
         rows = []
         for d in b["defs"]:
             g = (_t(f" 按 {','.join(d['grain'])} 聚合",
