@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.8 (2026-09-01)
+
+- `fineprint init --demo` now speaks English regardless of system locale:
+  the project it writes is `language: en` (English cards and README), so the
+  wrapper text follows the demo's own language instead of flipping to Chinese
+  on zh-locale machines and back to English one command later. An explicit
+  `FINEPRINT_LANG` still wins. Plain `fineprint init` is unchanged.
+- PyPI page: screenshot captions no longer say "Chinese sample data" — the
+  demo dashboard assets are English now (the underlying warehouse remains
+  Chinese-commented; with `language: en` the cards still come out in English).
+
 ## 0.9.7 (2026-08-31)
 
 - English terminology: **"caliber" is retired** — it is a false friend of the

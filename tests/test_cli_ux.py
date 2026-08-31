@@ -244,6 +244,23 @@ class TestFirstRunFriction:
         err = capsys.readouterr().err
         assert rc == 1 and "fineprint-quickstart" in err and "Traceback" not in err
 
+    def test_init_demo_speaks_english_on_zh_locale(self, tmp_path, capsys, monkeypatch):
+        # demo 外壳语言=demo 内容语言(en):zh locale 不该让 init --demo 出中文,
+        # 否则 cd 进去下一条命令就切英文,三十秒内语言精分。显式 FINEPRINT_LANG 仍最高。
+        from fineprint import i18n
+        monkeypatch.delenv("FINEPRINT_LANG", raising=False)
+        monkeypatch.setenv("LANG", "zh_CN.UTF-8")
+        monkeypatch.setattr(i18n, "_LANG", None)
+        main(["init", "--demo", "--project", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "demo project written to" in out and "示例工程" not in out
+
+        monkeypatch.setenv("FINEPRINT_LANG", "zh")
+        monkeypatch.setattr(i18n, "_LANG", None)
+        rc = main(["init", "--demo", "--project", str(tmp_path)])   # 已存在:报错也该按显式语言
+        err = capsys.readouterr().err
+        assert rc == 1 and "已存在" in err
+
     def test_demo_matches_quickstart_tracked_files(self):
         # _demo=examples/quickstart 发行拷贝,必须与 git 跟踪集逐字节一致(scripts/sync_demo.py)
         import subprocess

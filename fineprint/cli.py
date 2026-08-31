@@ -100,6 +100,11 @@ def _write_demo(dst_root: Path) -> Path:
 def cmd_init(args):
     from fineprint.config import example_yml
     if args.demo:
+        # demo 外壳语言跟随 demo 内容语言:写下的工程是 language:en(英文卡批次+英文 README),
+        # cd 进去后一切输出都是英文——外壳按系统 locale 出中文会造成三十秒内语言精分。
+        # set_lang 在解析序里低于显式 FINEPRINT_LANG,高于 locale:显式设定仍受尊重。
+        from fineprint import i18n
+        i18n.set_lang("en")
         dst = _write_demo(Path(args.project))
         print(t(f"示例工程已写入 {dst}(内置 dbt 编译产物与口径批次,零数据库)\n"
                 f"下一步:\n  cd {dst.name}\n  fineprint graph\n"
