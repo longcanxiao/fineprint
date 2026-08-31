@@ -204,3 +204,11 @@ class TestFirstRunFriction:
         export_html(DbtProject(p.project_dir), out)
         h = out.read_text(encoding="utf-8")
         assert 'class="stale"' in h and "旧版批次" in h
+
+    def test_shipped_quickstart_batch_is_current(self):
+        # 内置批次必须现世代——否则新用户开箱第一眼就是"旧版批次"横幅
+        from fineprint.store import CARD_SCHEMA_VERSION, CaliberStore
+        store = CaliberStore(ROOT / "examples/quickstart/.fineprint/store")
+        if store.active_dir() is None:
+            pytest.skip("quickstart 内置批次不在(sdist 场景)")
+        assert (store.index() or {}).get("schema_version") == CARD_SCHEMA_VERSION

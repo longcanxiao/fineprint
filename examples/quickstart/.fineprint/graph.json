@@ -1,0 +1,480 @@
+{
+ "meta": {
+  "dialect": "duckdb",
+  "adapter_type": "duckdb",
+  "project_dir": "/Users/qiyi/projects/index_sys/examples/quickstart",
+  "generated_at": "2026-08-31T13:51:02",
+  "fineprint_graph_version": 3
+ },
+ "relations": {
+  "models": {
+   "fineprint_demo.main.stg_orders": "model.fineprint_quickstart.stg_orders",
+   "fineprint_demo.main.stg_refunds": "model.fineprint_quickstart.stg_refunds",
+   "fineprint_demo.main.dm_sales_1d": "model.fineprint_quickstart.dm_sales_1d",
+   "fineprint_demo.main.dm_refund_rate_1d": "model.fineprint_quickstart.dm_refund_rate_1d"
+  },
+  "sources": {},
+  "external": {}
+ },
+ "declared_unique_rels": {
+  "fineprint_demo.main.stg_orders": [
+   [
+    "order_id"
+   ]
+  ],
+  "fineprint_demo.main.stg_refunds": [
+   [
+    "refund_id"
+   ]
+  ],
+  "fineprint_demo.main.dm_sales_1d": [
+   [
+    "stat_date"
+   ]
+  ],
+  "fineprint_demo.main.dm_refund_rate_1d": [
+   [
+    "stat_date"
+   ]
+  ]
+ },
+ "exposures_by_model": {},
+ "models": {
+  "model.fineprint_quickstart.stg_orders": {
+   "name": "stg_orders",
+   "package": "fineprint_quickstart",
+   "layer": "staging",
+   "table": "fineprint_demo.main.stg_orders",
+   "compiled_path": "target/compiled/fineprint_quickstart/models/staging/stg_orders.sql",
+   "src_path": "models/staging/stg_orders.sql",
+   "row_set_tables": [
+    "fineprint_demo.main.raw_orders"
+   ],
+   "row_risk_joins": [],
+   "agg_fns": [],
+   "grain": [],
+   "unique_on": [],
+   "declared_unique": [
+    [
+     "order_id"
+    ]
+   ],
+   "declared_fk": [],
+   "columns": {
+    "order_id": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.raw_orders",
+       "column": "order_id"
+      }
+     ],
+     "expr": "\"raw_orders\".\"order_id\"",
+     "scopes": [
+      "main"
+     ]
+    },
+    "user_id": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.raw_orders",
+       "column": "user_id"
+      }
+     ],
+     "expr": "\"raw_orders\".\"user_id\"",
+     "scopes": [
+      "main"
+     ]
+    },
+    "amount": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.raw_orders",
+       "column": "amount"
+      }
+     ],
+     "expr": "\"raw_orders\".\"amount\"",
+     "scopes": [
+      "main"
+     ]
+    },
+    "status": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.raw_orders",
+       "column": "status"
+      }
+     ],
+     "expr": "\"raw_orders\".\"status\"",
+     "scopes": [
+      "main"
+     ]
+    },
+    "paid_at": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.raw_orders",
+       "column": "paid_at"
+      }
+     ],
+     "expr": "\"raw_orders\".\"paid_at\"",
+     "scopes": [
+      "main"
+     ]
+    }
+   },
+   "conditions": [
+    {
+     "model": "stg_orders",
+     "scope": "main",
+     "kind": "where",
+     "row_level": true,
+     "sql": "is_test = 0",
+     "norm": "is_test = 0",
+     "fp": "0806617b4c50",
+     "line": 9
+    }
+   ],
+   "semantics": []
+  },
+  "model.fineprint_quickstart.stg_refunds": {
+   "name": "stg_refunds",
+   "package": "fineprint_quickstart",
+   "layer": "staging",
+   "table": "fineprint_demo.main.stg_refunds",
+   "compiled_path": "target/compiled/fineprint_quickstart/models/staging/stg_refunds.sql",
+   "src_path": "models/staging/stg_refunds.sql",
+   "row_set_tables": [
+    "fineprint_demo.main.raw_refunds"
+   ],
+   "row_risk_joins": [],
+   "agg_fns": [],
+   "grain": [],
+   "unique_on": [],
+   "declared_unique": [
+    [
+     "refund_id"
+    ]
+   ],
+   "declared_fk": [],
+   "columns": {
+    "refund_id": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.raw_refunds",
+       "column": "refund_id"
+      }
+     ],
+     "expr": "\"t\".\"refund_id\"",
+     "scopes": [
+      "main",
+      "t"
+     ]
+    },
+    "order_id": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.raw_refunds",
+       "column": "order_id"
+      }
+     ],
+     "expr": "\"t\".\"order_id\"",
+     "scopes": [
+      "main",
+      "t"
+     ]
+    },
+    "refund_amount": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.raw_refunds",
+       "column": "refund_amount"
+      }
+     ],
+     "expr": "\"t\".\"refund_amount\"",
+     "scopes": [
+      "main",
+      "t"
+     ]
+    },
+    "refunded_at": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.raw_refunds",
+       "column": "refunded_at"
+      }
+     ],
+     "expr": "\"t\".\"refunded_at\"",
+     "scopes": [
+      "main",
+      "t"
+     ]
+    }
+   },
+   "conditions": [
+    {
+     "model": "stg_refunds",
+     "scope": "main",
+     "kind": "where",
+     "row_level": true,
+     "sql": "rn = 1",
+     "norm": "rn = 1",
+     "fp": "876f70433f68",
+     "line": 13
+    }
+   ],
+   "semantics": [
+    {
+     "model": "stg_refunds",
+     "scope": "t",
+     "type": "window",
+     "idiom": "sequence",
+     "column": "rn",
+     "func": "row_number()",
+     "partition_by": [
+      "refund_id"
+     ],
+     "order_by": "refunded_at DESC",
+     "sql": "ROW_NUMBER() OVER (PARTITION BY refund_id ORDER BY refunded_at DESC)",
+     "line": 10
+    }
+   ]
+  },
+  "model.fineprint_quickstart.dm_sales_1d": {
+   "name": "dm_sales_1d",
+   "package": "fineprint_quickstart",
+   "layer": "dm",
+   "table": "fineprint_demo.main.dm_sales_1d",
+   "compiled_path": "target/compiled/fineprint_quickstart/models/dm/dm_sales_1d.sql",
+   "src_path": "models/dm/dm_sales_1d.sql",
+   "row_set_tables": [
+    "fineprint_demo.main.stg_orders"
+   ],
+   "row_risk_joins": [],
+   "agg_fns": [
+    "count:distinct",
+    "sum"
+   ],
+   "grain": [
+    "stat_date"
+   ],
+   "unique_on": [],
+   "declared_unique": [
+    [
+     "stat_date"
+    ]
+   ],
+   "declared_fk": [],
+   "columns": {
+    "stat_date": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.stg_orders",
+       "column": "paid_at"
+      }
+     ],
+     "expr": "CAST(\"stg_orders\".\"paid_at\" AS DATE)",
+     "scopes": [
+      "main"
+     ]
+    },
+    "gmv": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.stg_orders",
+       "column": "amount"
+      }
+     ],
+     "expr": "SUM(\"stg_orders\".\"amount\")",
+     "scopes": [
+      "main"
+     ]
+    },
+    "order_cnt": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.stg_orders",
+       "column": "order_id"
+      }
+     ],
+     "expr": "COUNT(DISTINCT \"stg_orders\".\"order_id\")",
+     "scopes": [
+      "main"
+     ]
+    }
+   },
+   "conditions": [
+    {
+     "model": "dm_sales_1d",
+     "scope": "main",
+     "kind": "where",
+     "row_level": true,
+     "sql": "status = 'paid'",
+     "norm": "status = 'paid'",
+     "fp": "5c4153d11285",
+     "line": 7
+    }
+   ],
+   "semantics": [
+    {
+     "model": "dm_sales_1d",
+     "scope": "main",
+     "type": "stat_date_key",
+     "column": "stat_date",
+     "sql": "CAST(paid_at AS DATE)",
+     "line": 3
+    }
+   ]
+  },
+  "model.fineprint_quickstart.dm_refund_rate_1d": {
+   "name": "dm_refund_rate_1d",
+   "package": "fineprint_quickstart",
+   "layer": "dm",
+   "table": "fineprint_demo.main.dm_refund_rate_1d",
+   "compiled_path": "target/compiled/fineprint_quickstart/models/dm/dm_refund_rate_1d.sql",
+   "src_path": "models/dm/dm_refund_rate_1d.sql",
+   "row_set_tables": [
+    "fineprint_demo.main.stg_orders",
+    "fineprint_demo.main.stg_refunds"
+   ],
+   "row_risk_joins": [
+    {
+     "rel": "fineprint_demo.main.stg_orders",
+     "keys": []
+    }
+   ],
+   "agg_fns": [
+    "sum"
+   ],
+   "grain": [
+    "stat_date"
+   ],
+   "unique_on": [],
+   "declared_unique": [
+    [
+     "stat_date"
+    ]
+   ],
+   "declared_fk": [],
+   "columns": {
+    "stat_date": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.stg_orders",
+       "column": "paid_at"
+      }
+     ],
+     "expr": "CAST(\"o\".\"paid_at\" AS DATE)",
+     "scopes": [
+      "main",
+      "paid_orders"
+     ]
+    },
+    "refund_amt_14d": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.stg_refunds",
+       "column": "refund_amount"
+      }
+     ],
+     "expr": "SUM(COALESCE(\"r\".\"refund_amount\", 0))",
+     "scopes": [
+      "main",
+      "refund_14d"
+     ]
+    },
+    "refund_rate": {
+     "upstreams": [
+      {
+       "table": "fineprint_demo.main.stg_refunds",
+       "column": "refund_amount"
+      },
+      {
+       "table": "fineprint_demo.main.stg_orders",
+       "column": "amount"
+      }
+     ],
+     "expr": "SUM(COALESCE(\"r\".\"refund_amount\", 0)) / SUM(\"o\".\"amount\")",
+     "scopes": [
+      "main",
+      "paid_orders",
+      "refund_14d"
+     ]
+    }
+   },
+   "conditions": [
+    {
+     "model": "dm_refund_rate_1d",
+     "scope": "main",
+     "kind": "join_on",
+     "row_level": false,
+     "sql": "o.order_id = r.order_id",
+     "norm": "order_id = order_id",
+     "fp": "695fbd8b788e",
+     "line": 23,
+     "join_type": "LEFT",
+     "join_table": "refund_14d",
+     "is_pure_key": true
+    },
+    {
+     "model": "dm_refund_rate_1d",
+     "scope": "paid_orders",
+     "kind": "where",
+     "row_level": true,
+     "sql": "status = 'paid'",
+     "norm": "status = 'paid'",
+     "fp": "5c4153d11285",
+     "line": 6
+    },
+    {
+     "model": "dm_refund_rate_1d",
+     "scope": "refund_14d",
+     "kind": "where",
+     "row_level": false,
+     "sql": "r.refunded_at <= o.paid_at + INTERVAL '14' DAY",
+     "norm": "refunded_at <= paid_at + interval '14' day",
+     "fp": "497b55c529cd",
+     "line": 15
+    },
+    {
+     "model": "dm_refund_rate_1d",
+     "scope": "refund_14d",
+     "kind": "join_on",
+     "row_level": false,
+     "sql": "r.order_id = o.order_id",
+     "norm": "order_id = order_id",
+     "fp": "695fbd8b788e",
+     "line": 14,
+     "join_type": "inner",
+     "join_table": "paid_orders",
+     "is_pure_key": true
+    }
+   ],
+   "semantics": [
+    {
+     "model": "dm_refund_rate_1d",
+     "scope": "main",
+     "type": "coalesce",
+     "column": "refund_amt_14d",
+     "sql": "COALESCE(r.refund_amount, 0)",
+     "line": 20
+    },
+    {
+     "model": "dm_refund_rate_1d",
+     "scope": "main",
+     "type": "coalesce",
+     "column": "refund_rate",
+     "sql": "COALESCE(r.refund_amount, 0)",
+     "line": 20
+    },
+    {
+     "model": "dm_refund_rate_1d",
+     "scope": "main",
+     "type": "stat_date_key",
+     "column": "stat_date",
+     "sql": "CAST(o.paid_at AS DATE)",
+     "line": 19
+    }
+   ]
+  }
+ }
+}

@@ -13,6 +13,12 @@ warehouse/dbt_project/logs/
 logs/
 .metriclens/
 .fineprint/
+# quickstart 内置一份现成口径批次:无 LLM key 也能直接 report 看成品
+# (白名单只放血缘图与批次 store;cache/报告/漂移产物仍留在用户本地)
+!examples/quickstart/.fineprint/
+examples/quickstart/.fineprint/*
+!examples/quickstart/.fineprint/graph.json
+!examples/quickstart/.fineprint/store/
 warehouse/dbt_project/.metriclens/
 warehouse/dbt_project/.fineprint/
 .env

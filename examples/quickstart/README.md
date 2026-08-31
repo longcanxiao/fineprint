@@ -64,6 +64,9 @@ fineprint trace dm_refund_rate_1d.refund_rate
 
 ## 3. 配置 LLM(下一步需要)
 
+> 没有 LLM key?仓库已内置一份现成批次(`.fineprint/store/`),
+> 可直接跳到第 5 步导出报告看成品;第 4 步随时回来补。
+
 ```bash
 cp .env.example .env    # 打开 .env 填入你的 key(OpenAI 风格 API 均可,如 DeepSeek)
 ```
@@ -75,15 +78,17 @@ fineprint synth
 ```
 
 ```
-✓ daily_gmv         conf=high  F覆盖 100%  S漏/多 0/0  可疑 0  未证条款 0  词表失配 0  赛马 agree→VERIFIED
+✓ daily_gmv         conf=high  F覆盖 100%  S漏/多 0/0  可疑 0  未证条款 0  词表失配 0  赛马 consistent→VERIFIED
 ✓ refund_rate_14d   conf=high  F覆盖 100%  S漏/多 0/0  可疑 0  未证条款 0  词表失配 0  赛马 agree→VERIFIED
-双写赛马: agree=2
+双写赛马: agree=1  consistent=1
 发布状态: VERIFIED=2
 ```
 
 两条通道在此汇合:**确定性公式组合器**(发布权威)从编译 SQL 逐层展开出
 机器可证的公式;**LLM** 通读同一条链路给出业务解读。二者互证一致
-(`agree`)、LLM 的每句话都能溯源到血缘词表,卡片才盖 `VERIFIED`。
+(`agree`)或结构等价、未见矛盾(`consistent`),且 LLM 的每句话都能溯源到
+血缘词表,卡片才盖 `VERIFIED`。(LLM 措辞跨运行有漂移,`agree`/`consistent`
+的分布每批可能不同——组合器端恒定,这正是公式权威归机器的理由。)
 
 ## 5. 导出口径卡报告
 
