@@ -112,9 +112,8 @@ class TestUnknownSourceWarning:
 
 class TestFirstRunFriction:
     """首轮陌生用户试用反馈(2026-08-31):init 提示顺序、模板治理段、
-    synth 预检、公开 API 语言继承、旧批次报告标记。"""
-
-    QUICKSTART = ROOT / "examples" / "quickstart"
+    synth 预检、公开 API 语言继承、旧批次报告标记。
+    夹具全合成——不依赖 examples/quickstart/.fineprint(未跟踪,CI 没有)。"""
 
     def test_init_hint_orders_llm_after_graph(self, tmp_path, capsys):
         main(["init", "--project", str(tmp_path)])
@@ -153,16 +152,22 @@ class TestFirstRunFriction:
         assert "▶" not in err                                       # 没打开工横幅
         assert not (p.project_dir / ".fineprint" / "store").exists()  # 预检先于建批次
 
-    def test_api_inherits_project_language(self, monkeypatch):
+    def test_api_inherits_project_language(self, tmp_path, monkeypatch):
         import fineprint
         from fineprint import i18n
         monkeypatch.delenv("FINEPRINT_LANG", raising=False)
         for k in ("LC_ALL", "LC_MESSAGES", "LANG"):
             monkeypatch.delenv(k, raising=False)
         monkeypatch.setattr(i18n, "_LANG", None)
-        r = fineprint.trace(str(self.QUICKSTART), "dm_refund_rate_1d.refund_rate")
-        assert i18n.lang() == "zh"          # quickstart 的 fineprint.yml: language: zh
-        assert "分子" in r.render()          # Notebook 场景与 CLI 同语言
+        p = make_project(tmp_path, nodes={"model.p.stg": _node("stg", "c/stg.sql")},
+                         catalog_nodes={"model.p.stg": _cat("main", "stg", {"a": "INT"})},
+                         sqls={"c/stg.sql": "select 1 as a"})
+        (p.project_dir / "fineprint.yml").write_text("language: zh\nmetrics: []\n",
+                                                     encoding="utf-8")
+        fineprint.build_graph(str(p.project_dir))
+        assert i18n.lang() == "zh"           # 语言随项目配置,与 CLI 同一来源
+        r = fineprint.trace(str(p.project_dir), "stg.a")
+        assert i18n.lang() == "zh" and str(r)  # Notebook 输出跟着项目语言走
 
     def test_api_language_en_project(self, tmp_path, monkeypatch):
         import fineprint
@@ -178,11 +183,24 @@ class TestFirstRunFriction:
         assert "no published caliber batch" in str(e.value)
 
     def test_report_marks_legacy_batch(self, tmp_path):
+        import json
         from fineprint.project import DbtProject
         from fineprint.report import _stale_banner, export_html
-        from fineprint.store import CARD_SCHEMA_VERSION
+        from fineprint.store import CARD_SCHEMA_VERSION, CaliberStore
+        from tests.test_report import _card
         assert _stale_banner({"schema_version": CARD_SCHEMA_VERSION}) == ""
+        p = make_project(tmp_path, nodes={"model.p.stg": _node("stg", "c/stg.sql")},
+                         catalog_nodes={"model.p.stg": _cat("main", "stg", {"a": "INT"})},
+                         sqls={"c/stg.sql": "select 1 as a"})
+        store = CaliberStore(p.project_dir / ".fineprint" / "store")
+        d = store.run_dir("legacy1")
+        (d / "gmv.json").write_text(json.dumps(_card(), ensure_ascii=False),
+                                    encoding="utf-8")
+        # 0.9 前的批次索引没有 schema_version —— 兼容展示但页头必须显眼标记
+        (d / "index.json").write_text(json.dumps({"run_id": "legacy1", "at": "t",
+                                                  "cards": ["gmv"]}), encoding="utf-8")
+        store.activate("legacy1")
         out = tmp_path / "r.html"
-        export_html(DbtProject(self.QUICKSTART), out)
+        export_html(DbtProject(p.project_dir), out)
         h = out.read_text(encoding="utf-8")
-        assert 'class="stale"' in h and "旧版批次" in h   # 内置批次是 0.8 世代,须显眼标记
+        assert 'class="stale"' in h and "旧版批次" in h
