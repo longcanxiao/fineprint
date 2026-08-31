@@ -257,7 +257,7 @@ class TestFirstRunFriction:
         if not tracked:
             pytest.skip("git 未跟踪 quickstart(非仓库环境)")
         demo = ROOT / "fineprint" / "_demo"
-        demo_files = {str(p.relative_to(demo)) for p in demo.rglob("*") if p.is_file()}
+        demo_files = {p.relative_to(demo).as_posix() for p in demo.rglob("*") if p.is_file()}
         assert demo_files == tracked
         for rel in sorted(tracked):
             assert (demo / rel).read_bytes() == \
