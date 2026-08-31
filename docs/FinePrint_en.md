@@ -19,7 +19,8 @@ FinePrint never connects to your database and never reads your business data.
 
 ## Example
 
-The dashboard says the refund rate is 30%. Finance computes 80%.
+The dashboard says the refund rate is 3.93%. Finance computes 4.43% — half a
+point apart, and neither side can convince the other.
 
 Walking the SQL chain reveals what the dashboard actually counts:
 

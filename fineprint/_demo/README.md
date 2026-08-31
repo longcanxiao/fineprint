@@ -71,9 +71,11 @@ excluded" constrain the row set both sides share, so they land in the
 by them too — exactly what a value-path-only reading would misplace). Add
 `--full` to pin a source file and compiled line-number anchor on every clause.
 
-These clauses are not decoration. The bundled data contains one 200-yuan
+These clauses are not decoration. The bundled data contains one 50-yuan
 refund issued 19 days after payment: under the 14-day caliber, August 1st's
-refund rate is **30%** — under a 30-day caliber it would be **80%**.
+refund rate is **3.93%** — under a 30-day caliber it would be **4.43%**.
+Half a point apart: exactly the kind of gap two teams argue about in a
+review meeting.
 
 ## 3. Configure an LLM (needed for the next step)
 
