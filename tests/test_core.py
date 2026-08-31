@@ -199,6 +199,9 @@ class TestConfig:
 
 @pytest.fixture(scope="module")
 def client():
+    # 演示看板 API 属 [demo] 附加依赖:精简安装(如 Windows CI 只装 [dev])自跳过,
+    # 与"基准数仓产物缺席自跳过"同一惯例
+    pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
     from server.main import app
     return TestClient(app)
