@@ -48,7 +48,7 @@ def peek_project_lang(project_dir) -> None:
     配置本身可能就是报错对象,报错文案的语言不能依赖配置加载成功)。"""
     try:
         f = Path(project_dir) / "fineprint.yml"
-        m = re.search(r"^language:\s*[\"']?(zh|en)\b", f.read_text(), re.M)
+        m = re.search(r"^language:\s*[\"']?(zh|en)\b", f.read_text(encoding="utf-8"), re.M)
         if m:
             set_lang(m.group(1))
     except Exception:

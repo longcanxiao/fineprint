@@ -348,7 +348,7 @@ def export_html(project: DbtProject, out: Path) -> int:
     cards = []
     for f in sorted(d.glob("*.json")):
         if f.name != "index.json":
-            cards.append(json.loads(f.read_text()))
+            cards.append(json.loads(f.read_text(encoding="utf-8")))
     files = _model_files(project)
     body = "".join(card_html(c, files) for c in cards)
     pubs: dict = {}
@@ -369,5 +369,5 @@ def export_html(project: DbtProject, out: Path) -> int:
 <p class="sub">{sub}</p>
 {body}</div></body></html>"""
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(page)
+    out.write_text(page, encoding="utf-8")
     return len(cards)

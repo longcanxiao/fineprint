@@ -38,7 +38,7 @@ def read_internal_packages(project_dir) -> tuple:
     f = Path(project_dir) / "fineprint.yml"
     if not f.exists():
         return ()
-    raw = yaml.safe_load(f.read_text()) or {}
+    raw = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
     return _internal_packages_of(raw) if isinstance(raw, dict) else ()
 
 EXAMPLE = """\
@@ -132,7 +132,7 @@ class MLConfig:
                 f"未找到 {f}\n请先执行 fineprint init 生成配置,或手工创建(模板见 README){legacy}",
                 f"{f} not found\nrun fineprint init to generate the config, "
                 f"or create it by hand (template in README){legacy}"))
-        raw = yaml.safe_load(f.read_text()) or {}
+        raw = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
         if not isinstance(raw, dict):
             raise ValueError(t(f"{f} 顶层须为映射(language/metrics/…),实得 {type(raw).__name__}",
                                f"top level of {f} must be a mapping (language/metrics/…), "

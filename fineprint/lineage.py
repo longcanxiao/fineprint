@@ -735,7 +735,7 @@ def save_graph(project: DbtProject, graph: dict) -> None:
     out = project.graph_path()
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_suffix(".tmp")
-    tmp.write_text(json.dumps(graph, ensure_ascii=False, indent=1))
+    tmp.write_text(json.dumps(graph, ensure_ascii=False, indent=1), encoding="utf-8")
     tmp.replace(out)
 
 

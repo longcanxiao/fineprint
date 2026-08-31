@@ -23,7 +23,7 @@ class CaliberStore:
         if not self.pointer.exists():
             return None
         try:
-            return json.loads(self.pointer.read_text())["run_id"]
+            return json.loads(self.pointer.read_text(encoding="utf-8"))["run_id"]
         except Exception:
             return None
 
@@ -40,7 +40,7 @@ class CaliberStore:
     def activate(self, run_id: str, meta: dict | None = None):
         self.runs.mkdir(parents=True, exist_ok=True)
         tmp = self.pointer.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"run_id": run_id, **(meta or {})}, ensure_ascii=False))
+        tmp.write_text(json.dumps({"run_id": run_id, **(meta or {})}, ensure_ascii=False), encoding="utf-8")
         tmp.replace(self.pointer)
 
     def prune(self, keep: int = 3, protect: str | None = None):
@@ -55,9 +55,9 @@ class CaliberStore:
     def card(self, key: str) -> dict | None:
         d = self.active_dir()
         f = (d / f"{key}.json") if d else None
-        return json.loads(f.read_text()) if f and f.exists() else None
+        return json.loads(f.read_text(encoding="utf-8")) if f and f.exists() else None
 
     def index(self) -> dict | None:
         d = self.active_dir()
         f = (d / "index.json") if d else None
-        return json.loads(f.read_text()) if f and f.exists() else None
+        return json.loads(f.read_text(encoding="utf-8")) if f and f.exists() else None

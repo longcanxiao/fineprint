@@ -51,14 +51,14 @@ class DbtProject:
                 f"未找到 {mf}\n请先在 dbt 项目里执行: dbt compile && dbt docs generate",
                 f"{mf} not found\nrun inside the dbt project first: "
                 f"dbt compile && dbt docs generate"))
-        self.manifest = json.loads(mf.read_text())
+        self.manifest = json.loads(mf.read_text(encoding="utf-8"))
         cat = self.target_dir / "catalog.json"
         # catalog 缺席 = 无 catalog 模式:qualify schema 由 manifest yml 声明列 +
         # 编译 SQL 拓扑推断补全(_infer_missing_model_schema)。能跑
         # dbt docs generate 仍是首选——实测列集与真实类型强于推断。
         self.catalog_missing = not cat.exists()
         self.catalog = ({"nodes": {}, "sources": {}} if self.catalog_missing
-                        else json.loads(cat.read_text()))
+                        else json.loads(cat.read_text(encoding="utf-8")))
 
     def _resolve_target(self, target_dir: str | None) -> Path:
         """target 目录优先级:显式参数 → DBT_TARGET_PATH → dbt_project.yml 的 target-path → target。"""
@@ -68,7 +68,7 @@ class DbtProject:
             if f.exists():
                 try:
                     import yaml
-                    cand = (yaml.safe_load(f.read_text()) or {}).get("target-path")
+                    cand = (yaml.safe_load(f.read_text(encoding="utf-8")) or {}).get("target-path")
                 except Exception:
                     cand = None
         p = Path(cand) if cand else Path("target")
@@ -90,7 +90,7 @@ class DbtProject:
         if f.exists():
             try:
                 import yaml
-                return (yaml.safe_load(f.read_text()) or {}).get("name")
+                return (yaml.safe_load(f.read_text(encoding="utf-8")) or {}).get("name")
             except Exception:
                 return None
         return None
@@ -144,7 +144,7 @@ class DbtProject:
                 "name": n["name"],
                 "layer": layer, "schema": n.get("schema"), "database": n.get("database"),
                 "alias": n.get("alias") or n["name"], "package": n.get("package_name"),
-                "sql": f.read_text(),
+                "sql": f.read_text(encoding="utf-8"),
                 "compiled_path": cp, "src_path": n.get("original_file_path"),
             }
         return out

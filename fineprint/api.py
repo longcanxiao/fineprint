@@ -5,7 +5,7 @@ Three entry points, mirroring the CLI's zero-LLM core:
 
     import fineprint
     fineprint.build_graph("path/to/dbt_project")      # column-level lineage graph
-    fineprint.tracing("path/to/dbt_project", "model.column")   # caliber of one column
+    fineprint.trace("path/to/dbt_project", "model.column")   # caliber of one column
     fineprint.cards("path/to/dbt_project")            # the published caliber-card batch
 
 Everything else in this package is internal (underscore rules do not apply to
@@ -245,8 +245,8 @@ def cards(project_dir=".") -> Batch:
     idx = {}
     idx_f = d / "index.json"
     if idx_f.exists():
-        idx = json.loads(idx_f.read_text())
-    card_list = [json.loads(f.read_text())
+        idx = json.loads(idx_f.read_text(encoding="utf-8"))
+    card_list = [json.loads(f.read_text(encoding="utf-8"))
                  for f in sorted(d.glob("*.json")) if f.name != "index.json"]
     return Batch(run_id=idx.get("run_id") or d.name, at=idx.get("at"),
                  schema_version=idx.get("schema_version"), cards=card_list, index=idx)

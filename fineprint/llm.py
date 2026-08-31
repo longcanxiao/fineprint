@@ -105,7 +105,7 @@ def load_dotenv(project_dir: Path):
     if not f.exists():
         return
     legacy = []
-    for line in f.read_text().splitlines():
+    for line in f.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -181,7 +181,7 @@ def chat_json(system: str, user: str, max_tokens: int = 4000, use_cache: bool = 
         with lock:                            # 同 key 串行:后到者等首个完成后直接命中
             if cf.exists():
                 try:
-                    obj = json.loads(cf.read_text())
+                    obj = json.loads(cf.read_text(encoding="utf-8"))
                     if validator:
                         validator(obj)
                     return obj
@@ -235,7 +235,7 @@ def _request(cfg: dict, model: str, system: str, user: str, max_tokens: int,
             if cf is not None:
                 # 进程内同 key 已由 _INFLIGHT 串行;tmp 名加随机后缀防跨进程互踩
                 tmp = cf.parent / f"{cf.name}.{uuid.uuid4().hex[:6]}.tmp"
-                tmp.write_text(json.dumps(obj, ensure_ascii=False))
+                tmp.write_text(json.dumps(obj, ensure_ascii=False), encoding="utf-8")
                 tmp.replace(cf)
             return obj
         except FatalLLMError:

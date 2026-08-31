@@ -130,7 +130,7 @@ class _Composer:
     def _root_scope(self, uid: str):
         if uid not in self.root_memo:
             info = self.graph["models"][uid]
-            sql = (self.project.project_dir / info["compiled_path"]).read_text()
+            sql = (self.project.project_dir / info["compiled_path"]).read_text(encoding="utf-8")
             try:
                 ast = parse_one(sql, read=dialect())
             except Exception as e:

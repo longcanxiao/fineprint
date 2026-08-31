@@ -79,7 +79,7 @@ def save_snapshot(project: DbtProject, snap: dict) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     f = d / f"{snap['taken_at'].replace(':', '').replace('-', '').replace('.', '')}.json"
     tmp = f.with_suffix(".tmp")
-    tmp.write_text(json.dumps(snap, ensure_ascii=False, indent=1))
+    tmp.write_text(json.dumps(snap, ensure_ascii=False, indent=1), encoding="utf-8")
     tmp.replace(f)
     return f
 
@@ -89,7 +89,7 @@ def latest_snapshot(project: DbtProject) -> dict | None:
     if not d.is_dir():
         return None
     files = sorted(d.glob("*.json"))
-    return json.loads(files[-1].read_text()) if files else None
+    return json.loads(files[-1].read_text(encoding="utf-8")) if files else None
 
 
 def diff_metric(key: str, old: dict, new: dict) -> list:
@@ -154,7 +154,7 @@ def diff_snapshots(old: dict, new: dict) -> list:
 
 def load_log(project: DbtProject) -> dict:
     f = drift_log_path(project)
-    return json.loads(f.read_text()) if f.exists() else {"events": []}
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {"events": []}
 
 
 @contextlib.contextmanager
@@ -179,7 +179,7 @@ def append_events(project: DbtProject, events: list, from_at: str, to_at: str):
         for e in events:
             log["events"].append({"detected_at": now, "from_snapshot": from_at, "to_snapshot": to_at, **e})
         tmp = f.with_suffix(".tmp")
-        tmp.write_text(json.dumps(log, ensure_ascii=False, indent=1))
+        tmp.write_text(json.dumps(log, ensure_ascii=False, indent=1), encoding="utf-8")
         tmp.replace(f)
 
 

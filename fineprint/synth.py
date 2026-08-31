@@ -528,7 +528,7 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
         futs = {}
         for mo, cols in cols_by_model.items():
             info = graph["models"][mo]
-            sql = (project.project_dir / info["compiled_path"]).read_text()
+            sql = (project.project_dir / info["compiled_path"]).read_text(encoding="utf-8")
             futs[hex_.submit(extract_hop, lang, disp_of[mo], sql, sorted(cols), info["layer"])] = mo
         for fut, mo in futs.items():
             hops_by_model[mo] = fut.result()
@@ -771,7 +771,7 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
             try:
                 r = fut.result()
                 results[m.key] = r
-                (run_dir / f"{m.key}.json").write_text(json.dumps(r, ensure_ascii=False, indent=1))
+                (run_dir / f"{m.key}.json").write_text(json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
                 v = r["validation"]
                 if prog.mode == "json":
                     prog.emit("metric_done", key=m.key, confidence=r["confidence"],
@@ -814,14 +814,14 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
             return 1
         for f in src.glob("*.json"):
             if f.name != "index.json" and not (run_dir / f.name).exists():
-                (run_dir / f.name).write_text(f.read_text())
+                (run_dir / f.name).write_text(f.read_text(encoding="utf-8"))
     cards = {}
     race_counts, pub_counts = {}, {}
     disagree_keys, unsup_keys = [], []
     for f in sorted(run_dir.glob("*.json")):
         if f.name == "index.json":
             continue
-        r = json.loads(f.read_text())
+        r = json.loads(f.read_text(encoding="utf-8"))
         cards[r["metric_key"]] = {"title": r["title"], "confidence": r["confidence"],
                                   "status": r["status"], "generated_at": r["generated_at"],
                                   "run_id": r.get("run_id"),
@@ -857,7 +857,7 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
            "race": {"verdicts": race_counts, "disagree": sorted(disagree_keys),
                     "renderer_unsupported": sorted(unsup_keys)},
            "publication": pub_counts}
-    (run_dir / "index.json").write_text(json.dumps(idx, ensure_ascii=False, indent=1))
+    (run_dir / "index.json").write_text(json.dumps(idx, ensure_ascii=False, indent=1), encoding="utf-8")
     store.activate(run_id, {"at": at})
     store.prune(keep=3, protect=run_id)
     if prog.mode == "json":

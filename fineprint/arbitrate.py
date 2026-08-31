@@ -104,7 +104,7 @@ def build_report(project: DbtProject, cfg: MLConfig, graph: dict) -> dict:
     }
     f = report_path(project)
     tmp = f.with_suffix(".tmp")
-    tmp.write_text(json.dumps(report, ensure_ascii=False, indent=1))
+    tmp.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     tmp.replace(f)
     return report
 

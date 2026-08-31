@@ -97,7 +97,7 @@ def cmd_init(args):
                     "; metric candidates pre-filled from dbt exposures (commented, end of file)")
     except Exception:
         pass          # artifacts 尚未编译时 init 仍可用,只出模板
-    f.write_text(text)
+    f.write_text(text, encoding="utf-8")
     print(t(f"已生成 {f}\n下一步:填入 metrics(model.column){tip},"
             f"设置 LLM 环境变量(见 README),然后 fineprint graph",
             f"wrote {f}\nnext: fill in metrics (model.column){tip}, "

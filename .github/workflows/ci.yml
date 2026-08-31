@@ -30,8 +30,12 @@ jobs:
           python -m build
 
   windows:
-    # 中文输出/树形字符/路径分隔符在 Windows 是真实雷区;跑核心测试集守住
+    # 中文输出/树形字符/路径分隔符在 Windows 是真实雷区;跑核心测试集守住。
+    # PYTHONUTF8 只为测试夹具(fixture 写中文)与 subprocess 捕获的确定性;
+    # 产品代码自身已显式 encoding="utf-8",不依赖此变量(哨兵测试单独验证窄编码)
     runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
     strategy:
       fail-fast: false
       matrix:
