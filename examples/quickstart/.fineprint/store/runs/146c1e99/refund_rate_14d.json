@@ -3,10 +3,10 @@
  "metric_key": "refund_rate_14d",
  "title": "14天退款率",
  "target": "dm_refund_rate_1d.refund_rate",
- "run_id": "71b5efd5",
+ "run_id": "146c1e99",
  "extra_targets": [],
  "query_filter": null,
- "generated_at": "2026-08-31T13:54:17",
+ "generated_at": "2026-08-31T14:13:33",
  "llm_model": "deepseek-v4-flash+deepseek-v4-pro",
  "graph_md5": "0462c3f8c04d0ec4",
  "graph_generated_at": "2026-08-31T13:51:02",
@@ -24,7 +24,10 @@
   "f1_covered": 1.0,
   "f1_uncovered": [],
   "f2_out_of_scope": [],
-  "f2_unparsed": [],
+  "f2_unparsed": [
+   "join paid_orders o on r.order_id = o.order_id",
+   "left join refund_14d r on o.order_id = r.order_id"
+  ],
   "f2_suspect": [],
   "quote_verify_fail": 0,
   "unverified_clauses": 0,
@@ -33,11 +36,13 @@
  },
  "technical": {
   "formula": "sum(coalesce(r.refund_amount, 0)) / sum(o.amount)",
-  "window": "时间窗:仅支付后 14 天内的退款计入分子；统计日归属:按支付日期(paid_at 的日期)分组,退款率对应当日支付订单的 14 天退款表现",
+  "window": "14-day refund window from paid_at (refunds restricted to refunded_at <= paid_at + INTERVAL 14 DAY); stat_date assigned as cast(paid_at as date)",
   "special": [
-   "COALESCE 兜底:无退款订单按 0 计算",
-   "订单级预聚合:refund_14d 按 order_id 先聚合退款金额,避免同一订单多笔退款膨胀行数",
-   "窗口去重:row_number() over (partition by refund_id order by refunded_at desc),取rn=1的行"
+   "COALESCE(r.refund_amount, 0) substitutes 0 for orders with no refunds",
+   "Refund amounts are summed per order in a CTE before division to avoid multiple refunds for one order inflating the numerator",
+   "Ratio is computed after grouping by cast(paid_at as date), i.e., per stat_date",
+   "Denominator is the sum of order amounts for paid orders only",
+   "Latest-refund deduplication: ROW_NUMBER() OVER (PARTITION BY refund_id ORDER BY refunded_at DESC), keep only rn=1 row"
   ],
   "key_filters": [
    {
@@ -50,20 +55,60 @@
    },
    {
     "text": "rn = 1",
-    "layer": "staging"
+    "layer": "stg_refunds"
    },
    {
     "text": "is_test = 0",
-    "layer": "staging"
+    "layer": "stg_orders"
    }
   ],
-  "summary": "该指标计算支付成功订单在支付后14天内的退款金额占订单总金额的比例。分子对退款表按refund_id去重取最新退款记录，并使用COALESCE处理无退款情况；分母仅统计非测试订单的支付金额。统计按支付日期分组，退款时间窗为支付后14天。"
+  "summary": "The 14-day refund rate is computed as the sum of refund amounts within 14 days after payment divided by the sum of paid order amounts, grouped by paid date. Refund rows are deduplicated to the latest per refund_id, and test orders are excluded before aggregation. The numerator uses COALESCE to treat missing refunds as zero."
  },
  "business": {
-  "definition": "支付成功订单在支付后14天内的退款金额占订单支付金额的比例，按支付日期分组统计。",
+  "definition": "14-day refund rate is the sum of refund amounts within 14 days after payment divided by the sum of paid order amounts, grouped by payment date, excluding test orders and using the latest refund per refund_id.",
   "clauses": [
    {
-    "text": "退款率 = 退款金额合计 / 订单支付金额合计，无退款按0计算（refund_amount、amount 有业务注释）",
+    "text": "Counts refund amounts only for orders with status 'paid'.",
+    "basis": "where status = 'paid'",
+    "evidence_ids": [
+     "Q1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "Refunds are included only if refunded_at falls within 14 days after paid_at.",
+    "basis": "where r.refunded_at <= o.paid_at + INTERVAL 14 DAY",
+    "evidence_ids": [
+     "Q2"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "Keeps only the latest refund record per refund_id (rn = 1).",
+    "basis": "where rn = 1",
+    "evidence_ids": [
+     "Q3"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "Excludes test orders (is_test = 0).",
+    "basis": "is_test = 0",
+    "evidence_ids": [
+     "Q4"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "Missing refund amounts are treated as zero in the numerator.",
+    "basis": "COALESCE(r.refund_amount, 0)",
+    "evidence_ids": [
+     "S1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "The rate is calculated as sum of refund amounts divided by sum of order amounts.",
     "basis": "refund_rate = SUM(COALESCE(\"r\".\"refund_amount\", 0)) / SUM(\"o\".\"amount\")",
     "evidence_ids": [
      "X1"
@@ -71,43 +116,7 @@
     "basis_verified": true
    },
    {
-    "text": "仅统计 status='paid' 的订单（status 待补充业务注释）",
-    "basis": "status = 'paid'",
-    "evidence_ids": [
-     "E1",
-     "Q1"
-    ],
-    "basis_verified": true
-   },
-   {
-    "text": "退款时间须在支付后14天内（refunded_at、paid_at 待补充业务注释）",
-    "basis": "r.refunded_at <= o.paid_at + INTERVAL 14 DAY",
-    "evidence_ids": [
-     "E2",
-     "Q2"
-    ],
-    "basis_verified": true
-   },
-   {
-    "text": "退款记录按 refund_id 去重，取最新一条（refund_id、rn 待补充业务注释）",
-    "basis": "where rn = 1",
-    "evidence_ids": [
-     "E3",
-     "Q3"
-    ],
-    "basis_verified": true
-   },
-   {
-    "text": "剔除测试订单（is_test 待补充业务注释）",
-    "basis": "where is_test = 0",
-    "evidence_ids": [
-     "E4",
-     "Q4"
-    ],
-    "basis_verified": true
-   },
-   {
-    "text": "按支付日期（paid_at 的日期）分组统计（paid_at 待补充业务注释）",
+    "text": "The ratio is grouped by payment date (cast paid_at as date).",
     "basis": "CAST(o.paid_at AS DATE)",
     "evidence_ids": [
      "S2"
@@ -116,7 +125,7 @@
    }
   ],
   "caveats": [
-   "技术口径提到订单级预聚合（refund_14d 按 order_id 先聚合退款金额），但证据清单中无对应编号，可能导致对同一订单多笔退款的合并口径有不同解读(无确定性证据)"
+   "Refund amounts are summed per order in a CTE before division to avoid multiple refunds for one order inflating the numerator (no deterministic evidence)."
   ]
  },
  "technical_facts": {
@@ -307,14 +316,14 @@
    "kind": "verified_quote:where",
    "model": "dm_refund_rate_1d",
    "line": null,
-   "text": "status = 'paid'"
+   "text": "where status = 'paid'"
   },
   {
    "id": "Q2",
    "kind": "verified_quote:where",
    "model": "dm_refund_rate_1d",
    "line": null,
-   "text": "r.refunded_at <= o.paid_at + INTERVAL 14 DAY"
+   "text": "where r.refunded_at <= o.paid_at + INTERVAL 14 DAY"
   },
   {
    "id": "Q3",
@@ -328,7 +337,7 @@
    "kind": "verified_quote:where",
    "model": "stg_orders",
    "line": null,
-   "text": "where is_test = 0"
+   "text": "is_test = 0"
   }
  ],
  "governance": {
@@ -456,41 +465,42 @@
       }
      ],
      "special": [
-      "COALESCE 兜底:无退款订单按 0 计算",
-      "时间窗:仅支付后 14 天内的退款计入分子",
-      "订单级预聚合:refund_14d 按 order_id 先聚合退款金额,避免同一订单多笔退款膨胀行数",
-      "统计日归属:按支付日期(paid_at 的日期)分组,退款率对应当日支付订单的 14 天退款表现"
+      "COALESCE(r.refund_amount, 0) substitutes 0 for orders with no refunds",
+      "Refunds are filtered to those where refunded_at <= paid_at + INTERVAL 14 DAY (14-day window)",
+      "Refund amounts are summed per order in CTE before division to prevent multiple refunds for one order inflating the numerator",
+      "Ratio is computed after grouping by cast(paid_at as date), i.e., per stat_date",
+      "Denominator is the sum of order amounts for paid orders only"
      ]
     }
    },
    "filters": [
     {
-     "quote": "status = 'paid'",
+     "quote": "where status = 'paid'",
      "kind": "where",
-     "effect": "只保留支付成功的订单,作为统计口径的基数(分母金额和分子退款均基于这些订单)",
+     "effect": "Only orders with status 'paid' contribute to denominator and base rows.",
      "quote_verified": true,
      "match": "matched"
     },
     {
-     "quote": "r.order_id = o.order_id",
+     "quote": "join paid_orders o on r.order_id = o.order_id",
      "kind": "join_on",
-     "effect": "退款记录必须关联到已支付订单,同时过滤掉没有对应已支付订单的退款记录",
+     "effect": "Restricts refunds to those belonging to a paid order; refunds for non-paid orders are excluded.",
      "quote_verified": true,
-     "match": "pure_key"
+     "match": "unparsed"
     },
     {
-     "quote": "r.refunded_at <= o.paid_at + INTERVAL 14 DAY",
+     "quote": "where r.refunded_at <= o.paid_at + INTERVAL 14 DAY",
      "kind": "where",
-     "effect": "只统计支付后 14 天内发生的退款,超出 14 天的退款不计入分子",
+     "effect": "Includes only refunds made within 14 days after the order's payment.",
      "quote_verified": true,
      "match": "matched"
     },
     {
-     "quote": "o.order_id = r.order_id",
+     "quote": "left join refund_14d r on o.order_id = r.order_id",
      "kind": "join_on",
-     "effect": "将已支付订单与 14 天退款聚合结果按订单关联,保证所有已支付订单均保留,无退款时右表为空",
+     "effect": "Left join preserves all paid orders; only matching orders receive aggregated refund amounts, with null for no refund.",
      "quote_verified": true,
-     "match": "pure_key"
+     "match": "unparsed"
     }
    ]
   },
@@ -502,12 +512,12 @@
      "expression": "refund_amount",
      "source_columns": [
       {
-       "table": "fineprint_demo.main.raw_refunds",
+       "table": "raw_refunds",
        "column": "refund_amount"
       }
      ],
      "special": [
-      "窗口去重:row_number() over (partition by refund_id order by refunded_at desc),取rn=1的行"
+      "窗口去重：ROW_NUMBER() OVER (PARTITION BY refund_id ORDER BY refunded_at DESC)，仅保留 rn=1 的最新一条"
      ]
     }
    },
@@ -515,7 +525,7 @@
     {
      "quote": "where rn = 1",
      "kind": "where",
-     "effect": "筛选出每个refund_id按refunded_at降序排序的第一行(rn=1),即最新一条退款记录,用于去重",
+     "effect": "仅保留每个 refund_id 按 refunded_at 降序排序后的第一行，过滤掉重复投递的旧记录",
      "quote_verified": true,
      "match": "matched"
     }
@@ -538,9 +548,9 @@
    },
    "filters": [
     {
-     "quote": "where is_test = 0",
+     "quote": "is_test = 0",
      "kind": "where",
-     "effect": "剔除内部测试账号(is_test=0),只保留真实用户订单",
+     "effect": "Keeps only rows where is_test equals 0, excluding internal test accounts.",
      "quote_verified": true,
      "match": "matched"
     }

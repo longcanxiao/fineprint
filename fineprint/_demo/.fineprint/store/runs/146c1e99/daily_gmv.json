@@ -1,0 +1,342 @@
+{
+ "schema_version": 1,
+ "metric_key": "daily_gmv",
+ "title": "每日GMV",
+ "target": "dm_sales_1d.gmv",
+ "run_id": "146c1e99",
+ "extra_targets": [],
+ "query_filter": null,
+ "generated_at": "2026-08-31T14:13:34",
+ "llm_model": "deepseek-v4-flash+deepseek-v4-pro",
+ "graph_md5": "0462c3f8c04d0ec4",
+ "graph_generated_at": "2026-08-31T13:51:02",
+ "confidence": "high",
+ "status": "published",
+ "publication_status": "VERIFIED",
+ "consumers": [],
+ "validation": {
+  "confidence": "high",
+  "s_missing_by_llm": [],
+  "s_extra_by_llm": [],
+  "s_condition_cols_by_llm": [],
+  "s_context_by_llm": [],
+  "f1_total": 2,
+  "f1_covered": 1.0,
+  "f1_uncovered": [],
+  "f2_out_of_scope": [],
+  "f2_unparsed": [],
+  "f2_suspect": [],
+  "quote_verify_fail": 0,
+  "unverified_clauses": 0,
+  "empty_clauses": false,
+  "freetext_unverified": {}
+ },
+ "technical": {
+  "formula": "sum(amount)",
+  "window": "stat-date assignment: grouped by cast(paid_at as date)",
+  "special": [
+   "sum aggregation"
+  ],
+  "key_filters": [
+   {
+    "text": "status = 'paid'",
+    "layer": "dm"
+   },
+   {
+    "text": "is_test = 0",
+    "layer": "staging"
+   }
+  ],
+  "summary": "Daily GMV is computed as sum(amount) over orders that pass both the dm-layer filter status = 'paid' and the staging-layer filter is_test = 0. The aggregation is grouped by cast(paid_at as date), assigning each paid order to its payment date. The underlying amount column flows unchanged from fineprint_demo.main.raw_orders through stg_orders into the dm aggregation."
+ },
+ "business": {
+  "definition": "Daily GMV sums stg_orders.amount for orders with status = 'paid' and is_test = 0, grouped by CAST(paid_at AS DATE) as the payment date.",
+  "clauses": [
+   {
+    "text": "Includes only orders with status = 'paid'.",
+    "basis": "status = 'paid'",
+    "evidence_ids": [
+     "E1",
+     "Q1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "Excludes test orders by requiring is_test = 0.",
+    "basis": "is_test = 0",
+    "evidence_ids": [
+     "E2",
+     "Q2"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "Groups by payment date using CAST(paid_at AS DATE).",
+    "basis": "CAST(paid_at AS DATE)",
+    "evidence_ids": [
+     "S1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "Daily GMV is the sum of stg_orders.amount.",
+    "basis": "gmv = SUM(\"stg_orders\".\"amount\")",
+    "evidence_ids": [
+     "X1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "stg_orders.amount is copied unchanged from raw_orders.amount.",
+    "basis": "amount = \"raw_orders\".\"amount\"",
+    "evidence_ids": [
+     "X2"
+    ],
+    "basis_verified": true
+   }
+  ],
+  "caveats": []
+ },
+ "technical_facts": {
+  "formula": {
+   "status": "proven",
+   "top": "SUM(raw_orders.amount)",
+   "defs": [],
+   "inline": "SUM(raw_orders.amount)",
+   "reasons": [],
+   "rt_failed": false,
+   "evidence": [
+    "X1",
+    "X2"
+   ],
+   "authority": "machine"
+  },
+  "key_filters": {
+   "status": "proven",
+   "items": [
+    {
+     "sql": "status = 'paid'",
+     "kind": "where",
+     "model": "dm_sales_1d",
+     "line": 7,
+     "evidence": "E1"
+    },
+    {
+     "sql": "is_test = 0",
+     "kind": "where",
+     "model": "stg_orders",
+     "line": 9,
+     "evidence": "E2"
+    }
+   ],
+   "ambiguous_items": [],
+   "reasons": []
+  },
+  "sources": {
+   "status": "proven",
+   "items": [
+    {
+     "table": "raw_orders",
+     "schema": "main",
+     "database": "fineprint_demo",
+     "column": "amount"
+    }
+   ],
+   "reasons": []
+  },
+  "window": {
+   "status": "proven",
+   "items": [],
+   "unique_on": {},
+   "declared_unique": {
+    "dm_sales_1d": [
+     [
+      "stat_date"
+     ]
+    ],
+    "stg_orders": [
+     [
+      "order_id"
+     ]
+    ]
+   },
+   "declared_fk": {},
+   "reasons": []
+  },
+  "grain": {
+   "status": "proven",
+   "keys": [
+    "stat_date"
+   ],
+   "model": "dm_sales_1d",
+   "reasons": []
+  }
+ },
+ "race": {
+  "verdict": "agree",
+  "detail": {
+   "matched": "sum(amount)"
+  }
+ },
+ "evidence": [
+  {
+   "id": "E1",
+   "kind": "condition:where",
+   "model": "dm_sales_1d",
+   "line": 7,
+   "text": "status = 'paid'"
+  },
+  {
+   "id": "E2",
+   "kind": "condition:where",
+   "model": "stg_orders",
+   "line": 9,
+   "text": "is_test = 0"
+  },
+  {
+   "id": "S1",
+   "kind": "semantic:stat_date_key",
+   "model": "dm_sales_1d",
+   "line": 3,
+   "text": "CAST(paid_at AS DATE)"
+  },
+  {
+   "id": "X1",
+   "kind": "expression",
+   "model": "dm_sales_1d",
+   "line": null,
+   "text": "gmv = SUM(\"stg_orders\".\"amount\")"
+  },
+  {
+   "id": "X2",
+   "kind": "expression",
+   "model": "stg_orders",
+   "line": null,
+   "text": "amount = \"raw_orders\".\"amount\""
+  },
+  {
+   "id": "Q1",
+   "kind": "verified_quote:where",
+   "model": "dm_sales_1d",
+   "line": null,
+   "text": "status = 'paid'"
+  },
+  {
+   "id": "Q2",
+   "kind": "verified_quote:where",
+   "model": "stg_orders",
+   "line": null,
+   "text": "is_test = 0"
+  }
+ ],
+ "governance": {
+  "duplicates": []
+ },
+ "trace": {
+  "depth": 2,
+  "models_visited": [
+   "model.fineprint_quickstart.dm_sales_1d",
+   "model.fineprint_quickstart.stg_orders"
+  ],
+  "sources": [
+   {
+    "table": "raw_orders",
+    "schema": "main",
+    "database": "fineprint_demo",
+    "column": "amount"
+   }
+  ],
+  "conditions": [
+   {
+    "model": "dm_sales_1d",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "status = 'paid'",
+    "norm": "status = 'paid'",
+    "fp": "5c4153d11285",
+    "line": 7,
+    "src_path": "models/dm/dm_sales_1d.sql"
+   },
+   {
+    "model": "stg_orders",
+    "scope": "main",
+    "kind": "where",
+    "row_level": true,
+    "sql": "is_test = 0",
+    "norm": "is_test = 0",
+    "fp": "0806617b4c50",
+    "line": 9,
+    "src_path": "models/staging/stg_orders.sql"
+   }
+  ],
+  "semantics": [
+   {
+    "model": "dm_sales_1d",
+    "scope": "main",
+    "type": "stat_date_key",
+    "column": "stat_date",
+    "sql": "CAST(paid_at AS DATE)",
+    "line": 3,
+    "src_path": "models/dm/dm_sales_1d.sql"
+   }
+  ],
+  "scope_ambiguous": [],
+  "context_tables": []
+ },
+ "per_hop": [
+  {
+   "model": "dm_sales_1d",
+   "layer": "dm",
+   "columns": {
+    "gmv": {
+     "expression": "sum(amount)",
+     "source_columns": [
+      {
+       "table": "stg_orders",
+       "column": "amount"
+      }
+     ],
+     "special": [
+      "sum aggregation",
+      "stat-date assignment: grouped by cast(paid_at as date)"
+     ]
+    }
+   },
+   "filters": [
+    {
+     "quote": "status = 'paid'",
+     "kind": "where",
+     "effect": "Keeps only paid orders, excluding cancelled and non-paid statuses before aggregation.",
+     "quote_verified": true,
+     "match": "matched"
+    }
+   ]
+  },
+  {
+   "model": "stg_orders",
+   "layer": "staging",
+   "columns": {
+    "amount": {
+     "expression": "amount",
+     "source_columns": [
+      {
+       "table": "fineprint_demo.main.raw_orders",
+       "column": "amount"
+      }
+     ],
+     "special": []
+    }
+   },
+   "filters": [
+    {
+     "quote": "is_test = 0",
+     "kind": "where",
+     "effect": "Keeps only rows where is_test equals 0, excluding internal test accounts.",
+     "quote_verified": true,
+     "match": "matched"
+    }
+   ]
+  }
+ ]
+}

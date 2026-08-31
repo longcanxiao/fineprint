@@ -31,8 +31,11 @@ git apply --index "$REPO/scripts/strip_exposures.patch" \
   || { echo "strip_exposures.patch 打不上:周边代码已演进,请重新生成补丁"; exit 1; }
 rm fineprint/governance.py fineprint/arbitrate.py
 
-# 摘除后自检 1:被删符号不得残留于发行包
-! grep -rn "target_exposures\|exposures_by_model\|annotate_exposures" fineprint/ \
+# 摘除后自检 1:被删符号不得残留于发行包代码
+# (_demo 是数据快照:完整版建的 graph.json 带空 exposures_by_model 键,
+#  发行版代码零消费、无功能影响,不算残留)
+! grep -rn --exclude-dir=_demo \
+    "target_exposures\|exposures_by_model\|annotate_exposures" fineprint/ \
   || { echo "exposures 残留于 fineprint/"; exit 1; }
 ! grep -rn "^from fineprint.governance\|^from fineprint.arbitrate" fineprint/ \
   || { echo "治理硬依赖残留"; exit 1; }

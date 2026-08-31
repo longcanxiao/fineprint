@@ -208,8 +208,9 @@ def annotate_exposures(events: list, cfg: MLConfig, graph: dict) -> None:
 
 
 def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True,
-              block_high: bool = False) -> list:
-    """基线不存在则建立基线(无事件);否则对比最近快照。
+              block_high: bool = False) -> list | None:
+    """基线不存在则建立基线并返回 None(首跑没有"对比"这回事,不能再报"无变化");
+    否则对比最近快照返回事件列表。
 
     save=True 时追加事件并提交新快照为基线;block_high=True(strict 门禁)且存在
     high 事件时基线与事件日志均不推进——门禁失败必须可复现,而不是失败一次后自动放行。
@@ -219,10 +220,10 @@ def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True
     if prev is None:
         if save:
             save_snapshot(project, cur)
-        print(t(f"基线快照已建立({len(cur['metrics'])} 个指标),无对比对象",
+        print(t(f"基线快照已建立({len(cur['metrics'])} 个指标);之后的运行将与它对比",
                 f"baseline snapshot established ({len(cur['metrics'])} metrics); "
-                f"nothing to compare against"))
-        return []
+                f"subsequent runs will compare against it"))
+        return None
     events = diff_snapshots(prev, cur)
     annotate_exposures(events, cfg, graph)
     blocked = block_high and any(e["severity"] == "high" for e in events)

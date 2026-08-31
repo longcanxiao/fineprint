@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: dm_sales_1d
+    description: 日粒度成交汇总,看板"经营概览"的直接数据源。
+    columns:
+      - name: stat_date
+        description: 统计日期(按支付时间归日)
+        tests: [unique, not_null]
+      - name: gmv
+        description: 当日成交总额(元)
+      - name: order_cnt
+        description: 当日成交订单数
+  - name: dm_refund_rate_1d
+    description: 日粒度退款率,风控周报数据源。
+    columns:
+      - name: stat_date
+        description: 统计日期(按订单支付时间归日,非退款时间)
+        tests: [unique, not_null]
+      - name: refund_amt_14d
+        description: 14 天窗口内退款金额(元)
+      - name: refund_rate
+        description: 14 天退款率(金额口径)

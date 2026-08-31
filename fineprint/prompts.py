@@ -40,6 +40,8 @@ MERGE = {
 formula 硬性要求:必须是合法 SQL 表达式(如 round(sum(case when … then … end) / nullif(…, 0), 2)),
 不含 SELECT/FROM/JOIN 子句、不含注释或说明文字;中文只允许出现在字符串字面量内;
 过滤范围写进 key_filters 而非 formula。任何说明性文字一律写进 summary。
+自由文本(window/special/key_filters.text/summary)一律用中文书写,即使源注释或标识符是其他语言
+(SQL 标识符与字面量照抄不译)。
 只依据输入归并化简,不新增事实;同义条件合并为一条。只输出 JSON。""",
 "en": """You are a metric caliber merger. Input: per-hop structured caliber facts along the warehouse chain (mart ← intermediate ← staging ← source). Output the end-to-end technical caliber as JSON:
 {"formula": "end-to-end equivalent computation: a single SQL-parseable aggregate expression fragment, one line",
@@ -49,6 +51,8 @@ formula 硬性要求:必须是合法 SQL 表达式(如 round(sum(case when … t
  "summary": "2-3 sentence technical summary"}
 Hard rule for formula: it must be a valid SQL expression (e.g. round(sum(case when … then … end) / nullif(…, 0), 2)) —
 no SELECT/FROM/JOIN clauses, no comments or explanatory text; filters belong in key_filters, prose belongs in summary.
+Write all free text (window/special/key_filters.text/summary) in English, even when source comments or
+identifiers are in another language (keep SQL identifiers and literals verbatim, untranslated).
 Merge and simplify strictly from the input; add no new facts; fold equivalent conditions into one. JSON only.""",
 }
 
@@ -62,7 +66,8 @@ BIZ = {
 硬性要求:
 1. 每条 clause 必须给出非空 evidence_ids,且只能引用证据清单中存在的编号;basis 照抄所引证据文本;
 2. 无法绑定任何证据编号的信息不得写入 clauses,只能写入 caveats 并以"(无确定性证据)"结尾;
-3. 只使用输入中存在的事实与术语;字段缺业务注释时用技术直译并标注"(待补充业务注释)";禁止引入任何输入之外的业务假设。只输出 JSON。""",
+3. 只使用输入中存在的事实与术语;字段缺业务注释时用技术直译并标注"(待补充业务注释)";禁止引入任何输入之外的业务假设。
+4. 自由文本(definition/clauses.text/caveats)一律用中文书写,即使源注释或标识符是其他语言(SQL 标识符与字面量照抄不译)。只输出 JSON。""",
 "en": """You are a business-caliber writer. Input: cross-validated technical caliber, a numbered evidence list (from the lineage engine and machine-verified SQL quotes), column business descriptions, and a business lexicon. Output a caliber JSON that business readers understand directly:
 {"definition": "one-sentence business definition (≤40 words: numerator/denominator, scope, window)",
  "clauses": [{"text": "business clause (e.g. 'excludes flash refunds within 60s of payment')",
@@ -72,5 +77,6 @@ BIZ = {
 Hard rules:
 1. every clause must carry non-empty evidence_ids referencing only IDs present in the evidence list; basis must copy the cited evidence text;
 2. anything that cannot bind to an evidence ID must go to caveats suffixed '(no deterministic evidence)', never into clauses;
-3. use only facts and terms present in the input; where a column lacks a business description, translate technically and mark '(description pending)'; never introduce outside assumptions. JSON only.""",
+3. use only facts and terms present in the input; where a column lacks a business description, translate technically and mark '(description pending)'; never introduce outside assumptions.
+4. write all free text (definition/clauses.text/caveats) in English, even when the source comments or identifiers are in another language (keep SQL identifiers and literals verbatim, untranslated). JSON only.""",
 }

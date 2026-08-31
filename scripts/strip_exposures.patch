@@ -1,8 +1,8 @@
 diff --git a/fineprint/cli.py b/fineprint/cli.py
-index b379a4b..905165e 100644
+index dc6c61f..eef8d79 100644
 --- a/fineprint/cli.py
 +++ b/fineprint/cli.py
-@@ -45,67 +45,21 @@ def _graph(project):
+@@ -45,43 +45,6 @@ def _graph(project):
      return _load_graph_or_raise(project)   # 缺图抛 FileNotFoundError,统一出口成文
  
  
@@ -43,12 +43,13 @@ index b379a4b..905165e 100644
 -            "# 挪进上方 metrics 列表并取消注释即生效)\n" + "\n".join(lines) + "\n")
 -
 -
- def cmd_init(args):
-     from fineprint.config import example_yml
-     f = Path(args.project) / "fineprint.yml"
-     if f.exists() and not args.force:
-         print(t(f"{f} 已存在(--force 覆盖)", f"{f} already exists (--force to overwrite)"))
-         return
+ def _write_demo(dst_root: Path) -> Path:
+     """把包内 _demo(examples/quickstart 的发行拷贝,scripts/sync_demo.py 同步)
+     落到 dst_root/fineprint-quickstart——纯 pip 用户零检出即可见效果。"""
+@@ -122,24 +85,15 @@ def cmd_init(args):
+                 f"note: no dbt_project.yml found under {Path(args.project).resolve()} — "
+                 f"fineprint expects a dbt project root (or point --project at one); "
+                 f"writing the template anyway"), file=sys.stderr)
 -    text, tip = example_yml(), ""
 -    try:
 -        block = _exposure_candidates(_project(args))
@@ -74,7 +75,7 @@ index b379a4b..905165e 100644
              f"  3. fineprint trace model.column\n"
              f"configure the LLM env vars (see README) only when you generate "
 diff --git a/fineprint/drift.py b/fineprint/drift.py
-index c20a3d2..006ff54 100644
+index b468eea..40009e3 100644
 --- a/fineprint/drift.py
 +++ b/fineprint/drift.py
 @@ -183,30 +183,6 @@ def append_events(project: DbtProject, events: list, from_at: str, to_at: str):
@@ -106,17 +107,17 @@ index c20a3d2..006ff54 100644
 -
 -
  def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True,
-               block_high: bool = False) -> list:
-     """基线不存在则建立基线(无事件);否则对比最近快照。
-@@ -224,7 +200,6 @@ def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True
-                 f"nothing to compare against"))
-         return []
+               block_high: bool = False) -> list | None:
+     """基线不存在则建立基线并返回 None(首跑没有"对比"这回事,不能再报"无变化");
+@@ -225,7 +201,6 @@ def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True
+                 f"subsequent runs will compare against it"))
+         return None
      events = diff_snapshots(prev, cur)
 -    annotate_exposures(events, cfg, graph)
      blocked = block_high and any(e["severity"] == "high" for e in events)
      if save and not blocked:
          if events:
-@@ -249,7 +224,4 @@ def print_events(events: list):
+@@ -250,7 +225,4 @@ def print_events(events: list):
          mark = {"high": "⚠", "medium": "·", "info": "i"}[e["severity"]]
          d = e["detail"]
          brief = d.get("sql") or d.get("source") or d.get("column") or ""

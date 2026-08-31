@@ -1,0 +1,40 @@
+{
+ "schema_version": 1,
+ "run_id": "146c1e99",
+ "at": "2026-08-31T14:13:34",
+ "cards": {
+  "daily_gmv": {
+   "title": "每日GMV",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-31T14:13:34",
+   "run_id": "146c1e99",
+   "publication_status": "VERIFIED",
+   "race": "agree",
+   "formula_authority": "machine"
+  },
+  "refund_rate_14d": {
+   "title": "14天退款率",
+   "confidence": "high",
+   "status": "published",
+   "generated_at": "2026-08-31T14:13:33",
+   "run_id": "146c1e99",
+   "publication_status": "VERIFIED",
+   "race": "agree",
+   "formula_authority": "machine"
+  }
+ },
+ "requested": 2,
+ "succeeded": 2,
+ "mode": "full",
+ "race": {
+  "verdicts": {
+   "agree": 2
+  },
+  "disagree": [],
+  "renderer_unsupported": []
+ },
+ "publication": {
+  "VERIFIED": 2
+ }
+}

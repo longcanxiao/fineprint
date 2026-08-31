@@ -212,3 +212,53 @@ class TestFirstRunFriction:
         if store.active_dir() is None:
             pytest.skip("quickstart 内置批次不在(sdist 场景)")
         assert (store.index() or {}).get("schema_version") == CARD_SCHEMA_VERSION
+
+    def test_init_warns_outside_dbt_project(self, tmp_path, capsys):
+        main(["init", "--project", str(tmp_path)])
+        err = capsys.readouterr().err
+        assert "dbt_project.yml" in err          # 空目录不再静默成功:点名这不是 dbt 工程根
+        assert (tmp_path / "fineprint.yml").exists()   # 但模板照常生成
+
+    def test_drift_first_run_no_contradiction(self, tmp_path, capsys):
+        p = make_project(tmp_path, nodes={"model.p.stg": _node("stg", "c/stg.sql")},
+                         catalog_nodes={"model.p.stg": _cat("main", "stg", {"a": "INT"})},
+                         sqls={"c/stg.sql": "select 1 as a"})
+        (p.project_dir / "fineprint.yml").write_text(
+            "language: zh\nmetrics:\n  - key: a\n    title: A\n    target: stg.a\n",
+            encoding="utf-8")
+        main(["graph", "--project", str(p.project_dir)])
+        main(["drift", "--project", str(p.project_dir)])
+        out = capsys.readouterr().out
+        assert "基线" in out
+        # 首跑=建基线,没有"对比"这回事,不得再并列一句"无变化"
+        assert "无变化" not in out and "no changes" not in out
+
+    def test_init_demo_full_loop(self, tmp_path, capsys):
+        main(["init", "--demo", "--project", str(tmp_path)])
+        d = tmp_path / "fineprint-quickstart"
+        assert (d / "target" / "manifest.json").exists()
+        assert (d / ".fineprint" / "store" / "active_run").exists()  # 内置批次随包走
+        main(["graph", "--project", str(d)])
+        assert (d / ".fineprint" / "graph.json").exists()
+        rc = main(["init", "--demo", "--project", str(tmp_path)])    # 已存在:一行报错
+        err = capsys.readouterr().err
+        assert rc == 1 and "fineprint-quickstart" in err and "Traceback" not in err
+
+    def test_demo_matches_quickstart_tracked_files(self):
+        # _demo=examples/quickstart 发行拷贝,必须与 git 跟踪集逐字节一致(scripts/sync_demo.py)
+        import subprocess
+        try:
+            out = subprocess.run(["git", "-C", str(ROOT), "ls-files", "examples/quickstart"],
+                                 capture_output=True, text=True, check=True).stdout
+        except Exception:
+            pytest.skip("无 git(非仓库环境)")
+        tracked = {ln.split("examples/quickstart/", 1)[1]
+                   for ln in out.splitlines() if ln.strip()}
+        if not tracked:
+            pytest.skip("git 未跟踪 quickstart(非仓库环境)")
+        demo = ROOT / "fineprint" / "_demo"
+        demo_files = {str(p.relative_to(demo)) for p in demo.rglob("*") if p.is_file()}
+        assert demo_files == tracked
+        for rel in sorted(tracked):
+            assert (demo / rel).read_bytes() == \
+                (ROOT / "examples" / "quickstart" / rel).read_bytes(), rel

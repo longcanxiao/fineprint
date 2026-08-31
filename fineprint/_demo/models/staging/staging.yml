@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: 订单清洗层。已剔除内部测试账号(is_test=1),下游口径均不含测试流量。
+    columns:
+      - name: order_id
+        description: 订单号
+        tests: [unique, not_null]
+      - name: amount
+        description: 订单支付金额(元)
+      - name: status
+        description: 订单状态(paid=支付成功,cancelled=已取消)
+      - name: paid_at
+        description: 支付时间
+  - name: stg_refunds
+    description: 退款清洗层。上游消息可能重复投递,按 refund_id 去重保留最新一条。
+    columns:
+      - name: refund_id
+        description: 退款单号
+        tests: [unique, not_null]
+      - name: refund_amount
+        description: 退款金额(元)
+      - name: refunded_at
+        description: 退款完成时间

@@ -51,7 +51,7 @@ $ fineprint trace --project . dm_refund_rate_1d.refund_rate
 
 This caliber tree is derived from the SQL by a deterministic program — no LLM involved.
 
-Try it yourself in 10 minutes with the [bundled example project](https://github.com/longcanxiao/fineprint/tree/main/examples/quickstart) — pre-built dbt artifacts included, no dbt install and no database needed.
+Try it yourself in 10 minutes with the [bundled example project](https://github.com/longcanxiao/fineprint/tree/main/examples/quickstart) — pre-built dbt artifacts included, no dbt install and no database needed. No checkout needed either: `pip install fineprint && fineprint init --demo`.
 
 ## Core capabilities
 
@@ -128,6 +128,19 @@ pip install fineprint
 ```
 
 ## Quick start
+
+No dbt project handy? Start with the bundled example — no dbt, no database,
+no LLM key (a pre-built card batch ships with it):
+
+```bash
+fineprint init --demo && cd fineprint-quickstart
+
+fineprint graph
+fineprint trace dm_refund_rate_1d.refund_rate
+fineprint report
+```
+
+On your own dbt project:
 
 ```bash
 cd your-dbt-project

@@ -3,10 +3,10 @@
  "metric_key": "daily_gmv",
  "title": "每日GMV",
  "target": "dm_sales_1d.gmv",
- "run_id": "71b5efd5",
+ "run_id": "146c1e99",
  "extra_targets": [],
  "query_filter": null,
- "generated_at": "2026-08-31T13:51:11",
+ "generated_at": "2026-08-31T14:13:34",
  "llm_model": "deepseek-v4-flash+deepseek-v4-pro",
  "graph_md5": "0462c3f8c04d0ec4",
  "graph_generated_at": "2026-08-31T13:51:02",
@@ -32,10 +32,10 @@
   "freetext_unverified": {}
  },
  "technical": {
-  "formula": "sum(case when status = 'paid' and is_test = 0 then amount end)",
-  "window": "每日统计，按支付日期(cast(paid_at as date))归属统计日",
+  "formula": "sum(amount)",
+  "window": "stat-date assignment: grouped by cast(paid_at as date)",
   "special": [
-   "按支付日期(cast(paid_at as date))归属统计日"
+   "sum aggregation"
   ],
   "key_filters": [
    {
@@ -47,29 +47,31 @@
     "layer": "staging"
    }
   ],
-  "summary": "每日GMV为支付成功且非测试订单的支付金额汇总。订单需满足状态为已支付(status='paid')且排除内部测试账号(is_test=0)。统计日按支付日期(cast(paid_at as date))归属。"
+  "summary": "Daily GMV is computed as sum(amount) over orders that pass both the dm-layer filter status = 'paid' and the staging-layer filter is_test = 0. The aggregation is grouped by cast(paid_at as date), assigning each paid order to its payment date. The underlying amount column flows unchanged from fineprint_demo.main.raw_orders through stg_orders into the dm aggregation."
  },
  "business": {
-  "definition": "当日成交总额(元)，即支付成功且非测试订单的支付金额汇总，按支付日期归属统计日。",
+  "definition": "Daily GMV sums stg_orders.amount for orders with status = 'paid' and is_test = 0, grouped by CAST(paid_at AS DATE) as the payment date.",
   "clauses": [
    {
-    "text": "仅统计支付成功(status='paid')的订单",
+    "text": "Includes only orders with status = 'paid'.",
     "basis": "status = 'paid'",
     "evidence_ids": [
-     "E1"
+     "E1",
+     "Q1"
     ],
     "basis_verified": true
    },
    {
-    "text": "剔除测试订单(is_test=0)",
+    "text": "Excludes test orders by requiring is_test = 0.",
     "basis": "is_test = 0",
     "evidence_ids": [
-     "E2"
+     "E2",
+     "Q2"
     ],
     "basis_verified": true
    },
    {
-    "text": "按支付日期(paid_at)归属统计日",
+    "text": "Groups by payment date using CAST(paid_at AS DATE).",
     "basis": "CAST(paid_at AS DATE)",
     "evidence_ids": [
      "S1"
@@ -77,10 +79,18 @@
     "basis_verified": true
    },
    {
-    "text": "GMV为订单支付金额(amount)的汇总",
+    "text": "Daily GMV is the sum of stg_orders.amount.",
     "basis": "gmv = SUM(\"stg_orders\".\"amount\")",
     "evidence_ids": [
      "X1"
+    ],
+    "basis_verified": true
+   },
+   {
+    "text": "stg_orders.amount is copied unchanged from raw_orders.amount.",
+    "basis": "amount = \"raw_orders\".\"amount\"",
+    "evidence_ids": [
+     "X2"
     ],
     "basis_verified": true
    }
@@ -163,11 +173,9 @@
   }
  },
  "race": {
-  "verdict": "consistent",
+  "verdict": "agree",
   "detail": {
-   "note": "无机器矛盾但未达结构一致",
-   "llm": "sum(case when status = 'paid' and is_test = 0 then amount end)",
-   "renderer": "sum(amount)"
+   "matched": "sum(amount)"
   }
  },
  "evidence": [
@@ -218,7 +226,7 @@
    "kind": "verified_quote:where",
    "model": "stg_orders",
    "line": null,
-   "text": "where is_test = 0"
+   "text": "is_test = 0"
   }
  ],
  "governance": {
@@ -285,12 +293,13 @@
      "expression": "sum(amount)",
      "source_columns": [
       {
-       "table": "fineprint_demo.main.stg_orders",
+       "table": "stg_orders",
        "column": "amount"
       }
      ],
      "special": [
-      "按支付日期(cast(paid_at as date))归属统计日"
+      "sum aggregation",
+      "stat-date assignment: grouped by cast(paid_at as date)"
      ]
     }
    },
@@ -298,7 +307,7 @@
     {
      "quote": "status = 'paid'",
      "kind": "where",
-     "effect": "只保留支付成功订单，排除未支付及取消订单",
+     "effect": "Keeps only paid orders, excluding cancelled and non-paid statuses before aggregation.",
      "quote_verified": true,
      "match": "matched"
     }
@@ -321,9 +330,9 @@
    },
    "filters": [
     {
-     "quote": "where is_test = 0",
+     "quote": "is_test = 0",
      "kind": "where",
-     "effect": "剔除内部测试账号(is_test=0),只保留真实用户订单",
+     "effect": "Keeps only rows where is_test equals 0, excluding internal test accounts.",
      "quote_verified": true,
      "match": "matched"
     }

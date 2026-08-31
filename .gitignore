@@ -19,6 +19,8 @@ logs/
 examples/quickstart/.fineprint/*
 !examples/quickstart/.fineprint/graph.json
 !examples/quickstart/.fineprint/store/
+# fineprint/_demo = quickstart 的发行拷贝(scripts/sync_demo.py 同步,随 wheel 走)
+!fineprint/_demo/.fineprint/
 warehouse/dbt_project/.metriclens/
 warehouse/dbt_project/.fineprint/
 .env

@@ -46,9 +46,23 @@ Beyond caliber cards, the same lineage powers drift detection:
 
 ## Quickstart
 
-> Want a hands-on tour first? [`examples/quickstart/`](examples/quickstart/) is a
-> self-contained 10-minute walkthrough — pre-built dbt artifacts included, no
-> dbt install and no database needed.
+**No dbt project handy? Start with the bundled example** — pre-built dbt
+artifacts and a card batch included; no dbt install, no database, no LLM key:
+
+```bash
+# Python 3.10+
+pip install fineprint
+fineprint init --demo && cd fineprint-quickstart
+
+fineprint graph                                # column-level lineage (zero LLM)
+fineprint trace dm_refund_rate_1d.refund_rate  # the fine print of one metric
+fineprint report                               # caliber cards — a batch ships with the demo
+```
+
+The same example lives at [`examples/quickstart/`](examples/quickstart/) with a
+10-minute walkthrough (including the caliber-drift experiment).
+
+**On your own dbt project:**
 
 ```bash
 # Python 3.10+

@@ -82,12 +82,46 @@ def _exposure_candidates(project) -> str:
             "# 挪进上方 metrics 列表并取消注释即生效)\n" + "\n".join(lines) + "\n")
 
 
+def _write_demo(dst_root: Path) -> Path:
+    """把包内 _demo(examples/quickstart 的发行拷贝,scripts/sync_demo.py 同步)
+    落到 dst_root/fineprint-quickstart——纯 pip 用户零检出即可见效果。"""
+    import importlib.resources as res
+    import shutil
+    dst = dst_root / "fineprint-quickstart"
+    if dst.exists():
+        raise FileExistsError(t(f"{dst} 已存在;先移走,或换个 --project 位置",
+                                f"{dst} already exists; move it aside or pick "
+                                f"another --project location"))
+    with res.as_file(res.files("fineprint") / "_demo") as src:
+        shutil.copytree(src, dst)
+    return dst
+
+
 def cmd_init(args):
     from fineprint.config import example_yml
+    if args.demo:
+        dst = _write_demo(Path(args.project))
+        print(t(f"示例工程已写入 {dst}(内置 dbt 编译产物与口径批次,零数据库)\n"
+                f"下一步:\n  cd {dst.name}\n  fineprint graph\n"
+                f"  fineprint trace dm_refund_rate_1d.refund_rate\n"
+                f"没有 LLM key 也可直接 fineprint report 看内置批次;详见其中 README",
+                f"demo project written to {dst} (bundled dbt artifacts and card batch, "
+                f"zero database)\nnext:\n  cd {dst.name}\n  fineprint graph\n"
+                f"  fineprint trace dm_refund_rate_1d.refund_rate\n"
+                f"no LLM key needed to view the bundled batch: fineprint report — "
+                f"see its README"))
+        return
     f = Path(args.project) / "fineprint.yml"
     if f.exists() and not args.force:
         print(t(f"{f} 已存在(--force 覆盖)", f"{f} already exists (--force to overwrite)"))
         return
+    if not (Path(args.project) / "dbt_project.yml").exists():
+        # 空目录静默成功会让用户以为装好了:点名这里不是 dbt 工程根
+        print(t(f"提示: {Path(args.project).resolve()} 下未发现 dbt_project.yml——"
+                f"fineprint 应在 dbt 项目根运行(或用 --project 指向它);模板仍会生成",
+                f"note: no dbt_project.yml found under {Path(args.project).resolve()} — "
+                f"fineprint expects a dbt project root (or point --project at one); "
+                f"writing the template anyway"), file=sys.stderr)
     text, tip = example_yml(), ""
     try:
         block = _exposure_candidates(_project(args))
@@ -202,6 +236,8 @@ def cmd_drift(args):
     cfg = _cfg(args)
     events = run_check(project, cfg, _graph(project), save=not args.dry_run,
                        block_high=args.strict)
+    if events is None:          # 首跑=建基线,run_check 已说明,不再报"无变化"
+        return
     print_events(events)
     if args.strict and any(e["severity"] == "high" for e in events):
         sys.exit(1)
@@ -293,6 +329,12 @@ def main(argv=None):
     p.add_argument("--force", action="store_true",
                    help=t("已存在 fineprint.yml 时覆盖重写",
                           "overwrite an existing fineprint.yml"))
+    p.add_argument("--demo", action="store_true",
+                   help=t("写入自带示例工程 fineprint-quickstart/(含 dbt 编译产物与"
+                          "口径批次,零 dbt 零数据库,10 分钟走读)",
+                          "write the bundled example project to fineprint-quickstart/ "
+                          "(dbt artifacts and a card batch included; no dbt, no "
+                          "database — a 10-minute tour)"))
     p.set_defaults(fn=cmd_init)
     p = common(sub.add_parser("graph", help=t("构建字段级血缘图",
                                               "build the column-level lineage graph")))
@@ -349,7 +391,8 @@ def main(argv=None):
         # FINEPRINT_DEBUG=1 原样抛出
         if os.environ.get("FINEPRINT_DEBUG"):
             raise
-        expected = isinstance(e, (FileNotFoundError, ValueError, KeyError, RuntimeError))
+        expected = isinstance(e, (FileNotFoundError, FileExistsError, ValueError,
+                                  KeyError, RuntimeError))
         head = (t("错误", "error") if expected
                 else t(f"内部错误({type(e).__name__})", f"internal error ({type(e).__name__})"))
         print(f"{head}: {_err_text(e)}", file=sys.stderr)

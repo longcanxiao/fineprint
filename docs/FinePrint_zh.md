@@ -47,7 +47,7 @@ $ fineprint trace --project . dm_refund_rate_1d.refund_rate
 
 这棵口径树由确定性程序直接从 SQL 推导，不依赖 LLM。
 
-想亲手跑一遍？[内置示例工程](https://github.com/longcanxiao/fineprint/tree/main/examples/quickstart) 10 分钟走完全流程——预编译产物已内置，不装 dbt、不建数据库。
+想亲手跑一遍？[内置示例工程](https://github.com/longcanxiao/fineprint/tree/main/examples/quickstart) 10 分钟走完全流程——预编译产物已内置，不装 dbt、不建数据库。不检出仓库也行：`pip install fineprint && fineprint init --demo`。
 
 ## 核心能力
 
@@ -122,6 +122,19 @@ pip install fineprint
 ```
 
 ## 快速开始
+
+手边没有 dbt 项目？先跑内置示例——不装 dbt、不连数据库、不配 LLM key
+（示例自带一份现成口径批次）：
+
+```bash
+fineprint init --demo && cd fineprint-quickstart
+
+fineprint graph
+fineprint trace dm_refund_rate_1d.refund_rate
+fineprint report
+```
+
+在你自己的 dbt 项目上：
 
 ```bash
 cd your-dbt-project

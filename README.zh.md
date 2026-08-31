@@ -44,11 +44,27 @@ dbt artifacts ──────► │  源表 / 过滤条件 / 表达式链(sq
 
 ## 快速开始
 
+**手边没有 dbt 项目?先跑内置示例**——自带 dbt 编译产物与口径批次,
+不装 dbt、不连数据库、不配 LLM key:
+
+```bash
+# Python 3.10+
+pip install fineprint
+fineprint init --demo && cd fineprint-quickstart
+
+fineprint graph                                # 字段级血缘(零 LLM)
+fineprint trace dm_refund_rate_1d.refund_rate  # 一个指标的小字条款
+fineprint report                               # 口径卡报告——示例内置现成批次
+```
+
+同一示例在 [`examples/quickstart/`](examples/quickstart/),含 10 分钟
+完整走读(包括口径漂移实验)。
+
+**在你自己的 dbt 项目上:**
+
 ```bash
 # Python 3.10+
 pip install fineprint       # PyPI 包名,import 名与 CLI 统一为 fineprint
-# 想先上手体验?examples/quickstart/ 是 10 分钟完整走读:内置 dbt 编译产物,
-# 不装 dbt、不连数据库即可体验 graph/trace/synth/drift 全流程
 pip install -e .            # 或从源码装,仅核心 CLI
 pip install -e ".[demo,dev]"   # + 基准数仓 / 看板 / 测试依赖
 
