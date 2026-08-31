@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.3 (2026-08-31)
+
+Description page: the five example conditions in the Chinese section are now a
+proper markdown list (bare lines had collapsed into one paragraph on PyPI).
+
 ## 0.9.2 (2026-08-31)
 
 PyPI description page rewritten (docs only, no code changes): story-first
