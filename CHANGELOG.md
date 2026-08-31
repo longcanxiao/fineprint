@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.2 (2026-08-31)
+
+PyPI description page rewritten (docs only, no code changes): story-first
+bilingual page — English first, full Chinese below. Refund-rate example with
+the real caliber tree, five-corpus coverage numbers (34,499 columns, 99.73%
+provable), the two-channel design, quick start, the minimal Python API, and
+honest boundaries (`synth` data disclosure; coverage ≠ business accuracy).
+Sources: docs/FinePrint_en.md + docs/FinePrint_zh.md.
+
 ## 0.9.1 (2026-08-31)
 
 Caliber tree readability (user feedback): the formula line now shows the real
