@@ -1,3 +1,5 @@
+import { t } from './i18n'
+
 export type Mode = 'light' | 'dark'
 
 export interface Tokens {
@@ -20,4 +22,4 @@ export const TOKENS: Record<Mode, Tokens> = {
 }
 
 export const CHANNELS = ['app', 'h5', 'live'] as const
-export const CHANNEL_LABEL: Record<string, string> = { app: 'App', h5: 'H5', live: '直播间' }
+export const CHANNEL_LABEL: Record<string, string> = { app: 'App', h5: 'H5', live: t('直播间', 'Live room') }

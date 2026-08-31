@@ -3,6 +3,8 @@ import type { EChartsOption } from 'echarts'
 import Chart from './Chart'
 import type { Trend } from '../api'
 import type { Tokens } from '../theme'
+import { t } from '../i18n'
+import { fmtAxisMoney, fmtTipMoney } from '../format'
 
 const axisCommon = (t: Tokens) => ({
   axisLine: { lineStyle: { color: t.baseline } },
@@ -19,11 +21,11 @@ export default function TrendPanel({ trend, tokens }: { trend: Trend | null; tok
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'line', lineStyle: { color: tokens.baseline } },
       backgroundColor: tokens.surface, borderColor: tokens.grid, textStyle: { color: tokens.ink, fontSize: 12 },
-      valueFormatter: (v) => ((v as number) / 1e4).toFixed(1) + ' 万元',
+      valueFormatter: (v) => fmtTipMoney(v as number),
     },
     xAxis: { type: 'category', data: dts, ...axisCommon(tokens) },
     yAxis: {
-      type: 'value', splitLine: { lineStyle: { color: tokens.grid } }, axisLabel: { color: tokens.muted, fontSize: 11, formatter: (v: number) => (v / 1e4).toFixed(0) + '万' },
+      type: 'value', splitLine: { lineStyle: { color: tokens.grid } }, axisLabel: { color: tokens.muted, fontSize: 11, formatter: fmtAxisMoney },
     },
     series: [{
       name: 'GMV', type: 'bar', barWidth: '58%',
@@ -47,7 +49,7 @@ export default function TrendPanel({ trend, tokens }: { trend: Trend | null; tok
       axisLabel: { color: tokens.muted, fontSize: 11, formatter: (v: number) => (v * 100).toFixed(1) + '%' },
     },
     series: [{
-      name: '近14天退款率', type: 'line', showSymbol: false, symbolSize: 8,
+      name: t('近14天退款率', '14-day refund rate'), type: 'line', showSymbol: false, symbolSize: 8,
       lineStyle: { width: 2, color: tokens.series[1] }, itemStyle: { color: tokens.series[1] },
       data: (trend?.daily ?? []).map(r => r.refund_rate_14d),
     }],
@@ -55,7 +57,7 @@ export default function TrendPanel({ trend, tokens }: { trend: Trend | null; tok
 
   return (
     <div className="panel">
-      <h2>GMV 与近14天退款率 <span className="note">同轴联动 · 悬浮查看逐日数值</span></h2>
+      <h2>{t('GMV 与近14天退款率', 'GMV & 14-day refund rate')} <span className="note">{t('同轴联动 · 悬浮查看逐日数值', 'shared axis · hover for daily values')}</span></h2>
       <Chart option={gmvOpt} height={210} group="trend" />
       <Chart option={rrOpt} height={150} group="trend" />
     </div>

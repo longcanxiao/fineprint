@@ -3,6 +3,7 @@ import type { EChartsOption } from 'echarts'
 import Chart from './Chart'
 import type { Card } from '../api'
 import type { Tokens } from '../theme'
+import { t } from '../i18n'
 
 export interface MetricDef {
   key: string
@@ -45,14 +46,14 @@ export default function MetricCard({ def, card, tokens, onCaliber, driftCount = 
           {def.label}
           {driftCount > 0 && (
             <button className="drift-badge" onClick={() => onCaliber(def.key, def.label)}
-              title={`该指标口径近期发生 ${driftCount} 处变更,点击查看变更历史`}>口径变更</button>
+              title={t(`该指标口径近期发生 ${driftCount} 处变更,点击查看变更历史`, `This metric's definition changed ${driftCount} time(s) recently — click to see the history`)}>{t('口径变更', 'drift')}</button>
           )}
         </span>
-        <button className="cal" onClick={() => onCaliber(def.key, def.label)} title="查看业务口径与技术口径(血缘+LLM 双通道合成)">口径 ⓘ</button>
+        <button className="cal" onClick={() => onCaliber(def.key, def.label)} title={t('查看业务口径与技术口径(血缘+LLM 双通道合成)', 'View business & technical definition (lineage + LLM dual-channel synthesis)')}>{t('口径 ⓘ', 'definition ⓘ')}</button>
       </div>
       <div className="v">{def.fmt(v)}{def.unit ? <span className="unit">{def.unit}</span> : null}</div>
       <div className={`d ${cls}`}>
-        <span className="lbl">环比 </span>
+        <span className="lbl">{t('环比 ', 'vs prev ')}</span>
         {delta == null ? '–' : `${arrow} ${(Math.abs(delta) * 100).toFixed(1)}%`}
       </div>
       <Chart option={spark} height={40} />

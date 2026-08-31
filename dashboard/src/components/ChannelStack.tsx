@@ -3,6 +3,8 @@ import type { EChartsOption } from 'echarts'
 import Chart from './Chart'
 import type { Trend } from '../api'
 import { CHANNELS, CHANNEL_LABEL, type Tokens } from '../theme'
+import { t } from '../i18n'
+import { fmtAxisMoney, fmtTipMoney } from '../format'
 
 export default function ChannelStack({ trend, tokens }: { trend: Trend | null; tokens: Tokens }) {
   const opt = useMemo<EChartsOption>(() => {
@@ -17,7 +19,7 @@ export default function ChannelStack({ trend, tokens }: { trend: Trend | null; t
       tooltip: {
         trigger: 'axis',
         backgroundColor: tokens.surface, borderColor: tokens.grid, textStyle: { color: tokens.ink, fontSize: 12 },
-        valueFormatter: (v) => ((v as number) / 1e4).toFixed(1) + ' 万元',
+        valueFormatter: (v) => fmtTipMoney(v as number),
       },
       xAxis: {
         type: 'category', data: rows.map(r => r.dt.slice(5)),
@@ -26,7 +28,7 @@ export default function ChannelStack({ trend, tokens }: { trend: Trend | null; t
       },
       yAxis: {
         type: 'value', splitLine: { lineStyle: { color: tokens.grid } },
-        axisLabel: { color: tokens.muted, fontSize: 11, formatter: (v: number) => (v / 1e4).toFixed(0) + '万' },
+        axisLabel: { color: tokens.muted, fontSize: 11, formatter: fmtAxisMoney },
       },
       series: CHANNELS.map((ch, i) => ({
         name: CHANNEL_LABEL[ch], type: 'bar' as const, stack: 'gmv', barWidth: '58%',
@@ -38,7 +40,7 @@ export default function ChannelStack({ trend, tokens }: { trend: Trend | null; t
 
   return (
     <div className="panel">
-      <h2>归因渠道 GMV 结构 <span className="note">直播结束 30 分钟内支付归直播间</span></h2>
+      <h2>{t('归因渠道 GMV 结构', 'GMV by attributed channel')} <span className="note">{t('直播结束 30 分钟内支付归直播间', 'paid ≤30 min after stream ends attributes to the live room')}</span></h2>
       <Chart option={opt} height={374} />
     </div>
   )

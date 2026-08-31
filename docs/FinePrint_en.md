@@ -60,7 +60,7 @@ On a dashboard, every metric card becomes a definition entry — one click opens
 
 ![The definition card: business clauses pinned to numbered evidence, a machine-proven formula, the lineage canvas and change history](https://raw.githubusercontent.com/longcanxiao/fineprint/main/docs/assets/popup-top.png)
 
-*(Demo dashboard, Chinese sample data; an animated tour lives in the [repository README](https://github.com/longcanxiao/fineprint#readme).)*
+*(Demo dashboard — the demo warehouse's SQL is commented in Chinese, and with `language: en` the cards still synthesize in English. An animated tour lives in the [repository README](https://github.com/longcanxiao/fineprint#readme).)*
 
 ## Core capabilities
 

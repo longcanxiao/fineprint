@@ -17,7 +17,7 @@ FinePrint reverse-engineers the business & technical definition of every dashboa
 
 ![Click the definition entry on any dashboard metric to open its full definition card — business clauses with evidence ids, a machine-proven formula, the lineage canvas and change history](docs/assets/caliber-popup.gif)
 
-*Every metric card carries a definition entry: one click opens the full definition card — business clauses each pinned to numbered evidence, the machine-proven formula, the lineage canvas, and the metric's change history. (Demo dashboard; sample data is Chinese.)*
+*Every metric card carries a definition entry: one click opens the full definition card — business clauses each pinned to numbered evidence, the machine-proven formula, the lineage canvas, and the metric's change history. (Demo dashboard — the bundled warehouse is documented in Chinese; with `language: en` the cards still come out in English.)*
 
 ## How it works
 
