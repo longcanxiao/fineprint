@@ -8,7 +8,7 @@ variables, CLI conventions, exit codes, and what lands in `.fineprint/`.
 Lives at the dbt project root. `fineprint init` writes a commented template.
 
 ```yaml
-language: en            # caliber card + CLI language: zh | en
+language: en            # definition card + CLI language: zh | en
 metrics:                # dashboard metrics to trace and synthesize cards for
   - key: refund_rate_14d          # your stable identifier (file names, API lookup)
     title: 14-day refund rate     # display title on cards and reports
@@ -63,12 +63,12 @@ keys are loaded, and existing environment variables are never overridden).
   batch (the other cards are carried over from the active batch).
 - `synth --verbose` adds per-step detail; `synth --json` emits one JSON event
   per line for wrappers and CI.
-- `trace … --full` annotates the caliber tree with source files, compiled
+- `trace … --full` annotates the definition tree with source files, compiled
   line numbers and per-branch source columns.
 - `drift --strict` is the CI gate: high-severity drift exits non-zero and
   leaves the baseline and log untouched.
 - `report -o FILE` chooses the output path (default
-  `.fineprint/caliber_report.html`).
+  `.fineprint/metric_report.html`).
 
 ## Exit codes
 
@@ -90,10 +90,10 @@ Everything FinePrint writes stays under the analyzed project:
 | Path | Content |
 |---|---|
 | `.fineprint/graph.json` | the lineage graph (rebuild any time with `fineprint graph`) |
-| `.fineprint/store/runs/<id>/` | one JSON per caliber card + `index.json`; batches are atomic |
+| `.fineprint/store/runs/<id>/` | one JSON per definition card + `index.json`; batches are atomic |
 | `.fineprint/store/active_run` | pointer to the currently published batch |
 | `.fineprint/cache/` | content-addressed LLM responses — contains SQL fragments, treat like source code; safe to delete (costs re-synthesis) |
-| `.fineprint/caliber_report.html` | default report output |
+| `.fineprint/metric_report.html` | default report output |
 | drift snapshots + event log | the drift baseline; `--strict` failures do not touch it |
 
 See [privacy.md](privacy.md) for what any of this means for sensitive

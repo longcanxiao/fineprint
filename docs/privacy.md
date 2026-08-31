@@ -24,7 +24,7 @@ calls**. You can run them on an air-gapped machine.
 
 ## The one command that talks to a network: `synth`
 
-`fineprint synth` generates the business-readable half of caliber cards by
+`fineprint synth` generates the business-readable half of definition cards by
 calling the LLM endpoint **you** configure (`FINEPRINT_LLM_BASE_URL` — any
 OpenAI-compatible API, including self-hosted ones).
 
@@ -54,13 +54,13 @@ Everything FinePrint writes stays inside the analyzed project, under
 `.fineprint/`:
 
 - `graph.json` — the lineage graph (derived from your SQL);
-- `store/` — caliber card batches (JSON);
+- `store/` — definition card batches (JSON);
 - `cache/` — LLM responses, keyed by content. **This cache contains
   fragments of your compiled SQL.** Treat the whole `.fineprint/` directory
   with the same care as your source code (it is safe to delete; deleting it
   only costs re-synthesis).
 - drift snapshots and the drift event log;
-- `caliber_report.html` when you export a report.
+- `metric_report.html` when you export a report.
 
 `.fineprint/` and `.env` belong in your `.gitignore` unless your team decides
 otherwise (the cards themselves are often worth committing — that is your

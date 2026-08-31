@@ -46,8 +46,8 @@ def norm_text(s: str) -> str:
 STAGES = {
     "trace":    ("血缘回溯", "tracing lineage"),
     "extract":  ("逐跳抽取", "per-hop extraction"),
-    "merge":    ("归并技术口径", "merging technical caliber"),
-    "business": ("业务口径生成", "generating business caliber"),
+    "merge":    ("归并技术口径", "merging technical definition"),
+    "business": ("业务口径生成", "generating business definition"),
     "validate": ("互验与组合器", "cross-validation & composer"),
 }
 

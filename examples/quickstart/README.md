@@ -51,14 +51,14 @@ fineprint trace dm_refund_rate_1d.refund_rate
 │
 ├─ numerator  SUM(COALESCE(refund_amount, 0))
 │  ├─ where refund_amount = SUM(raw_refunds.refund_amount) aggregated by order_id (via join)
-│  ├─ caliber: r.refunded_at <= o.paid_at + INTERVAL '14' DAY   (dm_refund_rate_1d.refund_14d)
-│  ├─ caliber: rn = 1   (stg_refunds)
+│  ├─ rule: r.refunded_at <= o.paid_at + INTERVAL '14' DAY   (dm_refund_rate_1d.refund_14d)
+│  ├─ rule: rn = 1   (stg_refunds)
 │  └─ chain: stg_refunds → this layer
 │
 ├─ denominator  SUM(raw_orders.amount)
 │  └─ chain: stg_orders → this layer
 │
-└─ caliber shared by both sides
+└─ rules shared by both sides
    ├─ status = 'paid'   (dm_refund_rate_1d.paid_orders)
    └─ is_test = 0   (stg_orders)
 ```
@@ -72,8 +72,8 @@ by them too — exactly what a value-path-only reading would misplace). Add
 `--full` to pin a source file and compiled line-number anchor on every clause.
 
 These clauses are not decoration. The bundled data contains one 50-yuan
-refund issued 19 days after payment: under the 14-day caliber, August 1st's
-refund rate is **3.93%** — under a 30-day caliber it would be **4.43%**.
+refund issued 19 days after payment: under the 14-day window, August 1st's
+refund rate is **3.93%** — under a 30-day window it would be **4.43%**.
 Half a point apart: exactly the kind of gap two teams argue about in a
 review meeting.
 
@@ -87,7 +87,7 @@ review meeting.
 cp .env.example .env    # fill in your key (any OpenAI-style endpoint works)
 ```
 
-## 4. Dual-channel caliber synthesis
+## 4. Dual-channel definition synthesis
 
 ```bash
 fineprint synth
@@ -110,11 +110,11 @@ wording drifts across runs, so the `agree`/`consistent` split varies batch to
 batch — the composer never drifts; that is why formula authority belongs to
 the machine.)
 
-## 5. Export the caliber-card report
+## 5. Export the definition-card report
 
 ```bash
 fineprint report
-open .fineprint/caliber_report.html     # Windows: start, Linux: xdg-open
+open .fineprint/metric_report.html     # Windows: start, Linux: xdg-open
 ```
 
 ## 6. The drift experiment: someone quietly turns 14 days into 30
@@ -133,7 +133,7 @@ fineprint graph && fineprint drift
 ```
 
 ```
-caliber drift check: 2 events
+definition drift check: 2 events
 
   ⚠ [high  ] refund_rate_14d            condition_removed  r.refunded_at <= o.paid_at + INTERVAL '14' DAY
   ⚠ [high  ] refund_rate_14d            condition_added    r.refunded_at <= o.paid_at + INTERVAL '30' DAY
@@ -149,7 +149,7 @@ days". Revert the SQL when you're done.
 
 ## 7. (Optional) Rebuild the warehouse from scratch
 
-To see the full loop (edit model SQL → dbt compile → caliber changes),
+To see the full loop (edit model SQL → dbt compile → definition changes),
 install dbt:
 
 ```bash

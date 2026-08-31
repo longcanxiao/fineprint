@@ -22,11 +22,11 @@ DOC_EN = """the fineprint command line.
 
     fineprint init    --project <dbt project dir>  write a fineprint.yml template
     fineprint graph   --project DIR                build the column-level lineage graph (after dbt compile + docs generate)
-    fineprint trace   --project DIR model.column   caliber tree for one column (--full adds receipts)
-    fineprint synth   --project DIR [--only KEY]   dual-channel caliber synthesis, atomic batch publish
-    fineprint drift   --project DIR [--strict]     caliber snapshot diff, drift events logged
+    fineprint trace   --project DIR model.column   definition tree for one column (--full adds receipts)
+    fineprint synth   --project DIR [--only KEY]   dual-channel definition synthesis, atomic batch publish
+    fineprint drift   --project DIR [--strict]     definition snapshot diff, drift events logged
     fineprint govern  --project DIR                fingerprint scan + LLM arbitration → governance report
-    fineprint report  --project DIR [-o FILE]      export caliber cards as self-contained HTML
+    fineprint report  --project DIR [-o FILE]      export definition cards as self-contained HTML
 """
 
 
@@ -145,7 +145,7 @@ def cmd_init(args):
             f"  3. fill in metrics (model.column){tip}\n"
             f"  4. fineprint trace model.column\n"
             f"configure the LLM env vars (see README) only when you generate "
-            f"caliber cards: fineprint synth"))
+            f"definition cards: fineprint synth"))
 
 
 def _unknown_sources(project, graph) -> list:
@@ -332,10 +332,10 @@ def cmd_govern(args):
 def cmd_report(args):
     from fineprint.report import export_html
     project = _project(args)
-    out = Path(args.output) if args.output else project.workspace / "caliber_report.html"
+    out = Path(args.output) if args.output else project.workspace / "metric_report.html"
     n = export_html(project, out)
     print(t(f"报告已导出: {out}({n} 张口径卡)",
-            f"report exported: {out} ({n} caliber cards)"))
+            f"report exported: {out} ({n} definition cards)"))
 
 
 def _version() -> str:
@@ -423,7 +423,7 @@ def main(argv=None):
                                      "expand one model (short name, pkg:name or uid)"))
     p.set_defaults(fn=cmd_columns)
     p = common(sub.add_parser("trace", help=t("口径树回溯(--full 附出处明细)",
-                                              "caliber tree for one column (--full adds receipts)")))
+                                              "definition tree for one column (--full adds receipts)")))
     p.add_argument("target", help="model.column")
     p.add_argument("--full", action="store_true",
                    help=t("树上附源字段与出处锚点(条件的源文件·编译行;无树时回退平铺明细)",
@@ -431,7 +431,7 @@ def main(argv=None):
                           "compiled line per condition; falls back to flat receipts without a tree)"))
     p.set_defaults(fn=cmd_trace)
     p = common(sub.add_parser("synth", help=t("双通道口径合成(LLM)",
-                                              "dual-channel caliber synthesis (LLM)")))
+                                              "dual-channel definition synthesis (LLM)")))
     p.add_argument("--only", help=t("只重跑一个指标 key(从 active 批次补齐其余)",
                                     "re-run a single metric key (backfill the rest from the active batch)"))
     p.add_argument("-v", "--verbose", action="store_true",
@@ -441,7 +441,7 @@ def main(argv=None):
                    help=t("stdout 逐行输出 JSON 进度事件(供 CI/脚本消费)",
                           "emit JSON progress events line-by-line on stdout (for CI/scripts)"))
     p.set_defaults(fn=cmd_synth)
-    p = common(sub.add_parser("drift", help=t("口径漂移检测", "caliber drift check")))
+    p = common(sub.add_parser("drift", help=t("口径漂移检测", "definition drift check")))
     p.add_argument("--strict", action="store_true",
                    help=t("high 级漂移非零退出", "exit non-zero on high-severity drift"))
     p.add_argument("--dry-run", action="store_true",
@@ -453,10 +453,10 @@ def main(argv=None):
                                      "fingerprint scan + LLM arbitration → governance report"))
                ).set_defaults(fn=cmd_govern)
     p = common(sub.add_parser("report", help=t("口径卡导出 HTML",
-                                               "export caliber cards as HTML")))
+                                               "export definition cards as HTML")))
     p.add_argument("-o", "--output",
-                   help=t("输出文件(默认 .fineprint/caliber_report.html)",
-                          "output file (default .fineprint/caliber_report.html)"))
+                   help=t("输出文件(默认 .fineprint/metric_report.html)",
+                          "output file (default .fineprint/metric_report.html)"))
     p.set_defaults(fn=cmd_report)
 
     args = ap.parse_args(argv)

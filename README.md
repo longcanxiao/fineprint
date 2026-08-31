@@ -8,16 +8,16 @@
 
 Ask your dashboard what a metric *actually* means.
 
-FinePrint reverse-engineers the business & technical definition ("caliber") of every dashboard metric from the SQL that already exists in your dbt project — no upfront semantic-layer registration, no manual documentation. It answers questions like:
+FinePrint reverse-engineers the business & technical definition of every dashboard metric from the SQL that already exists in your dbt project — no upfront semantic-layer registration, no manual documentation. It answers questions like:
 
 > *"Does this refund rate count refunds forever, or only within 14 days of payment?"*
 > *"Is GMV here net of instant refunds? Which layer excludes test accounts?"*
 
 …by reading your multi-layer pipeline the way a careful analyst would, then proving its answers.
 
-![Click the caliber icon on any dashboard metric to open its full caliber card — business clauses with evidence ids, a machine-proven formula, the lineage canvas and change history](docs/assets/caliber-popup.gif)
+![Click the definition entry on any dashboard metric to open its full definition card — business clauses with evidence ids, a machine-proven formula, the lineage canvas and change history](docs/assets/caliber-popup.gif)
 
-*Every metric card carries a caliber entry: one click opens the full caliber card — business clauses each pinned to numbered evidence, the machine-proven formula, the lineage canvas, and the metric's change history. (Demo dashboard; sample data is Chinese.)*
+*Every metric card carries a definition entry: one click opens the full definition card — business clauses each pinned to numbered evidence, the machine-proven formula, the lineage canvas, and the metric's change history. (Demo dashboard; sample data is Chinese.)*
 
 ## How it works
 
@@ -29,18 +29,18 @@ dbt artifacts ──────► │  sources / filters / expression chain (s
 (manifest, catalog,   └─────────────────────────────────────────────────┘   ├─► cross-validation
  compiled SQL)        ┌─ Channel 2: LLM reads each model's SQL ──────────┐  │   → confidence grade
                 ────► │  verbatim quotes, machine-verified against source│ ──┘   → evidence-bound
-                      └─────────────────────────────────────────────────┘        caliber cards
+                      └─────────────────────────────────────────────────┘        definition cards
 ```
 
 - **Channel 1** traces every metric column back to source tables: source columns, every filter that shapes the row set (WHERE / JOIN ON / QUALIFY / HAVING, with scope analysis), window-dedup idioms, CASE WHEN attribution, COALESCE fallbacks, stat-date assignment — all with file/line anchors.
 - **Channel 2** has an LLM read each model's SQL independently. Every claimed filter must carry a **verbatim quote** that is machine-checked against the source — fabricated citations are structurally impossible.
-- The two channels are fingerprint-matched condition by condition. Only cross-validated filters enter the merged technical caliber. Business clauses must cite numbered deterministic evidence (`E`/`S`/`X`/`Q` ids); an unbound clause — or an empty clause list — caps the card's confidence. (The one-line definition and caveats are LLM prose over that evidence, not themselves machine-verified.)
+- The two channels are fingerprint-matched condition by condition. Only cross-validated filters enter the merged technical definition. Business clauses must cite numbered deterministic evidence (`E`/`S`/`X`/`Q` ids); an unbound clause — or an empty clause list — caps the card's confidence. (The one-line definition and caveats are LLM prose over that evidence, not themselves machine-verified.)
 - **Deterministic formula composer** (0.8): a third writer expands each metric's compiled SQL scope by scope into a provable formula — named sub-expressions at aggregation/window boundaries carry their defining grain, UNION branches and PIVOT columns expand deterministically, and the result must round-trip against channel 1's leaf sources plus the same lexicon/anchor validators the LLM faces. **The composer is the publishing authority for formulas; the LLM explains and narrates, and backstops only where the composer cannot prove** (multi-target combinations, scalar subqueries — each refusal carries a named machine reason). Calibrated on five public corpora across three dialects (Fivetran ad_reporting / postgres, Snowplow web / snowflake, Cal-ITP warehouse / bigquery, Mattermost analytics & snowflake-dbt / snowflake — the latter three are real production warehouses): **34,405 of 34,499 real-world columns (99.7%) composed and proven**, every residual named.
 - Low-confidence cards go to a review queue instead of being published. Batches publish atomically — consumers never see a half-updated state.
 
-Beyond caliber cards, the same lineage powers drift detection:
+Beyond definition cards, the same lineage powers drift detection:
 
-- **`fineprint drift`** — snapshots each metric's caliber (sources / condition fingerprints / semantics / expressions) and diffs across rebuilds: a 14→15-day window change surfaces as a `high` drift event on exactly the affected metrics.
+- **`fineprint drift`** — snapshots each metric's definition (sources / condition fingerprints / semantics / expressions) and diffs across rebuilds: a 14→15-day window change surfaces as a `high` drift event on exactly the affected metrics.
 
 **Roadmap** (prototyped in this repo, not part of the PyPI distribution; see [docs/stability.md](docs/stability.md)):
 
@@ -60,11 +60,11 @@ fineprint init --demo && cd fineprint-quickstart
 
 fineprint graph                                # column-level lineage (zero LLM)
 fineprint trace dm_refund_rate_1d.refund_rate  # the fine print of one metric
-fineprint report                               # caliber cards — a batch ships with the demo
+fineprint report                               # definition cards — a batch ships with the demo
 ```
 
 The same example lives at [`examples/quickstart/`](examples/quickstart/) with a
-10-minute walkthrough (including the caliber-drift experiment).
+10-minute walkthrough (including the definition-drift experiment).
 
 **On your own dbt project:**
 
@@ -81,14 +81,14 @@ fineprint init             # writes fineprint.yml — list your dashboard metric
                             # package.model.column when two packages share a model name)
 fineprint graph            # build the column-level lineage graph
 fineprint columns refund   # discover traceable model.column candidates (zero LLM)
-fineprint trace mart_orders.refund_rate_14d    # caliber tree for one metric (--full adds receipts)
+fineprint trace mart_orders.refund_rate_14d    # definition tree for one metric (--full adds receipts)
 
 export FINEPRINT_LLM_API_KEY=sk-...            # any OpenAI-compatible endpoint
 export FINEPRINT_LLM_MODEL=deepseek-chat       # or gpt-4.1-mini, etc.
-fineprint synth            # synthesize caliber cards (cached, atomic batch publish)
-fineprint report           # export a self-contained HTML caliber report
+fineprint synth            # synthesize definition cards (cached, atomic batch publish)
+fineprint report           # export a self-contained HTML definition report
 
-fineprint drift            # caliber drift check (--strict = CI gate: high drift
+fineprint drift            # definition drift check (--strict = CI gate: high drift
                             #   exits 1 and leaves baseline + log untouched)
 ```
 
@@ -98,8 +98,8 @@ public surface since 0.9 (see [docs/stability.md](docs/stability.md)):
 ```python
 import fineprint
 fineprint.build_graph("path/to/dbt_project")             # lineage graph (zero LLM)
-print(fineprint.trace("path/to/dbt_project", "dm.gmv"))  # caliber tree (zero LLM)
-batch = fineprint.cards("path/to/dbt_project")           # published caliber cards
+print(fineprint.trace("path/to/dbt_project", "dm.gmv"))  # definition tree (zero LLM)
+batch = fineprint.cards("path/to/dbt_project")           # published definition cards
 batch["gmv"]["technical_facts"]["formula"]               # the card JSON is the contract (schema_version frozen)
 ```
 
@@ -118,13 +118,13 @@ Configuration lives in `fineprint.yml` (metrics list, language `zh|en`, lexicon)
 
 Since 0.8.9 the CLI detects leftovers — a legacy config file, workspace directory, or `METRICLENS_*` keys — and prints the exact rename instead of a bare "not found".
 
-**Third-party dbt packages** (Fivetran connectors, shared vendor models, …) are treated as **data-source boundaries**, the same convention as ODS tables: their SQL, docs and internal calibers are not parsed — lineage stops at their materialized tables, which appear on cards tagged with the owning package. You govern *your* code; theirs is upstream infrastructure. To see through an internal shared package you do own, list it under a top-level `internal_packages: [shared_models]` in `fineprint.yml` and rebuild the graph.
+**Third-party dbt packages** (Fivetran connectors, shared vendor models, …) are treated as **data-source boundaries**, the same convention as ODS tables: their SQL, docs and internal SQL is not parsed — lineage stops at their materialized tables, which appear on cards tagged with the owning package. You govern *your* code; theirs is upstream infrastructure. To see through an internal shared package you do own, list it under a top-level `internal_packages: [shared_models]` in `fineprint.yml` and rebuild the graph.
 
-Everything FinePrint produces lives under `your-dbt-project/.fineprint/` — graph, caliber card batches (with an atomic `active_run` pointer), snapshots, drift log, LLM cache.
+Everything FinePrint produces lives under `your-dbt-project/.fineprint/` — graph, definition card batches (with an atomic `active_run` pointer), snapshots, drift log, LLM cache.
 
 ## The 14-trap benchmark
 
-This repo includes a fully reproducible benchmark warehouse (`warehouse/`): a simulated 4-domain e-commerce business (90 days, ~1.1M orders, fixed seed) whose dbt models embed **14 realistic caliber traps** — a 14-day refund window buried in an intermediate CASE WHEN, GMV net of 60-second flash refunds, binlog multi-version dedup, delayed live-stream attribution, SCD2 exchange rates, duplicated refund metrics across domains, and more. Every trap is verifiable in data, and ground truth is machine-checkable:
+This repo includes a fully reproducible benchmark warehouse (`warehouse/`): a simulated 4-domain e-commerce business (90 days, ~1.1M orders, fixed seed) whose dbt models embed **14 realistic metric-definition traps** — a 14-day refund window buried in an intermediate CASE WHEN, GMV net of 60-second flash refunds, binlog multi-version dedup, delayed live-stream attribution, SCD2 exchange rates, duplicated refund metrics across domains, and more. Every trap is verifiable in data, and ground truth is machine-checkable:
 
 ```bash
 bash jobs/rebuild.sh        # simulate → dbt build (28 tests) → trap validation →
@@ -154,7 +154,7 @@ Not yet: non-dbt pipelines (stored procedures, script-generated SQL, Flink/Spark
 
 Channel 2 sends **compiled model SQL, column descriptions from your schema.yml, your `fineprint.yml` lexicon, and metric context (titles, target columns, layer names, query filters, the deterministic evidence list, and earlier LLM extraction outputs being merged)** to the LLM endpoint you configure (`FINEPRINT_LLM_BASE_URL`) — never warehouse data or credentials. If your SQL is sensitive, point it at a self-hosted or VPC endpoint; Channel 1 (lineage, drift, fingerprint scan) runs fully offline. LLM responses are cached content-addressed under `.fineprint/cache/` in your project — treat that directory as containing your SQL. Third-party dbt package SQL and docs never reach the LLM at all (data-source boundary, see above); SQL comments in your own models remain untrusted input to the LLM. Machine checks bound what a prompt-injected model can smuggle into a published card — verbatim quotes, evidence-bound clauses, and a channel-1 lexicon/aggregation screen over free-text fields all cap confidence on mismatch — but the prose wording itself is still LLM output and is not proven correct, so review cards from untrusted model code before publishing them to consumers.
 
-A demo dashboard (FastAPI + React) that renders caliber cards, drift badges, a governance console and a lineage canvas against the benchmark warehouse lives in `server/` + `dashboard/`.
+A demo dashboard (FastAPI + React) that renders definition cards, drift badges, a governance console and a lineage canvas against the benchmark warehouse lives in `server/` + `dashboard/`.
 
 ## License
 

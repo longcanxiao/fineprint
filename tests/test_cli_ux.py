@@ -180,7 +180,7 @@ class TestFirstRunFriction:
                                                 encoding="utf-8")
         with pytest.raises(FileNotFoundError) as e:
             fineprint.cards(str(tmp_path))
-        assert "no published caliber batch" in str(e.value)
+        assert "no published definition batch" in str(e.value)
 
     def test_report_marks_legacy_batch(self, tmp_path):
         import json

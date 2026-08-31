@@ -65,7 +65,7 @@ def resolve_model(graph: dict, ref: str) -> str:
     hint = (_t(f"(属第三方包 {'/'.join(pkgs)},按数据源边界处理,不解析其内部口径;"
                f"如需为其出卡,把包名加入 fineprint.yml 顶层 internal_packages 并重建图)",
                f" (belongs to third-party package {'/'.join(pkgs)}; treated as a data-source "
-               f"boundary, its internal caliber is not parsed; to card it, add the package to "
+               f"boundary, its internal SQL is not parsed; to card it, add the package to "
                f"top-level internal_packages in fineprint.yml and rebuild the graph)")
             if pkgs else "")
     raise KeyError(f"unknown model: {ref}{hint}")
@@ -267,7 +267,7 @@ def render(t: dict, tree: str | None = None, full: bool = False) -> str:
         for s in t["sources"]:
             tag = (_t(f"   ⟵ 第三方包 {s['package']}(数据源边界,内部口径不解析)",
                       f"   ⟵ third-party package {s['package']} (data-source boundary; "
-                      f"internal caliber not parsed)") if s.get("package") else "")
+                      f"internal SQL not parsed)") if s.get("package") else "")
             L.append(f"  {s['table']}.{s['column']}{tag}")
         key_conds = [c for c in t["conditions"] if not c.get("is_pure_key")]
         pure = [c for c in t["conditions"] if c.get("is_pure_key")]

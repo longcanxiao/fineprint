@@ -70,7 +70,7 @@ class TestProgress:
         monkeypatch.setenv("FINEPRINT_LANG", "en")
         p.emit("stage", key="k", stage="business")
         err = capsys.readouterr().err
-        assert "业务口径生成" in err and "generating business caliber" in err
+        assert "业务口径生成" in err and "generating business definition" in err
 
     def test_retry_hook_routes_into_progress(self, capsys):
         p = Progress(mode="json")
@@ -101,7 +101,8 @@ class TestEnglishCli:
         with pytest.raises(SystemExit):
             main(["--help"])
         out = capsys.readouterr().out
-        assert "caliber" in out and "口径" not in out
+        # 0.9.7 起英文面弃用 caliber(中英假朋友):en 帮助既要是英文,也不得再出现该词
+        assert "definition" in out and "口径" not in out and "caliber" not in out
 
     def test_help_follows_project_yml(self, tmp_path, capsys, monkeypatch):
         monkeypatch.delenv("FINEPRINT_LANG", raising=False)

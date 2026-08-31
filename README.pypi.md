@@ -4,7 +4,7 @@
 
 [Source & issues](https://github.com/longcanxiao/fineprint) · [中文文档 (Chinese docs)](https://github.com/longcanxiao/fineprint/blob/main/README.zh.md)
 
-FinePrint recovers, from your dbt project's compiled artifacts, the caliber a
+FinePrint recovers, from your dbt project's compiled artifacts, what a
 metric **actually executes** — its true definition, in the small print of the SQL.
 
 It can tell you:
@@ -50,21 +50,21 @@ $ fineprint trace --project . dm_refund_rate_1d.refund_rate
    └─ is_test = 0
 ```
 
-This caliber tree is derived from the SQL by a deterministic program — no LLM involved.
+This definition tree is derived from the SQL by a deterministic program — no LLM involved.
 
 Try it yourself in 10 minutes with the [bundled example project](https://github.com/longcanxiao/fineprint/tree/main/examples/quickstart) — pre-built dbt artifacts included, no dbt install and no database needed. No checkout needed either: `pip install fineprint && fineprint init --demo`.
 
-On a dashboard, every metric card becomes a caliber entry — one click opens the full caliber card:
+On a dashboard, every metric card becomes a definition entry — one click opens the full definition card:
 
-![Demo dashboard: every metric card carries a caliber entry](https://raw.githubusercontent.com/longcanxiao/fineprint/main/docs/assets/dashboard.png)
+![Demo dashboard: every metric card carries a definition entry](https://raw.githubusercontent.com/longcanxiao/fineprint/main/docs/assets/dashboard.png)
 
-![The caliber card: business clauses pinned to numbered evidence, a machine-proven formula, the lineage canvas and change history](https://raw.githubusercontent.com/longcanxiao/fineprint/main/docs/assets/popup-top.png)
+![The definition card: business clauses pinned to numbered evidence, a machine-proven formula, the lineage canvas and change history](https://raw.githubusercontent.com/longcanxiao/fineprint/main/docs/assets/popup-top.png)
 
 *(Demo dashboard, Chinese sample data; an animated tour lives in the [repository README](https://github.com/longcanxiao/fineprint#readme).)*
 
 ## Core capabilities
 
-### Metric caliber tracing
+### Metric definition tracing
 
 Column-level lineage built on `sqlglot`, unfolding across models:
 
@@ -79,14 +79,14 @@ fineprint graph --project .
 fineprint trace --project . model.column
 ```
 
-### Metric caliber cards
+### Metric definition cards
 
 FinePrint runs two independent channels:
 
 - a **deterministic engine** deriving technical facts from the SQL AST;
 - an **LLM reader** producing a business-readable narrative.
 
-The two are cross-validated before a traceable caliber card is published.
+The two are cross-validated before a traceable definition card is published.
 
 ```bash
 fineprint synth --project .
@@ -97,7 +97,7 @@ fineprint report --project .
 endpoint you configure; database credentials and warehouse data are never sent.
 Every other command runs entirely locally.
 
-### Caliber drift detection
+### Definition drift detection
 
 Detects:
 
@@ -123,9 +123,9 @@ The deterministic engine has been probed exhaustively on:
 - 34,499 columns.
 
 Provable cross-layer formula coverage: **99.73%**. (Coverage measures formula
-provability — it is not the same thing as business-caliber accuracy.)
+provability — it is not the same thing as the definition matching business intent.)
 
-A hand-built suite of 14 classic caliber traps serves as regression:
+A hand-built suite of 14 classic metric-definition traps serves as regression:
 currently **14 / 14**.
 
 ## Install
@@ -163,7 +163,7 @@ fineprint columns --project .
 fineprint trace --project . model.column
 ```
 
-To generate caliber cards:
+To generate definition cards:
 
 ```bash
 export FINEPRINT_LLM_BASE_URL=https://api.openai.com/v1
@@ -200,7 +200,7 @@ batch = fineprint.cards("path/to/dbt_project")   # the card JSON is the contract
 
 What FinePrint recovers is:
 
-> **the caliber your code actually executes.**
+> **the definition your code actually executes.**
 
 It cannot judge on its own whether the SQL matches the business's original intent.
 

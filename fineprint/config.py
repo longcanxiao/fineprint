@@ -73,7 +73,7 @@ governance:
 
 EXAMPLE_EN = """\
 # FinePrint config (place at the dbt project root)
-language: en            # caliber card language: zh | en
+language: en            # definition card language: zh | en
 metrics:                # dashboard metrics to synthesize cards for (model.column)
   - key: revenue
     title: Revenue
@@ -83,7 +83,7 @@ metrics:                # dashboard metrics to synthesize cards for (model.colum
   #   target: mart_refunds.refund_rate
   #   extra_targets: [mart_refunds.channel]   # optional: related columns traced together
   #   query_filter: "channel = 'live'"        # optional: query-layer filter note
-lexicon: {}             # optional: business glossary (term → meaning) cited by business calibers
+lexicon: {}             # optional: business glossary (term → meaning) cited by business definitions
 # internal_packages: [shared_models]  # optional: extra dbt packages parsed as first-party code;
 #                     all other third-party packages (Fivetran/dbt_utils/…) are treated as
 #                     data-source boundaries — their SQL is not parsed, lineage stops at

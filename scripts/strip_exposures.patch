@@ -1,5 +1,5 @@
 diff --git a/fineprint/cli.py b/fineprint/cli.py
-index 3b76d3a..8207c2e 100644
+index 5113e83..89c4d0e 100644
 --- a/fineprint/cli.py
 +++ b/fineprint/cli.py
 @@ -45,43 +45,6 @@ def _graph(project):
@@ -76,9 +76,9 @@ index 3b76d3a..8207c2e 100644
 +            f"  3. fill in metrics (model.column)\n"
              f"  4. fineprint trace model.column\n"
              f"configure the LLM env vars (see README) only when you generate "
-             f"caliber cards: fineprint synth"))
+             f"definition cards: fineprint synth"))
 diff --git a/fineprint/drift.py b/fineprint/drift.py
-index b468eea..40009e3 100644
+index 6df7e56..1afebc3 100644
 --- a/fineprint/drift.py
 +++ b/fineprint/drift.py
 @@ -183,30 +183,6 @@ def append_events(project: DbtProject, events: list, from_at: str, to_at: str):
@@ -201,7 +201,7 @@ index c170dc7..fe6d644 100644
      def declared_tests(self) -> dict:
          """dbt schema 测试的基数声明(声明性证据,dbt 会按数据定期实测):
 diff --git a/fineprint/synth.py b/fineprint/synth.py
-index 6c60cc7..0cea602 100644
+index 44dcce2..5fc06ad 100644
 --- a/fineprint/synth.py
 +++ b/fineprint/synth.py
 @@ -472,18 +472,6 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set,

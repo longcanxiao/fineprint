@@ -5,8 +5,8 @@ Three entry points, mirroring the CLI's zero-LLM core:
 
     import fineprint
     fineprint.build_graph("path/to/dbt_project")      # column-level lineage graph
-    fineprint.trace("path/to/dbt_project", "model.column")   # caliber of one column
-    fineprint.cards("path/to/dbt_project")            # the published caliber-card batch
+    fineprint.trace("path/to/dbt_project", "model.column")   # definition of one column
+    fineprint.cards("path/to/dbt_project")            # the published definition-card batch
 
 Everything else in this package is internal (underscore rules do not apply to
 module paths yet — treat anything not exported via ``fineprint.__all__`` as
@@ -110,7 +110,7 @@ def build_graph(project_dir=".", *, target_path=None, allow_partial=False) -> Gr
 
 
 class TraceResult:
-    """Deterministic caliber of one column: the S/F/E triple plus the tree view.
+    """Deterministic definition of one column: the S/F/E triple plus the tree view.
 
     Promised fields — ``target``, ``depth``, ``models_visited``, ``sources``,
     ``conditions``, ``semantics`` — carry exactly what the CLI's flat receipts
@@ -133,7 +133,7 @@ class TraceResult:
         return self._data
 
     def render(self, full: bool = False) -> str:
-        """The CLI view: caliber tree when the column is tree-able, flat receipts otherwise."""
+        """The CLI view: definition tree when the column is tree-able, flat receipts otherwise."""
         from fineprint.tracing import render
         tree_txt = None
         try:                              # 树是展示增强:任何失败回退平铺,不抛
@@ -176,7 +176,7 @@ def _load_graph_or_raise(project) -> dict:
 
 
 def trace(project_dir=".", target: str = "", *, target_path=None) -> TraceResult:
-    """Trace the caliber of ``model.column`` through the saved lineage graph.
+    """Trace the definition of ``model.column`` through the saved lineage graph.
 
     Zero-LLM. Requires ``build_graph`` (or ``fineprint graph``) to have run;
     raises ``FileNotFoundError`` with the fix otherwise, ``KeyError`` when the
@@ -195,7 +195,7 @@ def trace(project_dir=".", target: str = "", *, target_path=None) -> TraceResult
 
 
 class Batch:
-    """The active published caliber-card batch — a typed mirror of the store JSON.
+    """The active published definition-card batch — a typed mirror of the store JSON.
 
     The card JSON itself is the contract (``schema_version``, currently 1);
     this object only adds access sugar: ``batch["gmv"]``, iteration, ``len``,
@@ -232,7 +232,7 @@ class Batch:
 
 
 def cards(project_dir=".") -> Batch:
-    """Load the active published caliber-card batch from ``<project_dir>/.fineprint``.
+    """Load the active published definition-card batch from ``<project_dir>/.fineprint``.
 
     Reads the store only — works without dbt artifacts. Raises
     ``FileNotFoundError`` when no batch has been published yet.
@@ -244,7 +244,7 @@ def cards(project_dir=".") -> Batch:
     if d is None:
         raise FileNotFoundError(_t(
             "没有已发布的口径批次;请先执行 fineprint synth",
-            "no published caliber batch yet; run fineprint synth first"))
+            "no published definition batch yet; run fineprint synth first"))
     idx = {}
     idx_f = d / "index.json"
     if idx_f.exists():

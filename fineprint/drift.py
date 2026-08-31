@@ -242,10 +242,10 @@ def run_check(project: DbtProject, cfg: MLConfig, graph: dict, save: bool = True
 
 def print_events(events: list):
     if not events:
-        print(t("口径漂移检测: 无变化", "caliber drift check: no changes"))
+        print(t("口径漂移检测: 无变化", "definition drift check: no changes"))
         return
     print(t(f"口径漂移检测: {len(events)} 个事件\n",
-            f"caliber drift check: {len(events)} events\n"))
+            f"definition drift check: {len(events)} events\n"))
     for e in events:
         mark = {"high": "⚠", "medium": "·", "info": "i"}[e["severity"]]
         d = e["detail"]

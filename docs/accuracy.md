@@ -52,7 +52,7 @@ The full list, with what each one means for you, is in
 
 Formula coverage says the engine can *read* SQL. To check it surfaces the
 rules that actually bite analysts, we maintain a hand-built warehouse of
-**14 classic caliber traps**, each one a pattern we have seen produce wrong
+**14 classic metric-definition traps**, each one a pattern we have seen produce wrong
 numbers in real teams:
 
 - same metric name, different meaning (same-day refund rate vs 14-day refund rate);
@@ -62,7 +62,7 @@ numbers in real teams:
 - per-user vs per-order averaging — and ten more.
 
 Each trap is seeded with data that makes the wrong reading produce a visibly
-wrong number, and the acceptance test asks: *does the caliber card reveal the
+wrong number, and the acceptance test asks: *does the definition card reveal the
 trap?* Current result: **14 / 14** (acceptance bar: ≥ 12).
 
 This is our internal regression suite. It keeps the tool from backsliding;

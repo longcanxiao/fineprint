@@ -110,7 +110,7 @@ fineprint synth
 
 ```bash
 fineprint report
-open .fineprint/caliber_report.html     # Windows: start,Linux: xdg-open
+open .fineprint/metric_report.html     # Windows: start,Linux: xdg-open
 ```
 
 ## 6. 漂移实验:有人悄悄把 14 天改成 30 天

@@ -2,9 +2,9 @@
 
 How FinePrint turns dbt artifacts into metric definitions you can trust.
 
-*(Throughout these docs, a metric's **caliber** means its real, executed
-definition: the formula, filters, time windows, dedup rules and grain that
-actually shape the number — not what the wiki says it should be.)*
+*(Throughout these docs, a metric's **definition** means the one its SQL
+actually executes: the formula, filters, time windows, dedup rules and grain
+that shape the number — not what the wiki says it should be.)*
 
 ## Inputs — and what is never touched
 
@@ -40,7 +40,7 @@ claims is derived from these files, which is why every claim can carry a
         publication state machine
    (VERIFIED / TECHNICAL_ONLY / REVIEW_REQUIRED)
                        ▼
-   caliber tree · caliber cards · HTML report · drift log
+   definition tree · definition cards · HTML report · drift log
 ```
 
 ### Channel 1: the deterministic engine
@@ -87,7 +87,7 @@ decides the card's publication status:
 |---|---|
 | `VERIFIED` | machine facts and narrative passed the gate — full card published |
 | `TECHNICAL_ONLY` | machine facts are solid; the narrative failed some check and is shown as an unreviewed draft |
-| `REVIEW_REQUIRED` | conflicts or ambiguity — no caliber published, only the problem summary and evidence |
+| `REVIEW_REQUIRED` | conflicts or ambiguity — no definition published, only the problem summary and evidence |
 
 For formulas specifically: **when the composer can prove a formula, the
 composer's formula is the published one** — the LLM's version is shown only
@@ -97,11 +97,11 @@ cross-validated LLM formula stand in, and the card says so.
 
 ## Outputs
 
-- **Caliber tree** (`fineprint trace`) — terminal view: formula split into
+- **Definition tree** (`fineprint trace`) — terminal view: formula split into
   numerator/denominator, each side's own conditions, shared conditions, and
   the model chain. `--full` adds source files, compiled line numbers and
   per-branch source columns.
-- **Caliber cards** (`fineprint synth`) — one JSON per metric plus a batch
+- **Definition cards** (`fineprint synth`) — one JSON per metric plus a batch
   index, published atomically (a batch is either fully live or not at all).
   The card JSON is the integration contract — see
   [python-api.md](python-api.md).

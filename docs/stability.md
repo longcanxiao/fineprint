@@ -57,7 +57,7 @@ New optional keys may appear in minors; existing keys keep semantics.
 
 ### 4. Stored formats
 
-- **Caliber card JSON** (`.fineprint/store/runs/<id>/<key>.json`): **this is
+- **Definition card JSON** (`.fineprint/store/runs/<id>/<key>.json`): **this is
   the primary integration contract** — the report, the demo dashboard and the
   public API all consume it. Since 0.9 every card and batch index carries
   `schema_version` (currently 1); a breaking change to documented fields bumps

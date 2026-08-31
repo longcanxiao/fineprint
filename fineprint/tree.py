@@ -275,7 +275,7 @@ def render_tree(tr: dict, full: bool = False) -> str:
     head = f"◎ {tr['target']}"
     if tr.get("defined_in"):
         head += _t(f"   (直通列,口径定义于 {tr['defined_in']})",
-                   f"   (pass-through column; caliber defined in {tr['defined_in']})")
+                   f"   (pass-through column; defined in {tr['defined_in']})")
     L = [head]
     if tr["dims"]:
         dd = [f"{d} = {tr['dim_exprs'][d]}" if d in tr["dim_exprs"] else d for d in tr["dims"]]
@@ -296,7 +296,7 @@ def render_tree(tr: dict, full: bool = False) -> str:
         if full and b["leaves"]:
             rows.append(_t(f"源: {_t('、', ', ').join(b['leaves'])}",
                            f"sources: {', '.join(b['leaves'])}"))
-        rows += [_t(f"口径: {_cond_line(c, full)}", f"caliber: {_cond_line(c, full)}")
+        rows += [_t(f"口径: {_cond_line(c, full)}", f"rule: {_cond_line(c, full)}")
                  for c in b["conds"]]
         if b["chain"]:
             # 按深度分层:同层多模型是平行路径,用「、」并列;层间才是流向
@@ -314,8 +314,8 @@ def render_tree(tr: dict, full: bool = False) -> str:
     extras = _extra_sources(tr) if full else []
     if tr["common"]:
         L.append("│")
-        head = (_t("两侧共同口径", "caliber shared by both sides") if n > 1
-                else _t("口径条件", "caliber conditions"))
+        head = (_t("两侧共同口径", "rules shared by both sides") if n > 1
+                else _t("口径条件", "rules"))
         L.append(f"{'├─' if extras else '└─'} {head}")
         pad = "│  " if extras else "   "
         for k, c in enumerate(tr["common"]):

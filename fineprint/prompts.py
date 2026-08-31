@@ -15,7 +15,7 @@ HOP = {
 2. source_columns 只写真实物理上游表(给定 SQL 的 FROM/JOIN 里的库表,穿透 CTE),不要写 CTE 名;
 3. COUNT(*) 等不引用具体列的输出列,source_columns 报其行集来源表,column 填 "*";
 4. 不要臆造给定 SQL 之外的任何信息。""",
-"en": """You are a data-warehouse SQL caliber analyzer. Given one dbt model's full SQL and target output columns, extract the caliber facts of THIS single hop, per column.
+"en": """You are a data-warehouse SQL definition analyzer. Given one dbt model's full SQL and target output columns, extract the definition facts of THIS single hop, per column.
 Output JSON only, shaped as:
 {"columns": {"<column>": {
   "expression": "the column's computation (simplified, semantics preserved)",
@@ -43,7 +43,7 @@ formula 硬性要求:必须是合法 SQL 表达式(如 round(sum(case when … t
 自由文本(window/special/key_filters.text/summary)一律用中文书写,即使源注释或标识符是其他语言
 (SQL 标识符与字面量照抄不译)。
 只依据输入归并化简,不新增事实;同义条件合并为一条。只输出 JSON。""",
-"en": """You are a metric caliber merger. Input: per-hop structured caliber facts along the warehouse chain (mart ← intermediate ← staging ← source). Output the end-to-end technical caliber as JSON:
+"en": """You are a metric definition merger. Input: per-hop structured definition facts along the warehouse chain (mart ← intermediate ← staging ← source). Output the end-to-end technical definition as JSON:
 {"formula": "end-to-end equivalent computation: a single SQL-parseable aggregate expression fragment, one line",
  "window": "time window & stat-date assignment notes ('' if none)",
  "special": ["deduplicated list of special treatments"],
@@ -68,7 +68,7 @@ BIZ = {
 2. 无法绑定任何证据编号的信息不得写入 clauses,只能写入 caveats 并以"(无确定性证据)"结尾;
 3. 只使用输入中存在的事实与术语;字段缺业务注释时用技术直译并标注"(待补充业务注释)";禁止引入任何输入之外的业务假设。
 4. 自由文本(definition/clauses.text/caveats)一律用中文书写,即使源注释或标识符是其他语言(SQL 标识符与字面量照抄不译)。只输出 JSON。""",
-"en": """You are a business-caliber writer. Input: cross-validated technical caliber, a numbered evidence list (from the lineage engine and machine-verified SQL quotes), column business descriptions, and a business lexicon. Output a caliber JSON that business readers understand directly:
+"en": """You are a business-definition writer. Input: cross-validated technical definition, a numbered evidence list (from the lineage engine and machine-verified SQL quotes), column business descriptions, and a business lexicon. Output a definition JSON that business readers understand directly:
 {"definition": "one-sentence business definition (≤40 words: numerator/denominator, scope, window)",
  "clauses": [{"text": "business clause (e.g. 'excludes flash refunds within 60s of payment')",
               "basis": "verbatim snippet of the cited evidence (may truncate)",

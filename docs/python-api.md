@@ -8,7 +8,7 @@ import fineprint
 
 fineprint.build_graph("path/to/dbt_project")
 result = fineprint.trace("path/to/dbt_project", "dm_refund_rate_1d.refund_rate")
-print(result)                                  # the caliber tree, as in the CLI
+print(result)                                  # the definition tree, as in the CLI
 batch = fineprint.cards("path/to/dbt_project")
 batch["refund_rate_14d"]["technical_facts"]    # the card JSON is the contract
 ```
@@ -52,7 +52,7 @@ saves it to `.fineprint/graph.json`. No LLM, no database.
 
 ## `fineprint.trace(project_dir=".", target="model.column", *, target_path=None) -> TraceResult`
 
-The caliber of one column, from the saved graph. No LLM.
+The definition of one column, from the saved graph. No LLM.
 
 Raises `FileNotFoundError` (with the fix) when no graph has been built, and
 `KeyError` with candidate suggestions when the model or column does not exist.
@@ -63,13 +63,13 @@ Raises `FileNotFoundError` (with the fix) when no graph has been built, and
   `conditions`, `semantics`: exactly what the CLI's receipts show, as lists
   of dicts with `model` / `kind` / `sql` / `line` / `src_path` where
   applicable;
-- `render(full=False) -> str` — the CLI view (caliber tree when the column
+- `render(full=False) -> str` — the CLI view (definition tree when the column
   is tree-able, flat receipts otherwise); `str(result)` is `render()`;
 - `to_dict()` — the full trace payload (a superset of the promised fields).
 
 ## `fineprint.cards(project_dir=".") -> Batch`
 
-The currently-published caliber card batch, read from
+The currently-published definition card batch, read from
 `<project>/.fineprint/store`. Works from the store alone — dbt artifacts are
 not required. Raises `FileNotFoundError` when nothing has been published yet.
 

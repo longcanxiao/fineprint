@@ -37,7 +37,7 @@ When the composer refuses, the card's formula authority switches to
 
 - **Business intent.** FinePrint recovers the definition your code actually
   executes. Whether that matches what the business originally meant is not
-  answerable from SQL — that is precisely the conversation the caliber card
+  answerable from SQL — that is precisely the conversation the definition card
   is meant to start.
 - **Meaning that appears nowhere.** If a rule lives only in someone's head —
   not in SQL, schema.yml docs, or your `fineprint.yml` glossary — the tool

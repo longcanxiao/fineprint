@@ -1,9 +1,9 @@
-"""FinePrint — metric caliber synthesis for dbt projects.
+"""FinePrint — metric definition synthesis for dbt projects.
 
-Reverse-engineers the business & technical definition ("caliber") of every
+Reverse-engineers the business & technical definition of every
 dashboard metric from your existing multi-layer SQL: deterministic column-level
 lineage × LLM per-model reading, cross-validated, evidence-bound, and published
-as consumer-facing caliber cards.
+as consumer-facing definition cards.
 
 Distributed on PyPI as ``fineprint`` — read the fine print of your metrics;
 a decompiler for your dashboards.
@@ -12,8 +12,8 @@ Public Python API (since 0.9)::
 
     import fineprint
     fineprint.build_graph("path/to/dbt_project")           # lineage graph (zero LLM)
-    print(fineprint.tracing("path/to/dbt_project", "dm_sales.gmv"))   # caliber tree
-    batch = fineprint.cards("path/to/dbt_project")         # published caliber cards
+    print(fineprint.tracing("path/to/dbt_project", "dm_sales.gmv"))   # definition tree
+    batch = fineprint.cards("path/to/dbt_project")         # published definition cards
 
 Only the names in ``__all__`` are public; see ``fineprint.api`` for the
 contract. Everything else is internal and may change without notice.
