@@ -20,6 +20,10 @@ trap 'git -C "$REPO" worktree remove --force "$STAGE" 2>/dev/null || true; rm -r
 
 cd "$REPO"
 [ -z "$(git status --porcelain)" ] || { echo "工作区不干净,先提交或暂存"; exit 1; }
+# PyPI 页事实源=docs/FinePrint_en.md,README.pypi.md 必须是它的逐字拷贝
+# (0.9.4 起英文单语惯例;手工拷贝容易漂移,发版前强制对账)
+diff -q README.pypi.md docs/FinePrint_en.md >/dev/null \
+  || { echo "README.pypi.md 与 docs/FinePrint_en.md 不一致:改页面请改 en 源再 cp 覆盖"; exit 1; }
 
 git worktree add --detach "$STAGE" HEAD >/dev/null
 cd "$STAGE"

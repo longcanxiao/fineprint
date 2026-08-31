@@ -24,7 +24,7 @@ JSON 是真正的对外契约(schema_version 冻结),返回对象只是它的类
 import json
 from pathlib import Path
 
-from fineprint.i18n import t as _t
+from fineprint.i18n import peek_project_lang, t as _t
 
 from fineprint.store import CARD_SCHEMA_VERSION  # noqa: F401  (契约版本,家在 store)
 
@@ -86,6 +86,7 @@ def build_graph(project_dir=".", *, target_path=None, allow_partial=False) -> Gr
     when lineage extraction fails somewhere, unless ``allow_partial=True``
     (then the graph is written and the failures land in ``result.errors``).
     """
+    peek_project_lang(project_dir)   # 输出语言跟项目配置走(CLI 同款;FINEPRINT_LANG 仍最高)
     from fineprint.lineage import build_graph as _build
     from fineprint.lineage import graph_errors, save_graph
     from fineprint.project import DbtProject
@@ -181,6 +182,7 @@ def trace(project_dir=".", target: str = "", *, target_path=None) -> TraceResult
     raises ``FileNotFoundError`` with the fix otherwise, ``KeyError`` when the
     model/column does not exist (with candidate suggestions).
     """
+    peek_project_lang(project_dir)
     from fineprint.project import DbtProject
     from fineprint.tracing import resolve_model
     from fineprint.tracing import trace as _trace
@@ -235,6 +237,7 @@ def cards(project_dir=".") -> Batch:
     Reads the store only — works without dbt artifacts. Raises
     ``FileNotFoundError`` when no batch has been published yet.
     """
+    peek_project_lang(project_dir)
     from fineprint.store import CaliberStore
     store = CaliberStore(Path(project_dir) / ".fineprint" / "store")
     d = store.active_dir()

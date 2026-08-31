@@ -115,6 +115,8 @@ fineprint drift --project .
 
 ## 安装
 
+需要 Python 3.10+。
+
 ```bash
 pip install fineprint
 ```

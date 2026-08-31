@@ -51,6 +51,7 @@ Beyond caliber cards, the same lineage powers drift detection:
 > dbt install and no database needed.
 
 ```bash
+# Python 3.10+
 pip install fineprint       # from PyPI — import name and CLI are both `fineprint`
 pip install -e .            # or from source, core CLI only
 pip install -e ".[demo,dev]"   # + benchmark warehouse / dashboard / test deps

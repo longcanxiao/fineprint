@@ -139,18 +139,25 @@ def _legacy_env_hint() -> str:
 
 @lru_cache(maxsize=1)
 def settings() -> dict:
+    # 缺什么一次列全:这也是 synth 开工前预检的报错口径,别让用户逐个变量试错
     key = os.environ.get("FINEPRINT_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
-    if not key:
-        raise KeyError(t(
-            "缺少 LLM 凭据:请设置 FINEPRINT_LLM_API_KEY(或 OPENAI_API_KEY),"
-            "可放在被分析项目根目录的 .env 中",
-            "Missing LLM credentials: set FINEPRINT_LLM_API_KEY (or OPENAI_API_KEY), "
-            "e.g. in a .env file at the analyzed project's root") + _legacy_env_hint())
     model = os.environ.get("FINEPRINT_LLM_MODEL")
+    missing = []
+    if not key:
+        missing.append(t("FINEPRINT_LLM_API_KEY(或 OPENAI_API_KEY)= 凭据",
+                         "FINEPRINT_LLM_API_KEY (or OPENAI_API_KEY) = credentials"))
     if not model:
-        raise KeyError(t("缺少 FINEPRINT_LLM_MODEL(任意 OpenAI 兼容模型名)",
-                         "Missing FINEPRINT_LLM_MODEL (any OpenAI-compatible model name)")
-                       + _legacy_env_hint())
+        missing.append(t("FINEPRINT_LLM_MODEL = 任意 OpenAI 兼容模型名",
+                         "FINEPRINT_LLM_MODEL = any OpenAI-compatible model name"))
+    if missing:
+        raise KeyError(t(
+            "缺少 LLM 配置:\n  - " + "\n  - ".join(missing) +
+            "\n可放在被分析项目根目录的 .env 中(FINEPRINT_LLM_BASE_URL 缺省 "
+            "https://api.openai.com/v1)",
+            "missing LLM configuration:\n  - " + "\n  - ".join(missing) +
+            "\nset them e.g. in a .env file at the analyzed project's root "
+            "(FINEPRINT_LLM_BASE_URL defaults to https://api.openai.com/v1)")
+            + _legacy_env_hint())
     base = (os.environ.get("FINEPRINT_LLM_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
     return {
         "api_key": key, "base_url": base, "model": model,

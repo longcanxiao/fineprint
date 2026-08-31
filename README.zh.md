@@ -45,6 +45,7 @@ dbt artifacts ──────► │  源表 / 过滤条件 / 表达式链(sq
 ## 快速开始
 
 ```bash
+# Python 3.10+
 pip install fineprint       # PyPI 包名,import 名与 CLI 统一为 fineprint
 # 想先上手体验?examples/quickstart/ 是 10 分钟完整走读:内置 dbt 编译产物,
 # 不装 dbt、不连数据库即可体验 graph/trace/synth/drift 全流程

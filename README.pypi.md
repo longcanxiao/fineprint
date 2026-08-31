@@ -121,6 +121,8 @@ currently **14 / 14**.
 
 ## Install
 
+Requires Python 3.10+.
+
 ```bash
 pip install fineprint
 ```

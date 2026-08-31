@@ -108,3 +108,81 @@ class TestUnknownSourceWarning:
         cli.cmd_graph(A())
         err = capsys.readouterr().err
         assert "源表列集未知" in err and "main.evt" in err and "VERIFIED" in err
+
+
+class TestFirstRunFriction:
+    """首轮陌生用户试用反馈(2026-08-31):init 提示顺序、模板治理段、
+    synth 预检、公开 API 语言继承、旧批次报告标记。"""
+
+    QUICKSTART = ROOT / "examples" / "quickstart"
+
+    def test_init_hint_orders_llm_after_graph(self, tmp_path, capsys):
+        main(["init", "--project", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert "零 LLM" in out
+        # 建图在前,凭据在后:graph/trace 不需要 LLM,提示不能倒装成先配凭据
+        assert out.index("fineprint graph") < out.index("LLM 环境变量")
+        assert "synth" in out
+
+    def test_example_yml_governance_follows_component(self, monkeypatch):
+        from fineprint.config import example_yml
+        has_gov = importlib.util.find_spec("fineprint.governance") is not None
+        assert ("governance:" in example_yml()) == has_gov
+        real = importlib.util.find_spec
+        monkeypatch.setattr(importlib.util, "find_spec",
+                            lambda name, *a: None if name == "fineprint.governance" else real(name, *a))
+        assert "governance:" not in example_yml()   # 发行版模板不宣传交付里没有的配置
+
+    def test_synth_preflight_fails_before_batch(self, tmp_path, capsys, monkeypatch):
+        from fineprint import llm
+        for k in ("FINEPRINT_LLM_API_KEY", "OPENAI_API_KEY", "FINEPRINT_LLM_MODEL"):
+            monkeypatch.delenv(k, raising=False)
+        monkeypatch.delenv("FINEPRINT_DEBUG", raising=False)
+        p = make_project(tmp_path, nodes={"model.p.stg": _node("stg", "c/stg.sql")},
+                         catalog_nodes={"model.p.stg": _cat("main", "stg", {"a": "INT"})},
+                         sqls={"c/stg.sql": "select 1 as a"})
+        llm.settings.cache_clear()
+        try:
+            rc = main(["synth", "--project", str(p.project_dir)])
+        finally:
+            llm.settings.cache_clear()
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "FINEPRINT_LLM_API_KEY" in err and "FINEPRINT_LLM_MODEL" in err  # 缺失项一次列全
+        assert "Traceback" not in err
+        assert "▶" not in err                                       # 没打开工横幅
+        assert not (p.project_dir / ".fineprint" / "store").exists()  # 预检先于建批次
+
+    def test_api_inherits_project_language(self, monkeypatch):
+        import fineprint
+        from fineprint import i18n
+        monkeypatch.delenv("FINEPRINT_LANG", raising=False)
+        for k in ("LC_ALL", "LC_MESSAGES", "LANG"):
+            monkeypatch.delenv(k, raising=False)
+        monkeypatch.setattr(i18n, "_LANG", None)
+        r = fineprint.trace(str(self.QUICKSTART), "dm_refund_rate_1d.refund_rate")
+        assert i18n.lang() == "zh"          # quickstart 的 fineprint.yml: language: zh
+        assert "分子" in r.render()          # Notebook 场景与 CLI 同语言
+
+    def test_api_language_en_project(self, tmp_path, monkeypatch):
+        import fineprint
+        from fineprint import i18n
+        monkeypatch.delenv("FINEPRINT_LANG", raising=False)
+        for k in ("LC_ALL", "LC_MESSAGES", "LANG"):
+            monkeypatch.delenv(k, raising=False)
+        monkeypatch.setattr(i18n, "_LANG", None)
+        (tmp_path / "fineprint.yml").write_text("language: en\nmetrics: []\n",
+                                                encoding="utf-8")
+        with pytest.raises(FileNotFoundError) as e:
+            fineprint.cards(str(tmp_path))
+        assert "no published caliber batch" in str(e.value)
+
+    def test_report_marks_legacy_batch(self, tmp_path):
+        from fineprint.project import DbtProject
+        from fineprint.report import _stale_banner, export_html
+        from fineprint.store import CARD_SCHEMA_VERSION
+        assert _stale_banner({"schema_version": CARD_SCHEMA_VERSION}) == ""
+        out = tmp_path / "r.html"
+        export_html(DbtProject(self.QUICKSTART), out)
+        h = out.read_text(encoding="utf-8")
+        assert 'class="stale"' in h and "旧版批次" in h   # 内置批次是 0.8 世代,须显眼标记

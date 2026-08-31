@@ -26,8 +26,9 @@ Notes:
 
 - `target` is `model.column`; when two packages share a model name, write
   `package.model.column`.
-- `language` drives card content **and** the CLI's own output.
-  `FINEPRINT_LANG` overrides it; with no signal at all the default is English.
+- `language` drives card content **and** the tool's own output — CLI and
+  Python API alike. `FINEPRINT_LANG` overrides it; with no signal at all the
+  default is English.
 - The repository template also contains a `governance:` block — that feature
   (duplicate-metric scanning and arbitration) is scheduled for 2.0 and is not
   part of the PyPI distribution; the block is ignored there.

@@ -98,10 +98,18 @@ def cmd_init(args):
     except Exception:
         pass          # artifacts 尚未编译时 init 仍可用,只出模板
     f.write_text(text, encoding="utf-8")
-    print(t(f"已生成 {f}\n下一步:填入 metrics(model.column){tip},"
-            f"设置 LLM 环境变量(见 README),然后 fineprint graph",
-            f"wrote {f}\nnext: fill in metrics (model.column){tip}, "
-            f"set the LLM env vars (see README), then run fineprint graph"))
+    # 顺序即成本承诺:graph/trace 零 LLM,凭据只在生成口径卡时才需要——别倒装
+    print(t(f"已生成 {f}\n下一步:\n"
+            f"  1. 填入 metrics(model.column){tip}\n"
+            f"  2. fineprint graph   # 建血缘图,零 LLM\n"
+            f"  3. fineprint trace model.column\n"
+            f"生成业务口径卡时再配置 LLM 环境变量(见 README):fineprint synth",
+            f"wrote {f}\nnext:\n"
+            f"  1. fill in metrics (model.column){tip}\n"
+            f"  2. fineprint graph   # build the lineage graph, no LLM involved\n"
+            f"  3. fineprint trace model.column\n"
+            f"configure the LLM env vars (see README) only when you generate "
+            f"caliber cards: fineprint synth"))
 
 
 def _unknown_sources(project, graph) -> list:
@@ -178,10 +186,11 @@ def cmd_trace(args):
 
 
 def cmd_synth(args):
-    from fineprint.llm import load_dotenv
+    from fineprint.llm import load_dotenv, settings
     from fineprint.synth import Progress, run_all
     project = _project(args)
     load_dotenv(project.project_dir)
+    settings()   # 预检:凭据缺失要在建批次/起任务之前爆(经统一异常出口成一行人话)
     cfg = _cfg(args)
     prog = Progress(mode="json" if args.json else "human", verbose=args.verbose)
     sys.exit(run_all(project, cfg, _graph(project), only=args.only, progress=prog))

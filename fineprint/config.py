@@ -3,6 +3,7 @@
 
 放在 dbt 项目根目录。密钥永不进配置文件——LLM 凭据只走环境变量(见 llm.py)。
 """
+import importlib.util
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -57,6 +58,11 @@ lexicon: {}             # 可选:业务词典(术语 → 解释),供业务口径
 # internal_packages: [shared_models]  # 可选:按一方代码解析的 dbt 包;
 #                     其余第三方包(Fivetran/dbt_utils 等)的模型一律按数据源边界
 #                     处理——不解析其 SQL 与口径,血缘在其物化表处截止
+"""
+
+# 治理段只随治理组件生成:公开发行版没有 govern 命令,模板里凭空出现
+# governance 配置会让用户误以为自己漏装了功能
+GOV_EXAMPLE = """\
 governance:
   scan_layers: []       # 指纹重复扫描的分层白名单;空 = 全部模型
   base_suffixes: [_total, _14d, _1d, _7d, _30d]   # 判定"同基名"时剥离的后缀
@@ -82,6 +88,9 @@ lexicon: {}             # optional: business glossary (term → meaning) cited b
 #                     all other third-party packages (Fivetran/dbt_utils/…) are treated as
 #                     data-source boundaries — their SQL is not parsed, lineage stops at
 #                     their materialized tables
+"""
+
+GOV_EXAMPLE_EN = """\
 governance:
   scan_layers: []       # layer allowlist for the duplicate fingerprint scan; empty = all models
   base_suffixes: [_total, _14d, _1d, _7d, _30d]   # suffixes stripped for "same base name"
@@ -92,7 +101,10 @@ governance:
 
 
 def example_yml() -> str:
-    return t(EXAMPLE, EXAMPLE_EN)
+    base = t(EXAMPLE, EXAMPLE_EN)
+    if importlib.util.find_spec("fineprint.governance") is not None:
+        base += t(GOV_EXAMPLE, GOV_EXAMPLE_EN)
+    return base
 
 
 @dataclass

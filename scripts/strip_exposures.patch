@@ -1,8 +1,8 @@
 diff --git a/fineprint/cli.py b/fineprint/cli.py
-index fef7467..7e575d7 100644
+index b379a4b..905165e 100644
 --- a/fineprint/cli.py
 +++ b/fineprint/cli.py
-@@ -45,62 +45,16 @@ def _graph(project):
+@@ -45,67 +45,21 @@ def _graph(project):
      return _load_graph_or_raise(project)   # 缺图抛 FileNotFoundError,统一出口成文
  
  
@@ -58,18 +58,23 @@ index fef7467..7e575d7 100644
 -                    "; metric candidates pre-filled from dbt exposures (commented, end of file)")
 -    except Exception:
 -        pass          # artifacts 尚未编译时 init 仍可用,只出模板
--    f.write_text(text)
--    print(t(f"已生成 {f}\n下一步:填入 metrics(model.column){tip},"
-+    f.write_text(example_yml())
-+    print(t(f"已生成 {f}\n下一步:填入 metrics(model.column),"
-             f"设置 LLM 环境变量(见 README),然后 fineprint graph",
--            f"wrote {f}\nnext: fill in metrics (model.column){tip}, "
-+            f"wrote {f}\nnext: fill in metrics (model.column), "
-             f"set the LLM env vars (see README), then run fineprint graph"))
- 
- 
+-    f.write_text(text, encoding="utf-8")
++    f.write_text(example_yml(), encoding="utf-8")
+     # 顺序即成本承诺:graph/trace 零 LLM,凭据只在生成口径卡时才需要——别倒装
+     print(t(f"已生成 {f}\n下一步:\n"
+-            f"  1. 填入 metrics(model.column){tip}\n"
++            f"  1. 填入 metrics(model.column)\n"
+             f"  2. fineprint graph   # 建血缘图,零 LLM\n"
+             f"  3. fineprint trace model.column\n"
+             f"生成业务口径卡时再配置 LLM 环境变量(见 README):fineprint synth",
+             f"wrote {f}\nnext:\n"
+-            f"  1. fill in metrics (model.column){tip}\n"
++            f"  1. fill in metrics (model.column)\n"
+             f"  2. fineprint graph   # build the lineage graph, no LLM involved\n"
+             f"  3. fineprint trace model.column\n"
+             f"configure the LLM env vars (see README) only when you generate "
 diff --git a/fineprint/drift.py b/fineprint/drift.py
-index 40881f3..63fa208 100644
+index c20a3d2..006ff54 100644
 --- a/fineprint/drift.py
 +++ b/fineprint/drift.py
 @@ -183,30 +183,6 @@ def append_events(project: DbtProject, events: list, from_at: str, to_at: str):
@@ -138,7 +143,7 @@ index 391290a..37a85bc 100644
                  # 只在两侧证据都在场时下确定性结论,缺证一侧一律落到下一级判据;
                  # 已知等价展开形(avg ↔ sum/count)不直判,降入 B 档仲裁
 diff --git a/fineprint/lineage.py b/fineprint/lineage.py
-index fde5e39..5bb280b 100644
+index 9010fe7..fabe4a5 100644
 --- a/fineprint/lineage.py
 +++ b/fineprint/lineage.py
 @@ -605,18 +605,8 @@ def build_graph(project: DbtProject) -> dict:
@@ -161,7 +166,7 @@ index fde5e39..5bb280b 100644
      fk_by_uid: dict = {}
      for e in project.declared_tests["fk"]:
 diff --git a/fineprint/project.py b/fineprint/project.py
-index 42e02a5..dd4ccd4 100644
+index c170dc7..fe6d644 100644
 --- a/fineprint/project.py
 +++ b/fineprint/project.py
 @@ -175,26 +175,6 @@ class DbtProject:
@@ -192,7 +197,7 @@ index 42e02a5..dd4ccd4 100644
      def declared_tests(self) -> dict:
          """dbt schema 测试的基数声明(声明性证据,dbt 会按数据定期实测):
 diff --git a/fineprint/synth.py b/fineprint/synth.py
-index 3df4524..f3a72c7 100644
+index 6c60cc7..0cea602 100644
 --- a/fineprint/synth.py
 +++ b/fineprint/synth.py
 @@ -472,18 +472,6 @@ def cross_validate(t: dict, hops_by_model: dict, cls: dict, source_names: set,

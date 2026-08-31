@@ -22,6 +22,10 @@ batching, publishing) is still evolving. Everything not listed on this page
 is internal and may change without notice; `fineprint.__all__` is the
 authoritative list.
 
+Rendered output and error messages follow the project's `language:` setting in
+`fineprint.yml` (same as the CLI); the `FINEPRINT_LANG` environment variable
+overrides it.
+
 ---
 
 ## `fineprint.build_graph(project_dir=".", *, target_path=None, allow_partial=False) -> GraphResult`
