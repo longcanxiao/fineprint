@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.9.5 (2026-08-31)
+
+Two rounds of fresh-eyes first-run feedback, digested:
+
+- **`fineprint init --demo`** — the bundled 10-minute example now ships inside
+  the wheel: pure pip users get a runnable project (pre-compiled dbt artifacts
+  plus a published card batch) with zero checkout, zero dbt, zero database and
+  zero LLM key.
+- **`fineprint columns [keyword] [--model M]`** — zero-LLM discovery of
+  traceable `model.column` candidates from the lineage graph; numeric metric
+  candidates are marked (id/key columns excluded); `graph` now points to it as
+  the next step.
+- Quick start restructured on the README and the PyPI page: bundled-example
+  path first, own-project path second; install sections state Python 3.10+.
+- The quickstart example is bilingual (English primary + 中文版) and ships
+  `language: en` with an English card batch; prompts gained a hard
+  output-language rule, so an `en` project with Chinese column comments no
+  longer drifts back to a Chinese narrative.
+- HTML report: legacy (pre-0.9) batches get a compatibility banner instead of
+  posing as current; muted-text contrast raised to ≥4.5:1.
+- `synth` preflights LLM credentials before creating a batch and lists every
+  missing variable at once; `drift`'s first run says "baseline established"
+  without a contradictory "no changes" line; `init` warns when the directory
+  has no `dbt_project.yml`; the Python API inherits the project language, so
+  notebook output matches the CLI.
+- README / PyPI page: animated dashboard caliber-popup tour and stills.
+
 ## 0.9.4 (2026-08-31)
 
 **The repository is public: https://github.com/longcanxiao/fineprint**
