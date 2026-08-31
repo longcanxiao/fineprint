@@ -114,6 +114,18 @@ FinePrint 本来就不连数据库;即使 `catalog.json` 也没有(跑不了 `db
 
 `graph` / `trace` / `drift` 完全零 LLM;`synth` 的 LLM 用量按模型数计,内容寻址缓存,重跑只付增量。
 
+**在 notebook / BI 插件 / 编排任务里,用 Python API**(0.9 起的最小公开面):
+
+```python
+import fineprint
+
+fineprint.build_graph("path/to/dbt_project")        # 建血缘图(零 LLM)
+print(fineprint.trace("path/to/dbt_project",
+                      "dm_refund_rate_1d.refund_rate"))   # 就是上面那棵口径树
+batch = fineprint.cards("path/to/dbt_project")      # 已发布的口径卡批次
+batch["refund_rate_14d"]["technical_facts"]         # 卡片 JSON 即契约(schema_version 冻结)
+```
+
 <!-- TODO(仓库公开后): 附 examples/quickstart 链接——自带数据与预编译产物的完整示例工程 -->
 
 ## Roadmap
