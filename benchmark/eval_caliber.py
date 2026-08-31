@@ -62,7 +62,7 @@ CHECKS = [
 def main():
     # 前置硬门禁:卡片必须由当前血缘图生成——图重建后旧卡的揭示命中不作数
     from benchmark.paths import GRAPH
-    from fineprint.trace import load_graph
+    from fineprint.tracing import load_graph
     cur_md5 = load_graph(GRAPH)["meta"].get("graph_md5")
     keys = [k for k in (STORE.index() or {}).get("cards", {})]
     stale = [k for k in keys if card(k).get("graph_md5") != cur_md5]

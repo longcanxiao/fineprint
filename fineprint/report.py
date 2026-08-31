@@ -328,7 +328,7 @@ def card_html(c: dict, files: dict | None = None) -> str:
 def _model_files(project: DbtProject) -> dict:
     """展示模型名 → 源文件路径(证据行的文件锚点);图缺席/过旧时只降级掉文件列。"""
     try:
-        from fineprint.trace import load_graph
+        from fineprint.tracing import load_graph
         g = load_graph(project.graph_path())
         out = {}
         for m in g["models"].values():

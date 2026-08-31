@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from benchmark.paths import GRAPH, WORKSPACE
 from fineprint.store import CaliberStore
-from fineprint.trace import display_name, load_graph, trace as lineage_trace
+from fineprint.tracing import display_name, load_graph, trace as lineage_trace
 
 DB = Path(__file__).resolve().parent.parent / "warehouse" / "metriclens.duckdb"
 _store = CaliberStore(WORKSPACE / "store")

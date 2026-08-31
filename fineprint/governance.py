@@ -19,7 +19,7 @@ import json
 
 from fineprint.config import MLConfig
 from fineprint.fingerprint import agg_signature, base  # noqa: F401  治理原语已中立化,此处转发
-from fineprint.trace import display_name, trace
+from fineprint.tracing import display_name, trace
 
 
 def fingerprint_of(t: dict) -> str:

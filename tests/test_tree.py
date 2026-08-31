@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from fineprint.lineage import build_graph  # noqa: E402
-from fineprint.trace import render, trace  # noqa: E402
+from fineprint.tracing import render, trace  # noqa: E402
 from fineprint.tree import caliber_tree, render_tree  # noqa: E402
 from tests.test_generalize import _cat, _node, make_project  # noqa: E402
 

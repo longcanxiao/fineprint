@@ -7,6 +7,16 @@ as consumer-facing caliber cards.
 
 Distributed on PyPI as ``fineprint`` — read the fine print of your metrics;
 a decompiler for your dashboards.
+
+Public Python API (since 0.9)::
+
+    import fineprint
+    fineprint.build_graph("path/to/dbt_project")           # lineage graph (zero LLM)
+    print(fineprint.tracing("path/to/dbt_project", "dm_sales.gmv"))   # caliber tree
+    batch = fineprint.cards("path/to/dbt_project")         # published caliber cards
+
+Only the names in ``__all__`` are public; see ``fineprint.api`` for the
+contract. Everything else is internal and may change without notice.
 """
 import warnings as _warnings
 
@@ -22,3 +32,20 @@ try:
     __version__ = _pkg_version("fineprint")
 except Exception:                       # 未安装(纯源码路径运行)时的诚实占位
     __version__ = "0+unknown"
+
+__all__ = ["__version__", "build_graph", "trace", "cards",
+           "GraphResult", "TraceResult", "Batch"]
+_API_NAMES = ("build_graph", "trace", "cards", "GraphResult", "TraceResult", "Batch")
+
+
+def __getattr__(name):
+    # PEP 562 惰性导出:`import fineprint` 保持轻量(不拖 sqlglot/requests),
+    # 首次访问 API 名字时才加载 fineprint.api
+    if name in _API_NAMES:
+        from fineprint import api
+        return getattr(api, name)
+    raise AttributeError(f"module 'fineprint' has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(list(globals()) + list(_API_NAMES))

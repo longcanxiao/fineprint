@@ -14,7 +14,7 @@ from fineprint.config import MLConfig
 from fineprint.governance import scan
 from fineprint.llm import chat_json, fast_model, set_cache_dir
 from fineprint.project import DbtProject
-from fineprint.trace import resolve_model, trace
+from fineprint.tracing import resolve_model, trace
 
 
 # 治理仲裁提示词与组件同居:公开发行版摘除本模块即一并缺席

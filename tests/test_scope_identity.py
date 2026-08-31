@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from fineprint.lineage import build_graph, extract_conditions, output_grain, row_scope_closure  # noqa: E402
-from fineprint.trace import trace  # noqa: E402
+from fineprint.tracing import trace  # noqa: E402
 
 from tests.test_generalize import _cat, _node, make_project  # noqa: E402
 
@@ -62,7 +62,7 @@ class TestModelIdentity:
             sqls={"compiled/a.sql": "select 1 as x", "compiled/b.sql": "select 2 as x"}, **kw)
 
     def test_same_name_coexists_and_bare_ref_is_ambiguous(self, tmp_path):
-        from fineprint.trace import resolve_model
+        from fineprint.tracing import resolve_model
         p = self._two_pkg_project(tmp_path)   # root 未知 → 全按一方:两模型以 uid 共存
         assert set(p.models) == {"model.pkg_a.orders", "model.pkg_b.orders"}
         g = build_graph(p)
@@ -70,7 +70,7 @@ class TestModelIdentity:
             resolve_model(g, "orders")
 
     def test_qualified_forms_resolve(self, tmp_path):
-        from fineprint.trace import display_name, resolve_model
+        from fineprint.tracing import display_name, resolve_model
         g = build_graph(self._two_pkg_project(tmp_path))
         assert resolve_model(g, "pkg_a.orders") == "model.pkg_a.orders"
         assert resolve_model(g, "pkg_b:orders") == "model.pkg_b.orders"
@@ -81,7 +81,7 @@ class TestModelIdentity:
         assert t["expr_chain"][0]["model_uid"] == "model.pkg_a.orders"
 
     def test_unique_short_name_still_plain(self, tmp_path):
-        from fineprint.trace import display_name
+        from fineprint.tracing import display_name
         n = _node("m1", "compiled/m1.sql")
         p = make_project(tmp_path, nodes={"model.p.m1": n},
                          catalog_nodes={"model.p.m1": _cat("main", "m1", {"x": "INT"})},

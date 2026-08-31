@@ -8,6 +8,10 @@ import json
 import shutil
 from pathlib import Path
 
+# 口径卡批次的对外契约版本(0.9 冻结):卡片 JSON 与 index.json 都盖章。
+# report/看板/公开 API 消费的是这份 schema;破坏性变更须递增并在 CHANGELOG 公告。
+CARD_SCHEMA_VERSION = 1
+
 
 class CaliberStore:
     def __init__(self, root: Path):

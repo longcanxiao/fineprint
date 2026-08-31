@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 from fineprint.config import MLConfig  # noqa: E402
 from fineprint.governance import scan  # noqa: E402
 from fineprint.lineage import agg_one, build_graph  # noqa: E402
-from fineprint.trace import trace  # noqa: E402
+from fineprint.tracing import trace  # noqa: E402
 
 from tests.test_generalize import _cat, _node, make_project  # noqa: E402
 
@@ -242,7 +242,7 @@ class TestAggCaseEquivalence:
 class TestGraphBinding:
     def test_load_graph_stamps_md5_and_snapshot_carries_it(self, tmp_path):
         import json
-        from fineprint.trace import load_graph
+        from fineprint.tracing import load_graph
         p = make_project(tmp_path,
                          nodes={"model.p.m1": _node("m1", "compiled/m1.sql")},
                          catalog_nodes={"model.p.m1": _cat("main", "m1", {"x": "INT"}),

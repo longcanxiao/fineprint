@@ -5,7 +5,7 @@ import sys
 from benchmark.paths import GRAPH, PROJECT_DIR
 from fineprint.config import MLConfig
 from fineprint.governance import scan
-from fineprint.trace import load_graph
+from fineprint.tracing import load_graph
 
 T8_PAIR = {"dm_trade_stats_1d.refund_amt", "dm_after_sale_stats_1d.refund_amt_total"}
 

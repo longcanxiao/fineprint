@@ -108,7 +108,7 @@ def main(argv=None):
     cache = pdir / ".fineprint_probe_graph.json"
     mani_mtime = (pdir / "target" / "manifest.json").stat().st_mtime
     if cache.exists() and cache.stat().st_mtime > mani_mtime and not args.rebuild_graph:
-        from fineprint.trace import load_graph
+        from fineprint.tracing import load_graph
         graph = load_graph(cache)
         print(f"(复用缓存图 {cache.name};--rebuild-graph 可强制重建)")
     else:

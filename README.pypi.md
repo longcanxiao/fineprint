@@ -25,6 +25,15 @@ fineprint synth --project DIR              # 合成口径卡(需配置 LLM 端�
 fineprint drift --project DIR              # 漂移检测
 ```
 
+Python API(0.9 起,最小公开面 minimal public surface since 0.9):
+
+```python
+import fineprint
+fineprint.build_graph("path/to/dbt_project")             # 血缘图(零 LLM)
+print(fineprint.trace("path/to/dbt_project", "dm.gmv"))  # 口径树(零 LLM)
+batch = fineprint.cards("path/to/dbt_project")           # 已发布口径卡批次(schema_version 冻结)
+```
+
 命令与 import 名统一为 `fineprint`(0.8.4 起;老项目迁移 = 四个改名:
 CLI/import、`metriclens.yml`→`fineprint.yml`、`.metriclens/`→`.fineprint/`、
 `METRICLENS_*`→`FINEPRINT_*`,CLI 检测到残留会给出具体改名命令)。

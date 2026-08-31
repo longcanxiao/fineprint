@@ -11,7 +11,7 @@ import sqlglot
 from sqlglot import exp
 
 from benchmark.paths import GRAPH, PROJECT_DIR
-from fineprint.trace import load_graph
+from fineprint.tracing import load_graph
 
 
 def main():

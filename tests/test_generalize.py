@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 
 from fineprint.lineage import build_graph, row_scope_closure  # noqa: E402
 from fineprint.project import DbtProject  # noqa: E402
-from fineprint.trace import trace  # noqa: E402
+from fineprint.tracing import trace  # noqa: E402
 
 
 def _node(name, sql_rel, schema="main"):

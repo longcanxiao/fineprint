@@ -25,7 +25,7 @@ def _norm(s) -> str:
 
 
 def metric_snapshot(graph: dict, m) -> dict:
-    from fineprint.trace import resolve_model
+    from fineprint.tracing import resolve_model
     t = merged_trace(graph, m)
     # 目标的逻辑身份(uid.column):配置写法变化(补包名消歧/短名↔限定名)不是口径变化,
     # 漂移比较优先用它;raw target 仅作展示与老基线兼容
@@ -187,7 +187,7 @@ def annotate_exposures(events: list, cfg: MLConfig, graph: dict) -> None:
     """漂移告警定向:事件挂上受影响指标目标模型的 dbt exposures(消费方名单)。
     告警从"哪个指标变了"升级为"哪些看板受影响、找谁"。目标解析失败不阻断
     (target_changed 类事件本就可能指向已不存在的模型)。"""
-    from fineprint.trace import resolve_model
+    from fineprint.tracing import resolve_model
     exp_map = graph.get("exposures_by_model") or {}
     if not exp_map:
         return

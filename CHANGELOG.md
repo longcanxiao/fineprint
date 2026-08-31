@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.9.0 (2026-08-31)
+
+First public **Python API** — the minimal programmable surface (BI plugins,
+orchestration hooks and notebooks don't shell out):
+
+```python
+import fineprint
+fineprint.build_graph("path/to/dbt_project")            # lineage graph, zero LLM
+print(fineprint.trace("path/to/dbt_project", "dm.gmv")) # caliber tree, zero LLM
+batch = fineprint.cards("path/to/dbt_project")          # published caliber cards
+```
+
+- Three entries only (`build_graph` / `trace` / `cards`), exported lazily via
+  `fineprint.__all__`; `import fineprint` stays light (no sqlglot/requests).
+  Returned `GraphResult` / `TraceResult` / `Batch` are typed mirrors of the
+  stored contracts, not new ones. During 0.x these entries are kept as stable
+  as we can make them; any break is announced here. The full library surface
+  (graph objects, LLM provider protocol, hooks) intentionally waits for real
+  integrations to pull it into shape. LLM synthesis stays CLI-only for now.
+- **`schema_version: 1`** now stamped on every caliber card and batch index —
+  the card JSON is the primary integration contract (report, dashboard and
+  API all sit on it); breaking changes bump it and are announced.
+- `tests/test_public_api.py` gates the surface: if that file needs editing,
+  the change is breaking.
+- Internal rename: module `fineprint/trace.py` → `fineprint/tracing.py` so the
+  public function `fineprint.trace()` owns the name (submodule imports would
+  otherwise shadow it). The CLI command and all behavior are unchanged; the
+  module path was never a public API (see docs/stability.md).
+- CLI `trace`/graph-loading now route through the same API code paths
+  (`_graph` raises instead of printing, the unified error exit renders it);
+  output is unchanged.
+
 ## 0.8.10 (2026-08-30)
 
 `trace --full` no longer duplicates the tree (field feedback: the per-branch

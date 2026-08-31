@@ -7,7 +7,7 @@ from benchmark.paths import GRAPH, PROJECT_DIR, WORKSPACE
 from fineprint.config import MLConfig
 from fineprint.drift import diff_snapshots, latest_snapshot, take_snapshot
 from fineprint.project import DbtProject
-from fineprint.trace import load_graph
+from fineprint.tracing import load_graph
 
 T8_PAIR = {"dm_trade_stats_1d.refund_amt", "dm_after_sale_stats_1d.refund_amt_total"}
 

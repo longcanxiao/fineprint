@@ -57,15 +57,20 @@ New optional keys may appear in minors; existing keys keep semantics.
 
 ### 4. Stored formats
 
-- **Caliber card JSON** (`.fineprint/store/runs/<id>/<key>.json`): documented
-  fields — identity (`metric_key`, `title`, `target`, `run_id`,
+- **Caliber card JSON** (`.fineprint/store/runs/<id>/<key>.json`): **this is
+  the primary integration contract** — the report, the demo dashboard and the
+  public API all consume it. Since 0.9 every card and batch index carries
+  `schema_version` (currently 1); a breaking change to documented fields bumps
+  it and is announced in the changelog. Documented fields — identity
+  (`metric_key`, `title`, `target`, `run_id`,
   `generated_at`, `graph_md5`), the state machine (`publication_status`,
   `status`, `confidence`), `technical_facts` (per-fact `status`, formula
   `authority`/`top`/`defs`/`inline`), `race`, `validation`, `business`,
   `technical`, `evidence` (ids `E*/S*/X*/Q*` with `kind`/`model`/`line`/
   `text`), `governance`, `trace`, `per_hop`. Additive evolution only after
   1.0; consumers must tolerate unknown fields.
-- **Batch index** (`index.json`) and the atomic `active_run` pointer.
+- **Batch index** (`index.json`, carries `schema_version` since 0.9) and the
+  atomic `active_run` pointer.
 - **Lineage graph** (`.fineprint/graph.json`): versioned via
   `fineprint_graph_version` (currently 3). Readers refuse older versions
   with a "rebuild" message instead of guessing; a major graph bump is a
@@ -82,11 +87,25 @@ Everything FinePrint writes lives under `<project>/.fineprint/` (`graph.json`,
 LLM cache directory contains your compiled SQL — treat it as sensitive; it is
 safe to delete (only costs re-synthesis).
 
+### 6. Python API (minimal, since 0.9)
+
+Exactly the names in `fineprint.__all__`: `build_graph(project_dir, *,
+target_path=None, allow_partial=False) -> GraphResult`,
+`trace(project_dir, "model.column", *, target_path=None) -> TraceResult`,
+`cards(project_dir) -> Batch`, plus those three result types and
+`fineprint.api.CARD_SCHEMA_VERSION`. The returned objects are typed mirrors
+of the stored contracts above (`Batch` of the card JSON; `TraceResult` of the
+S/F/E triple). During 0.x these entries are kept as stable as we can make
+them and any break is announced in the changelog; the full library surface
+(graph objects, LLM provider protocol, hooks) is deliberately deferred until
+real integrations pull it into shape. `tests/test_public_api.py` is the
+gatekeeper: if it needs editing, the change is breaking.
+
 ## Internal (no compatibility promise, at any version)
 
-- The Python API: `import fineprint` module layout, function signatures.
-  The supported interface is the CLI; a stable Python API is a separate,
-  post-1.0 commitment.
+- Everything importable that is **not** in `fineprint.__all__`: module layout
+  (e.g. `fineprint.tracing`, `fineprint.lineage`), function signatures, the
+  in-memory graph dict shape.
 - Prompt content and the LLM cache key scheme (`PROMPT_VER` bumps invalidate
   caches by design).
 - Condition fingerprint internals, scope naming (`alias@n`), progress line

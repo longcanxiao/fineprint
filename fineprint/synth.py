@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """口径合成流水线:双通道互验 + 技术/业务口径生成 + 批次化口径知识库。
 
-通道一 = 血缘引擎的确定性 S₁/F₁/E₁(fineprint.trace);
+通道一 = 血缘引擎的确定性 S₁/F₁/E₁(fineprint.tracing);
 通道二 = LLM 逐跳解析单模型 SQL(独立输入,不喂通道一结果),原文引用机器校验防幻觉;
 归并输入只保留互验 matched 的条件;业务条款必须绑定确定性证据 ID;
 互验分歧 → 置信分级,低置信进审核队列不对外展示。
@@ -34,8 +34,8 @@ from fineprint.llm import chat_json, fast_model, quality_model, set_cache_dir
 from fineprint.project import DbtProject
 from fineprint.render import (attach_evidence, build_facts, formula_authority,
                                publication_status, race_formula)
-from fineprint.store import CaliberStore
-from fineprint.trace import display_name, resolve_model, trace
+from fineprint.store import CARD_SCHEMA_VERSION, CaliberStore
+from fineprint.tracing import display_name, resolve_model, trace
 
 
 def norm_text(s: str) -> str:
@@ -701,6 +701,7 @@ def run_metric(project: DbtProject, cfg: MLConfig, graph: dict, m: MetricDef,
     gov_dups = [p for p in (dup_pairs or []) if _related(p["a"]) or _related(p["b"])]
 
     return {
+        "schema_version": CARD_SCHEMA_VERSION,
         "metric_key": m.key, "title": m.title, "target": m.target,
         "run_id": run_id,
         "extra_targets": m.extra_targets, "query_filter": m.query_filter,
@@ -849,7 +850,7 @@ def run_all(project: DbtProject, cfg: MLConfig, graph: dict, only: str | None = 
               file=sys.stderr)
         return 1
     at = datetime.now().isoformat(timespec="seconds")
-    idx = {"run_id": run_id, "at": at, "cards": cards,
+    idx = {"schema_version": CARD_SCHEMA_VERSION, "run_id": run_id, "at": at, "cards": cards,
            "requested": len(todo), "succeeded": len(results),
            "mode": f"only:{only}" if only else "full",
            # 双写赛马数据:组合器 vs LLM 公式逐卡比对的批次汇总(权威裁决依据)

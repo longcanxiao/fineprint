@@ -29,7 +29,7 @@ dbt artifacts ──────► │  源表 / 过滤条件 / 表达式链(sq
 - **通道一**把每个指标列一路回溯到源表:源字段、塑造行集的每一个过滤(WHERE / JOIN ON / QUALIFY / HAVING,带作用域分析)、窗口去重惯用法、CASE WHEN 归因、COALESCE 兜底、统计日归属——全部带文件/行号锚点。
 - **通道二**让 LLM 独立阅读每个模型的 SQL。它主张的每一条过滤都必须携带**逐字引用**,由机器回查原文核验——编造引文在结构上不可能成立。
 - 两条通道逐条件做指纹匹配,只有互验通过的过滤才进入归并后的技术口径。业务条款必须引用带编号的确定性证据(`E`/`S`/`X`/`Q`);条款未绑定证据——或条款列表为空——都会封顶卡片置信。(一句话定义与告诫是 LLM 基于证据写的散文,本身不做机器证明。)
-- **确定性公式组合器**(0.8):第三位作者按作用域逐层展开编译 SQL,合成可证明的指标公式——聚合/窗口边界落为命名子表达式并携带定义处粒度,UNION 分支与 PIVOT 输出列确定性展开,组合结果必须通过与 LLM 公式完全相同的词表/聚合锚点校验,且叶子源集与通道一互证(round-trip)。**公式的发布权威是组合器;LLM 负责解释与叙述,仅在组合器不可证时兜底**(多目标组合、标量子查询等——每一次拒绝都带机器可读的具名原因)。已在三方言三份公开语料上校准(Fivetran ad_reporting / postgres,Snowplow web / snowflake,Cal-ITP warehouse / bigquery):**25412 个真实世界列中 25402 个(99.96%)组合成功且自证**,残余全部具名。
+- **确定性公式组合器**(0.8):第三位作者按作用域逐层展开编译 SQL,合成可证明的指标公式——聚合/窗口边界落为命名子表达式并携带定义处粒度,UNION 分支与 PIVOT 输出列确定性展开,组合结果必须通过与 LLM 公式完全相同的词表/聚合锚点校验,且叶子源集与通道一互证(round-trip)。**公式的发布权威是组合器;LLM 负责解释与叙述,仅在组合器不可证时兜底**(多目标组合、标量子查询等——每一次拒绝都带机器可读的具名原因)。已在三方言五份公开语料上校准(Fivetran ad_reporting / postgres,Snowplow web / snowflake,Cal-ITP warehouse / bigquery,Mattermost analytics 与 snowflake-dbt / snowflake——后三者为真实生产仓):**34,499 个真实世界列中 34,405 个(99.7%)组合成功且自证**,残余全部具名。
 - 低置信的卡片进入人工审核队列,不直接发布。批次原子发布——消费者永远不会看到半更新状态。
 
 在口径卡之外,同一套血缘还支撑漂移检测:
@@ -66,6 +66,17 @@ fineprint report           # 导出自包含的 HTML 口径报告
 
 fineprint drift            # 口径漂移检测(--strict = CI 门禁:high 漂移
                             #   退出码 1,基线与日志不落盘)
+```
+
+notebook / BI 插件 / 编排集成走 Python API(0.9 起的最小公开面,详见
+[docs/stability.md](docs/stability.md)):
+
+```python
+import fineprint
+fineprint.build_graph("path/to/dbt_project")             # 血缘图(零 LLM)
+print(fineprint.trace("path/to/dbt_project", "dm.gmv"))  # 口径树(零 LLM)
+batch = fineprint.cards("path/to/dbt_project")           # 已发布口径卡批次
+batch["gmv"]["technical_facts"]["formula"]               # 卡片 JSON 即契约(schema_version 冻结)
 ```
 
 配置都在 `fineprint.yml`(指标清单、语言 `zh|en`、词典)。`language` 同时驱动卡片内容与 CLI 自身输出(`FINEPRINT_LANG` 可覆盖)。LLM 凭据只走环境变量(项目根目录的 `.env` 会被读取):`FINEPRINT_LLM_BASE_URL / _API_KEY / _MODEL / _FAST_MODEL / _QUALITY_MODEL`,调优项 `_CONCURRENCY / _TIMEOUT / _RETRIES`。

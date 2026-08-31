@@ -739,6 +739,15 @@ def save_graph(project: DbtProject, graph: dict) -> None:
     tmp.replace(out)
 
 
+def graph_errors(graph: dict) -> list:
+    """图内血缘抽取失败点 (model_uid, 列或 <model: 原因>);CLI 与公开 API 共用。"""
+    errs = [(n, c) for n, m in graph["models"].items()
+            for c, d in m["columns"].items() if d.get("error")]
+    errs += [(n, f"<model: {m['error'][:60]}>")
+             for n, m in graph["models"].items() if m.get("error")]
+    return errs
+
+
 def build_and_save(project: DbtProject) -> dict:
     graph = build_graph(project)
     save_graph(project, graph)

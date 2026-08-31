@@ -41,22 +41,8 @@ def _cfg(args):
 
 
 def _graph(project):
-    from fineprint.trace import load_graph
-    p = project.graph_path()
-    if not p.exists():
-        legacy = ""
-        if (project.project_dir / ".metriclens" / "graph.json").exists():
-            # 0.8.4 工作区改名:整目录搬迁可保留 LLM 缓存/口径批次/漂移历史
-            legacy = t("\n检测到旧工作区 .metriclens/:0.8.4 起统一改名,执行 "
-                       "mv .metriclens .fineprint 可原样保留缓存、口径批次与漂移历史",
-                       "\nfound legacy .metriclens/ workspace: renamed in 0.8.4 — run "
-                       "mv .metriclens .fineprint to keep the cache, card batches "
-                       "and drift history intact")
-        print(t(f"血缘图不存在({p});请先执行 fineprint graph{legacy}",
-                f"lineage graph not found ({p}); run fineprint graph first{legacy}"),
-              file=sys.stderr)
-        sys.exit(1)
-    return load_graph(p)
+    from fineprint.api import _load_graph_or_raise
+    return _load_graph_or_raise(project)   # 缺图抛 FileNotFoundError,统一出口成文
 
 
 def _exposure_candidates(project) -> str:
@@ -169,8 +155,8 @@ def cmd_graph(args):
     ncols = sum(len(m["columns"]) for m in graph["models"].values())
     nconds = sum(len(m["conditions"]) for m in graph["models"].values())
     nsem = sum(len(m["semantics"]) for m in graph["models"].values())
-    errs = [(n, c) for n, m in graph["models"].items() for c, d in m["columns"].items() if d.get("error")]
-    errs += [(n, f"<model: {m['error'][:60]}>") for n, m in graph["models"].items() if m.get("error")]
+    from fineprint.lineage import graph_errors
+    errs = graph_errors(graph)
     if errs and not args.allow_partial:
         # 校验不过不落盘:失败运行不得覆盖上一次可用的图(trace/synth 仍读旧图)
         print(f"column lineage errors ({len(errs)}):", errs[:8], file=sys.stderr)
@@ -186,20 +172,9 @@ def cmd_graph(args):
 
 
 def cmd_trace(args):
-    from fineprint.trace import render, resolve_model, trace
-    project = _project(args)
-    graph = _graph(project)
-    model, col = args.target.rsplit(".", 1)
-    t = trace(graph, model, col)
-    tree_txt = None
-    try:                                  # 口径树是展示增强:失败静默回退平铺视图
-        from fineprint.tree import caliber_tree, render_tree
-        tr = caliber_tree(project, graph, resolve_model(graph, model), col, t)
-        if tr:
-            tree_txt = render_tree(tr, full=args.full)
-    except Exception:
-        tree_txt = None
-    print(render(t, tree=tree_txt, full=args.full))
+    from fineprint.api import trace as api_trace
+    r = api_trace(args.project, args.target, target_path=getattr(args, "target_path", None))
+    print(r.render(full=args.full))
 
 
 def cmd_synth(args):

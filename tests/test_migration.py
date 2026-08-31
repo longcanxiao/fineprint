@@ -48,10 +48,10 @@ class TestLegacyNameHints:
             def graph_path(self):
                 return tmp_path / ".fineprint" / "graph.json"
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(FileNotFoundError) as ei:   # 统一异常出口负责变成人话
             _graph(P())
-        err = capsys.readouterr().err
-        assert "mv .metriclens .fineprint" in err and "漂移历史" in err
+        msg = str(ei.value)
+        assert "mv .metriclens .fineprint" in msg and "漂移历史" in msg
 
     def test_dotenv_warns_on_legacy_keys(self, tmp_path, capsys, monkeypatch):
         monkeypatch.delenv("FINEPRINT_LLM_TEST_TOKEN_X", raising=False)

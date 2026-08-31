@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 from fineprint.governance import fingerprint_of  # noqa: E402
 from fineprint.lineage import build_graph  # noqa: E402
 from fineprint.synth import cross_validate  # noqa: E402
-from fineprint.trace import trace  # noqa: E402
+from fineprint.tracing import trace  # noqa: E402
 from tests.test_generalize import _cat, _node, make_project  # noqa: E402
 
 CLS = {"f1_fps": {}, "f2_fps": set(), "quote_fail": 0,

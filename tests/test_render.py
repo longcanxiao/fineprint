@@ -24,7 +24,7 @@ from fineprint.render import (  # noqa: E402
     race_formula,
 )
 from fineprint.synth import build_vocab, merged_trace  # noqa: E402
-from fineprint.trace import trace  # noqa: E402
+from fineprint.tracing import trace  # noqa: E402
 from tests.test_generalize import _cat, _node, make_project  # noqa: E402
 
 
